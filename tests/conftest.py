@@ -16,3 +16,15 @@ def pytest_configure(config):
 
 def pytest_unconfigure(config):
     shutil.rmtree(_TMP, ignore_errors=True)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_band_left_attached():
+    """the pi collar is one global; a test that attaches it must not leak into the next."""
+    from nudge import bandserve
+    bandserve.detach()
+    yield
+    bandserve.detach()
