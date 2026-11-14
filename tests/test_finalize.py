@@ -105,3 +105,34 @@ def test_a_failing_tool_does_not_kill_the_run():
                        config={"configurable": {"thread_id": "err"}, "recursion_limit": 20})
     err = next(m for m in out["messages"] if getattr(m, "name", None) == "list_panos")
     assert err.content.startswith("Error: list_panos") and out["messages"][-1].content.startswith("That scan")
+
+
+def test_look_images_reach_the_model_as_a_user_turn():
+    """openrouter's free router hands tool-result images to text-only models; the relay fixes that."""
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+    from langchain_core.messages import AIMessage
+    from nudge.agents.dossier import create_dossier_agent
+    seen = []
+
+    class Recorder(GenericFakeChatModel):
+        def bind_tools(self, tools, **kw):
+            return self
+
+        def _generate(self, messages, *a, **kw):
+            seen.append(list(messages))
+            return super()._generate(messages, *a, **kw)
+
+    msgs = iter([
+        AIMessage(content="", tool_calls=[{"id": "t", "name": "task", "args": {"subagent_type": "hazard-scout",
+                                                                              "description": "look once"}}]),
+        AIMessage(content="", tool_calls=[{"id": "l", "name": "look", "args": {"sid": SID, "pano_id": "p_L5",
+                                                                              "yaw_deg": 76}}]),
+        AIMessage(content="saw it"), AIMessage(content="done")])
+    agent = create_dossier_agent(SID, model=Recorder(messages=msgs))
+    agent.invoke({"messages": [{"role": "user", "content": "go"}]},
+                 config={"configurable": {"thread_id": "img"}, "recursion_limit": 30})
+    after_look = next(ms for ms in seen if any(type(m).__name__ == "ToolMessage" and m.name == "look" for m in ms))
+    last = after_look[-1]
+    assert type(last).__name__ == "HumanMessage" and any(b.get("type") == "image" for b in last.content)
+    tm = next(m for m in after_look if type(m).__name__ == "ToolMessage" and m.name == "look")
+    assert not any(b.get("type") == "image" for b in tm.content) and "next user message" in str(tm.content)

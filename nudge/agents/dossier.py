@@ -10,6 +10,8 @@ filesystem the agent sees:
 """
 import argparse
 import json
+import queue
+import threading
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -17,7 +19,7 @@ from uuid import uuid4
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from deepagents.middleware.filesystem import FilesystemPermission
-from langchain.agents.middleware import TodoListMiddleware, wrap_tool_call
+from langchain.agents.middleware import TodoListMiddleware, wrap_model_call, wrap_tool_call
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..mp import ROOT
@@ -114,6 +116,37 @@ def _error_advice(name, ex):
             f"or skip this step and note it.")
 
 
+def _is_image(b):
+    return isinstance(b, dict) and b.get("type") in ("image", "image_url")
+
+
+@wrap_model_call
+def images_to_user_turn(request, handler):
+    """look() returns images inside tool results. some providers (openrouter's free router) route on the user
+    turn's modalities and hand tool-result images to text-only models, which then can't see them. so before each
+    call: images from the newest tool results go into a trailing user message; older ones become a placeholder."""
+    from langchain_core.messages import HumanMessage, ToolMessage
+    msgs = list(request.messages)
+    last_ai = max((i for i, m in enumerate(msgs) if type(m).__name__ == "AIMessage"), default=-1)
+    fresh, out = [], []
+    for i, m in enumerate(msgs):
+        if isinstance(m, ToolMessage) and isinstance(m.content, list) and any(_is_image(b) for b in m.content):
+            keep = [b for b in m.content if not _is_image(b)]
+            n = len(m.content) - len(keep)
+            if i > last_ai:
+                fresh += [b for b in m.content if _is_image(b)]
+                note = f"[{n} image(s) attached in the next user message]"
+            else:
+                note = f"[{n} image(s) seen earlier; call look again if you need them]"
+            m = m.model_copy(update={"content": keep + [{"type": "text", "text": note}]})
+        out.append(m)
+    if not fresh:
+        return handler(request)
+    out.append(HumanMessage(content=[{"type": "text", "text": "Images returned by your last look() calls, in order:"}]
+                            + fresh))
+    return handler(request.override(messages=out))
+
+
 @wrap_tool_call
 def places_to_fragments(request, handler):
     """parallel place-indexers must not overwrite each other: a write to /dossier/places.json goes to
@@ -134,7 +167,9 @@ def create_dossier_agent(sid, model=None, checkpointer=None, vision_model=None):
     vm = vision_model if vision_model is not None else (m if model is not None else llm.model(role="vision"))
     subagents = [{"name": name, "description": desc, "system_prompt": _prompt(name), "tools": tools,
                   "skills": ["/agent/skills/"], "permissions": READ_ONLY_AGENT, "model": vm}
-                 | {"middleware": [tool_errors_as_messages] + ([places_to_fragments] if name == "place-indexer" else [])}
+                 | {"middleware": [tool_errors_as_messages]
+                    + ([images_to_user_turn] if any(getattr(t, "name", "") == "look" for t in tools) else [])
+                    + ([places_to_fragments] if name == "place-indexer" else [])}
                  for name, (desc, tools) in SUBAGENTS.items()]
     from .finalize import finalize_dossier, merge_dossier
     return create_deep_agent(
@@ -173,32 +208,59 @@ MAX_MODEL_CALLS = 250  # across the lead and every subagent
 
 
 def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=None,
-        max_minutes=MAX_MINUTES, max_model_calls=MAX_MODEL_CALLS):
+        max_minutes=MAX_MINUTES, max_model_calls=MAX_MODEL_CALLS, on_chunk=None):
     """focus: pano ids to survey first (route-scoped quick dossier for a first visit); see tools.route_focus.
     whatever happens (budget, recursion limit, a flaky model), the run ends with finalize(): valid files + gaps."""
     from .finalize import finalize
     agent = create_dossier_agent(sid, model, vision_model=vision_model)
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 400}
     t0, calls, reason = time.time(), 0, "the lead finished"
-    try:
-        for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]},
-                                  config=config, stream_mode="updates", subgraphs=True):
-            calls += _model_calls(chunk)
-            for ev in describe(chunk):
-                on_event(ev)
-            if time.time() - t0 > max_minutes * 60:
-                reason = f"time budget of {max_minutes} min reached"
-                break
-            if calls >= max_model_calls:
-                reason = f"budget of {max_model_calls} model calls reached"
-                break
-    except Exception as ex:  # recursion limit, provider errors: keep what we have
-        reason = f"run stopped: {type(ex).__name__}: {str(ex)[:200]}"
+    # the stream runs in a worker so the budget holds even when one model call hangs and nothing streams
+    q, stop = queue.Queue(), threading.Event()
+
+    def pump():
+        try:
+            for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]},
+                                      config=config, stream_mode="updates", subgraphs=True):
+                q.put(("chunk", chunk))
+                if stop.is_set():
+                    return
+            q.put(("end", None))
+        except Exception as ex:  # recursion limit, provider errors: keep what we have
+            q.put(("error", ex))
+
+    threading.Thread(target=pump, daemon=True, name=f"dossier-{sid}").start()
+    deadline = t0 + max_minutes * 60
+    while True:
+        left = deadline - time.time()
+        if left <= 0:
+            reason = f"time budget of {max_minutes} min reached"
+            break
+        try:
+            kind, item = q.get(timeout=min(left, 5.0))
+        except queue.Empty:
+            continue
+        if kind == "end":
+            break
+        if kind == "error":
+            reason = f"run stopped: {type(item).__name__}: {str(item)[:200]}"
+            break
+        calls += _model_calls(item)
+        if on_chunk:
+            on_chunk(item)
+        for ev in describe(item):
+            on_event(ev)
+        if calls >= max_model_calls:
+            reason = f"budget of {max_model_calls} model calls reached"
+            break
+    stop.set()  # a straggling call may still finish and write a file; finalize's merge is safe to re-run
     on_event(f"[finalize] {reason}")
     summary = finalize(sid, reason)
+    summary["reason"], summary["model_calls"], summary["minutes"] = reason, calls, round((time.time() - t0) / 60, 1)
     on_event(f"[finalize] annotations {summary['annotations']['hazards']} hazards, "
              f"{summary['annotations']['landmarked_panos']} landmarked panos; places ok={summary['places']['ok']}; "
              f"{len(summary['gaps'])} gaps listed in /dossier/audit.md")
+    run.last_summary = summary
     return dossier_dir(sid)
 
 
