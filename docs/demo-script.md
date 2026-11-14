@@ -1,76 +1,69 @@
-# Demo script (3 minutes)
+# Demo script: Maya's visit (3 minutes)
 
-**[keys]** marks a step that needs real keys: Matterport or Vexcel from `/costar-keys`, `OPENROUTER_API_KEY` (free models), or `PHOTON_*`. Everything else runs on the synthetic building with no keys. Have the debug view open at http://localhost:8765/debug.html (`python -m uvicorn nudge.server:app --port 8765`) and iMessage on a phone that has been added to the Photon project.
+**The story.** Maya is blind. She has an appointment at **DJF Insurance**, a real current tenant in CoStar's record for
+**1255 S Atlantic Blvd, Los Angeles**: a 1917 Victorian, now a Class B office, with no accessibility renovation on
+record. She has never been there. Her brother **Sam** follows along on iMessage.
+
+**Setup (before judges arrive).**
+- Start the server: `python -m nudge.photon_bot` (serves the API on :8765 and runs the iMessage caretaker bot), or
+  `python -m uvicorn nudge.server:app --port 8765` without iMessage.
+- Open `http://localhost:8765/` on the projector. Laptop volume up. Leave "Ask the live AI agent" unticked unless you
+  want the live-model moment (see 3b).
+- Optional: on Sam's real phone, text `follow <code>` (the code is under Sam's panel) to the Nudge iMessage line, so the
+  same messages also arrive on a real phone.
 
 ## 0:00 The problem (20 s)
+Say: "A cane finds what's on the floor. It doesn't know which of 30 doors is the insurance office, that the front has
+five steps, or that a doorway is too narrow. GPS stops at the door. Maya has to ask strangers, or not go."
 
-> "A blind visitor walks into an office building for the first time. GPS stops at the door. A cane finds what's on the floor but misses what sticks out at head height: wall sconces, counter overhangs, the underside of an open stair (ADA 307.2, 27 to 80 inches). Glass walls are nearly invisible to a 3D scan too. CoStar already has a digital twin, an aerial photo and a building record for the same address. Nudge turns those into guidance."
+## 0:20 Before she leaves (35 s) — click **Start Maya's visit**
+Judges hear Maya ask what to expect, then Nudge's briefing, built from three data layers:
+- CoStar: "a 2-floor office building from 1917... no accessibility renovation on record, so expect steps and narrow
+  doorways."
+- Vexcel + Matterport: "The entrance is at the front on Atlantic Boulevard, up about 5 steps, with no ramp."
+- Routing: "about 24 meters to the door, with no street to cross... DJF Insurance is about 20 meters from the door, down
+  one flight of stairs... the narrowest doorway is about 0.5 meters."
 
-Show the README architecture diagram, one sentence per layer: offline agent, live router, exceptions.
+Point at **Behind the scenes**: the CoStar facts, the Vexcel oblique photo of the front steps ("the scan's elevation
+data couldn't tell; the photo could"), 27 doorways found in the Matterport point cloud.
 
-## 0:20 The dossier agent (50 s) [keys: Matterport + OpenRouter for a real building]
+## 0:55 On the sidewalk (25 s)
+"Take me to DJF Insurance." Nudge: "Route ready: 24 meters, 1 turn. Walk 19 meters, then turn right... Turn right now."
+The band preview pulses left or right; the same packets go to the haptic band. Sam's phone: **"Maya started walking to
+the DJF Insurance: about 24 meters."**
 
-```bash
-python -m nudge.agents.dossier <sid>
-```
+## 1:20 The door (15 s)
+"You're at the entrance. There are about 5 steps up, then the door, 0.5 meters wide. Going inside." Say: "That came from
+a facade check on Vexcel's oblique aerial imagery, not from a guess."
 
-The terminal streams the lead's plan and its delegations:
-- `[lead] plan 0/9 done`
-- `[lead] -> site-surveyor`
-- `[lead] -> hazard-scout: floor ...`
-- `[hazard-scout] overhang_candidates(floor=...)`
-- `[hazard-scout] looks from ... at 76.5 deg`
-- `[lead] writes /dossier/annotations.json`
-- `[lead] audit_routes(profile=blind)`
-- `[lead] -> landmark-writer: ...`
+## 1:35 Inside (30 s)
+Maya asks "How far to DJF Insurance?" — "About 20 meters to go." Then turn-by-turn in meters, a warning before every
+doorway ("Narrow doorway ahead"), "Take the stairs down to Floor 1. Handrail recommended." Sam: **"Maya is now on Floor 1."**
 
-Talking points:
-- **Planning:** `write_todos`.
-- **Three subagents** via `task()`, each with its own tools and a look budget.
-- **Real files on disk:** `/dossier`, `/memories` and a read-only `/agent` holding AGENTS.md and the skills.
-- **It checks its own work:** `audit_routes` runs our router on what it wrote, and the lead re-delegates the gaps.
+## 2:05 Something is in the way (25 s)
+"This door is locked." Nudge answers **immediately**: "Okay, stay where you are. I'm finding another way. I've found a
+way around that doorway; say yes to take it." Maya: "Yes." — "New route, 15 meters." No dead air: the traveller is never
+left waiting on a model.
 
-Fallback without keys: run it on `synthetic`, or show `cache/dossiers/<sid>/` from an earlier run.
+**3b (optional live agent).** Tick "Ask the live AI agent" before starting. The LangChain exception agent reasons about
+the problem and proposes a reroute that Maya approves by voice. If the free model takes more than 20 seconds, Nudge
+falls back to the deterministic way around and says so. The UI shows "Thinking… N s" meanwhile.
 
-## 1:10 Geometry proposes, vision confirms (25 s) [keys for a real building]
+## 2:30 Arrived (10 s)
+"You have arrived." Sam: **"Maya arrived at the DJF Insurance."** That's it: three calm texts for a whole visit.
 
-Open the hazard file `cache/dossiers/<sid>/hazards/<floor>.json`. Show one confirmed candidate with its `evidence.pano_id` and `bearing_deg`, then show the `look()` image the scout saw. The compass in the corner shows which way it was facing.
+## 2:40 Help (15 s) — click **Maya: "I need help"**
+Nudge: "I've let your caretaker know you need help. Stay where you are." Sam's phone, marked urgent: **"Maya asked for
+help in the hallway on Floor 1: "I need help""**.
 
-> "The point cloud found something at 1.2 to 1.5 m with nothing underneath, which is exactly what a cane misses. The agent looked and confirmed it's a wall sconce. Rejected candidates stay in the file with a reason."
+## 2:55 Close (5 s)
+"The AI works ahead of the walk: it reads the building once, so every visitor after Maya gets this for free. During the
+walk, guidance is deterministic and instant."
 
-Offline version: `look('synthetic', 'p_L5', 76.5)` and the synthetic sconce `oh-f1-0`.
-
-## 1:35 The walk (35 s) [no keys]
-
-In the debug view: synthetic, start K3, goal Conference Room, profile blind, then **Simulate walk**.
-- **Speech:** "Route ready… Turn right… Walk about 9 steps…"
-- **Haptics:** distinct vibration patterns for left, right and arrive (on Android Chrome).
-- **Reroute:** drag the dot into the lobby and it says "You are off the route. New route…"
-- **Accessibility:** switch to wheelchair and the route takes the elevator, never the stairs.
-
-> "None of this calls a model. It's A* on the twin. It takes milliseconds and works with no wifi."
-
-Device lines for the hardware, from the CLI or `device.encode_step`: `2,T,L,90,4.5` and `N,2.4,-15,TR,0`.
-
-## 2:10 "The elevator is out" over iMessage (35 s) [keys: Photon + OpenRouter]
-
-```bash
-python -m nudge.photon_bot
-```
-
-On the phone:
-1. "take me to the conference room at synthetic". The reply is the route summary and the first step, or the briefing if a dossier exists.
-2. "the elevator is out of service". The exception agent compares options and replies something like "The elevator is out. The stairs are 20 feet away… Reply yes to take this route." The live plan has not changed yet.
-3. "yes". The reroute is committed and the next step uses the stairs.
-
-> "A Deep Agent with human-in-the-loop: the one tool that changes the plan pauses until the traveller says yes. For a wheelchair profile it would never offer the stairs. It would say there's no step-free route and suggest another entrance or asking staff."
-
-## 2:45 Outside in: the entrance survey (15 s) [keys: Vexcel + CoStar kit]
-
-Open `cache/dossiers/<sid>/site.md` and the aerial image. Show the accessible entrance, the curb ramp and drop-off, and the building facts from the CoStar record (year built, suites as destination aliases).
-
-> "Vexcel gets you to the right door. Matterport gets you through it. CoStar tells us what's inside and when it was built."
-
-## Close (5 s)
-
-> "AI ahead of the walk. Deterministic during it. The traveller decides when plans change."
+## Fallbacks
+- **Wifi or the free model is down:** the scripted visit only uses deterministic paths (briefing, routing, the locked-door
+  reroute), and the data is cached locally. Leave "Ask the live AI agent" unticked.
+- **No sound:** every line is also shown in the Maya panel; the Sam panel works without sound.
+- **Server restart:** reload `/`. "Start Maya's visit" resets the demo each time.
+- **Judges want to try it:** type into "Say something as Maya" ("where is the bathroom", "where am I", "brief me"), or
+  open the 3D tour link and walk it yourself.

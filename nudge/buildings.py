@@ -6,13 +6,30 @@ from functools import lru_cache
 from .mp import ROOT
 
 DEMO_SID = "MgGNVWsyXtH"  # 1255 s atlantic blvd, los angeles: every data layer, dossier, real doorways
+VENUE_SID = "R1FX6EmdcDt"  # rabinowitz hall, princeton: the hackathon venue (indoor only; no vexcel there)
 HIDDEN = {"synthetic", "synthetic-lobby"}  # test buildings: only reachable by typing the id exactly
 
 
 @lru_cache(maxsize=1)
+def _extra():
+    """models outside the hackathon index (the venue scan), same columns as models_index.csv."""
+    p = ROOT / "reference" / "extra_models.csv"
+    if not p.exists():
+        return []
+    with open(p, encoding="utf-8") as f:
+        return [r for r in csv.DictReader(f) if r.get("sid")]
+
+
+def extra_row(sid):
+    return next((r for r in _extra() if r["sid"] == sid), None)
+
+
+@lru_cache(maxsize=1)
 def _rows():
+    extra = _extra()
+    seen = {r["sid"] for r in extra}  # an extra row replaces the index row for the same model
     with open(ROOT / "reference" / "models_index.csv", encoding="utf-8") as f:
-        return [r for r in csv.DictReader(f) if r.get("lat")]
+        return extra + [r for r in csv.DictReader(f) if r.get("lat") and r["sid"] not in seen]
 
 
 def _n(x):
@@ -42,8 +59,9 @@ def _richness(r):
 def featured(limit=6):
     from .pick import score
     rows = _rows()
-    demo = [r for r in rows if r["sid"] == DEMO_SID]
-    rest = [r for r in rows if r["sid"] != DEMO_SID and r["segment"] == "commercial" and r.get("costar_property_id")
+    first = (DEMO_SID, VENUE_SID)  # the full-data demo, then the venue (indoor only)
+    demo = [next(r for r in rows if r["sid"] == s) for s in first if any(r["sid"] == s for r in rows)]
+    rest = [r for r in rows if r["sid"] not in first and r["segment"] == "commercial" and r.get("costar_property_id")
             and _street(r) and not re.match(r"^\d+BR|^\d+BD", r.get("name") or "")]
     rest.sort(key=score, reverse=True)
     return [card(r) for r in demo + rest[:max(0, limit - len(demo))]]
@@ -69,7 +87,8 @@ def search(q, limit=12):
             # an address-like query ("1255 atlantic") prefers the street; a city word prefers richer scans
             addressy = any(ch.isdigit() for ch in q) or len(toks) > 1
             street_hit = addressy and all(t in _street(r).lower() for t in toks)
-            hits.append((-(exact + 2 * street_hit), -_richness(r), r))
+            venue = r["sid"] == VENUE_SID  # "princeton" should find the building the judges are standing in
+            hits.append((-(exact + 2 * street_hit + 3 * venue), -_richness(r), r))
     hits.sort(key=lambda h: h[:2])
     seen, out = set(), []
     for *_, r in hits:

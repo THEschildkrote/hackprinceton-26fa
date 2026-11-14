@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nudge</title>
+<style>
+  :root { --bg: #0b0d10; --panel: #13171c; --ink: #f2f4f7; --muted: #a2abb5; --line: #2a3139; --accent: #59b0ff;
+          --maya: #ffd479; --warn: #ff6b6b; --ok: #5ad19a; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #f2f4f7; --panel: #ffffff; --ink: #0f1317;
+    --muted: #4f5964; --line: #d6dbe1; --accent: #0b63c7; --maya: #8a5a00; --warn: #c62828; --ok: #1f7a4f; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header.top { padding: 22px 24px 8px; max-width: 1400px; margin: 0 auto; }
+  h1 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.01em; }
+  .mission { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: 1.25fr 0.8fr 1fr; gap: 16px; padding: 16px 24px 28px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 1050px) { .grid { grid-template-columns: 1fr; padding: 12px 16px 24px; } header.top { padding: 18px 16px 4px; } }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex;
+                  flex-direction: column; min-height: 0; }
+  h2 { margin: 0 0 4px; font-size: 19px; }
+  .lede { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+  button { font: inherit; font-weight: 650; border-radius: 10px; border: 2px solid var(--accent); background: var(--accent);
+           color: #001a33; padding: 12px 16px; cursor: pointer; min-height: 48px; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--maya); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .log { flex: 1; min-height: 320px; max-height: 58vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px;
+         padding: 10px; margin: 12px 0; display: flex; flex-direction: column; gap: 6px; }
+  .line { padding: 7px 10px; border-radius: 10px; max-width: 92%; }
+  .line.nudge { background: rgba(89,176,255,.12); align-self: flex-start; }
+  .line.maya { background: rgba(255,212,121,.14); align-self: flex-end; }
+  .line .who { font-size: 12px; font-weight: 700; color: var(--muted); display: block; }
+  .line.maya .who { color: var(--maya); }
+  .line.beat { align-self: center; background: none; color: var(--muted); font-size: 13px; font-weight: 650;
+               text-transform: uppercase; letter-spacing: .06em; padding: 8px 0 2px; }
+  .line.alert { border: 2px solid var(--warn); }
+  .thinking { color: var(--muted); font-style: italic; }
+  .band { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+  .motor { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); }
+  .motor.on { background: var(--maya); border-color: var(--maya); box-shadow: 0 0 12px var(--maya); }
+  code.dev { font-size: 13px; color: var(--muted); }
+  label.opt { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
+  input[type=text] { font: inherit; flex: 1; min-width: 0; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line);
+                     background: transparent; color: var(--ink); min-height: 48px; }
+  iframe { width: 100%; flex: 1; min-height: 560px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .facts { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 8px; }
+  .facts li { border-left: 3px solid var(--accent); padding: 2px 0 2px 10px; }
+  .facts b { display: block; font-size: 13px; color: var(--muted); font-weight: 650; }
+  .facade { width: 100%; border-radius: 10px; border: 1px solid var(--line); margin: 6px 0 4px; }
+  .cap { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+  .chip { font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+  .links a { color: var(--accent); }
+  footer.dev { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; color: var(--muted); font-size: 13px; }
+  footer.dev a { color: var(--muted); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Nudge: indoor guidance for blind travellers</h1>
+  <p class="mission">Maya is blind. Her appointment is at DJF Insurance, inside a 1917 building she has never visited.
+    Nudge guides her by voice from the sidewalk to the right room, and keeps her brother Sam calmly in the loop.</p>
+</header>
+
+<main class="grid">
+  <section class="panel" aria-labelledby="maya-h">
+    <h2 id="maya-h">Maya, the traveller</h2>
+    <p class="lede">Everything Maya hears is spoken. Press Start to play her visit to 1255 S Atlantic Blvd, Los Angeles.</p>
+    <div class="row">
+      <button id="start">Start Maya's visit</button>
+      <button id="help" class="ghost">Maya: "I need help"</button>
+      <button id="mute" class="ghost" aria-pressed="false">Mute voice</button>
+    </div>
+    <label class="opt" style="margin-top:10px"><input type="checkbox" id="live"> Ask the live AI agent about the locked door (can take a minute; falls back after 20 seconds)</label>
+    <div class="log" id="log" role="log" aria-live="polite" aria-label="Conversation between Maya and Nudge"></div>
+    <div class="band" aria-label="Haptic band preview">
+      <span class="motor" id="mL" aria-hidden="true"></span><span class="motor" id="mR" aria-hidden="true"></span>
+      <span id="bandText">Band: idle</span>
+      <code class="dev" id="bandLine"></code>
+    </div>
+    <form class="row" id="sayForm" style="margin-top:10px">
+      <label for="sayText" class="sr">Say something as Maya</label>
+      <input type="text" id="sayText" placeholder="Say something as Maya, e.g. where am I">
+      <button type="submit" class="ghost">Say</button>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="sam-h">
+    <h2 id="sam-h">Sam, her caretaker</h2>
+    <p class="lede">What Sam receives on iMessage: a few calm updates, and an alert if Maya needs help.</p>
+    <iframe id="sam" title="Sam's messages" src="caretaker.html?traveller=maya&sid=MgGNVWsyXtH"></iframe>
+  </section>
+
+  <section class="panel" aria-labelledby="bts-h">
+    <h2 id="bts-h">Behind the scenes</h2>
+    <p class="lede">What Nudge learned about this building before Maya arrived, from CoStar, Vexcel and Matterport.</p>
+    <ul class="facts" id="facts"><li>Loading…</li></ul>
+    <div id="facadeBox"></div>
+    <div><b style="font-size:13px;color:var(--muted)">Places Nudge can take her</b><div class="chips" id="chips"></div></div>
+    <p class="links">
+      <a href="tour.html?sid=MgGNVWsyXtH">Walk the 3D tour</a> ·
+      <a href="dossier.html?sid=MgGNVWsyXtH">Watch the dossier agents work</a> ·
+      <a href="voice.html?sid=R1FX6EmdcDt">Try Rabinowitz Hall (this building)</a>
+    </p>
+  </section>
+</main>
+<footer class="dev"><a href="debug.html">Developer tools</a></footer>
+
+<script>
+  const SID = "MgGNVWsyXtH", T = "maya";
+  const $ = id => document.getElementById(id);
+  const log = $("log");
+  let info = null, muted = false, running = false;
+
+  // ---------- speech: nudge and maya get different voices, and lines play in order ----------
+  let voices = [];
+  const loadVoices = () => { voices = speechSynthesis.getVoices(); };
+  if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+  function speak(text, who) {
+    return new Promise(res => {
+      if (muted || !window.speechSynthesis || !text) return setTimeout(res, Math.min(2200, 40 * (text || "").length));
+      const u = new SpeechSynthesisUtterance(text);
+      const en = voices.filter(v => /^en/i.test(v.lang));
+      if (who === "maya") { u.voice = en.find(v => /female|zira|samantha|aria|jenny/i.test(v.name)) || en[1] || null; u.pitch = 1.15; }
+      else { u.voice = en.find(v => /google us|guy|david|daniel/i.test(v.name)) || en[0] || null; }
+      u.rate = 1.05;
+      let done = false;
+      const fin = () => { if (!done) { done = true; res(); } };
+      u.onend = fin; u.onerror = fin;
+      setTimeout(fin, 400 + 90 * text.length);  // never hang the demo on a stuck synth
+      speechSynthesis.speak(u);
+    });
+  }
+  function line(text, who = "nudge", cls = "") {
+    if (!text) return;
+    const d = document.createElement("div");
+    d.className = `line ${who} ${cls}`;
+    if (who !== "beat") {
+      const w = document.createElement("span");
+      w.className = "who"; w.textContent = who === "maya" ? "Maya" : "Nudge";
+      d.appendChild(w);
+    }
+    d.appendChild(document.createTextNode(text));
+    log.appendChild(d); log.scrollTop = log.scrollHeight;
+    return d;
+  }
+  async function say(text, who = "nudge", cls = "") { if (!text) return; line(text, who, cls); await speak(text, who); }
+  const beat = t => line(t, "beat");
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // ---------- band preview: the same left/right pulses the haptic band plays ----------
+  function band(ev, device) {
+    if (device && device.line) $("bandLine").textContent = device.line;
+    const cue = ev && ev.cue;
+    if (!cue) return;
+    const left = /left/.test(cue), right = /right/.test(cue), both = !left && !right;
+    const pulses = (ev.vibrate || [120]).length;
+    $("bandText").textContent = "Band: " + ({left: "pulse left", right: "pulse right", bear_left: "pulse left",
+      bear_right: "pulse right", arrive: "arrived", hazard: "caution", floor: "floor change", uturn: "turn around",
+      off_route: "off route", unmapped: "off the map", straight: "straight on"}[cue] || cue);
+    let i = 0;
+    const tick = () => {
+      if (i >= Math.min(6, pulses)) { $("mL").classList.remove("on"); $("mR").classList.remove("on"); return; }
+      const on = i % 2 === 0;
+      $("mL").classList.toggle("on", on && (left || both));
+      $("mR").classList.toggle("on", on && (right || both));
+      i++; setTimeout(tick, 160);
+    };
+    tick();
+    // browsers only allow vibration after a real tap on the page
+    const tapped = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+    if (navigator.vibrate && ev.vibrate && tapped) { try { navigator.vibrate(ev.vibrate); } catch (e) {} }
+  }
+
+  // ---------- api ----------
+  async function api(path, body) {
+    const r = await fetch(path, body ? {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(body)} : {});
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+    return r.json();
+  }
+  // a voice turn as maya; agent turns answer at once, then we wait for the result without dead air
+  async function voice(text, extra = {}) {
+    await say(text, "maya");
+    let r = await api("/api/voice/turn", {traveller: T, sid: SID, text, async_ok: true, ...extra});
+    if (r.pending_job) {
+      await say(r.say_now || r.say);
+      const t = line("Thinking…", "nudge", "thinking");
+      const t0 = Date.now();
+      while (true) {
+        await sleep(1000);
+        const j = await api(`/api/voice/job/${r.pending_job}`);
+        t.lastChild.textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)} s`;
+        if (j.done) { t.remove(); r = j; break; }
+      }
+    }
+    await say(r.say, "nudge", /caretaker/.test(r.say || "") ? "alert" : "");
+    return r;
+  }
+
+  // ---------- behind the scenes ----------
+  async function loadInfo() {
+    info = await api(`/api/demo/${SID}`);
+    const f = info.found, facts = [];
+    if (f.year_built) facts.push(["Built", `${f.year_built}${f.pre_ada ? ", no accessibility renovation on record (CoStar)" : ""}`]);
+    if (f.property_type) facts.push(["Building", `Class ${f.building_class || "?"} ${f.property_type.toLowerCase()}, ${f.floors || "?"} floors`]);
+    if (f.tenants && f.tenants.length) facts.push(["Tenants", f.tenants.join(", ")]);
+    if (f.entrance) facts.push(["Entrance", `${f.entrance.steps ? `about ${f.entrance.steps} steps up` : "level"}, ${f.entrance.ramp ? "ramp" : "no ramp"}, door ${f.entrance.door_width_m ? f.entrance.door_width_m.toFixed(1) + " m" : ""} wide${f.entrance.confirmed_from_imagery ? " (checked on Vexcel's oblique photo)" : ""}`]);
+    if (f.doorways && f.doorways.count) facts.push(["Doorways", `${f.doorways.count} found in the Matterport point cloud; narrowest ${f.doorways.narrowest_m} m`]);
+    if (info.start) facts.push(["Outside", `about ${Math.round(info.start.outdoor_m)} m on the sidewalk, no street to cross`]);
+    $("facts").innerHTML = "";
+    facts.forEach(([k, v]) => { const li = document.createElement("li"); li.innerHTML = `<b>${k}</b>`; li.append(v); $("facts").appendChild(li); });
+    if (f.facade_image) {
+      $("facadeBox").innerHTML = `<img class="facade" src="/api/demo/${SID}/facade.jpg" alt="Vexcel oblique aerial photo of the building's front: a semicircular set of steps under a curved canopy, facing Atlantic Boulevard"><p class="cap">The front steps, seen in Vexcel's oblique aerial photo. The scan's elevation data couldn't tell; the photo could.</p>`;
+    }
+    $("chips").innerHTML = "";
+    const rank = n => (f.tenants || []).includes(n) ? 0 : /entrance/i.test(n) ? 1 : /bathroom|kitchen|living/i.test(n) ? 2 : 3;
+    (f.places || []).slice().sort((a, b) => rank(a) - rank(b)).slice(0, 14).forEach(n => { const s = document.createElement("span"); s.className = "chip"; s.textContent = n; $("chips").appendChild(s); });
+  }
+
+  // ---------- the scripted visit: real api calls, deterministic reroute unless the live agent is ticked ----------
+  async function walkLeg(S, state) {
+    const w = await api(`/api/demo/${SID}/walk?session=${S}`);
+    for (const p of w.points) {
+      if (!running) return "stopped";
+      const r = await api("/api/outdoor/nav/update", {session: S, ...p});
+      for (const e of r.events) {
+        band(e, r.device);
+        if (e.type === "floor" || /stairs (up|down)/i.test(e.text || "")) state.floorChanged = true;
+        if (e.text && !["soon"].includes(e.type)) await say(e.text);
+      }
+      if (r.done) return "arrived";
+      if (r.phase === "indoor" && w.phase === "outdoor") return "inside";
+      if (r.phase === "indoor" && state.floorChanged && !state.locked &&
+          r.events.some(e => ["now", "door"].includes(e.type))) return "locked";
+      await sleep(420);
+    }
+    return "end";
+  }
+
+  async function run() {
+    if (running) return;
+    running = true; $("start").disabled = true; log.innerHTML = "";
+    try {
+      await api(`/api/demo/${SID}/reset`, {});
+      $("sam").src = $("sam").src;
+      if (!info) await loadInfo();
+      beat("Before she leaves");
+      await say("Nudge, what should I know about my appointment at DJF Insurance?", "maya");
+      const b = await api(`/api/briefing/${SID}?goal=${encodeURIComponent(info.goal)}&lat=${info.start.lat}&lon=${info.start.lon}`);
+      for (const s of b.sentences) await say(s);
+      beat("On the sidewalk");
+      await say("Take me to DJF Insurance.", "maya");
+      const s = await api("/api/outdoor/nav/start", {sid: SID, to: info.goal, profile: "blind", traveller: T,
+                                                    lat: info.start.lat, lon: info.start.lon});
+      for (const e of s.events) { band(e); if (e.text) await say(e.text); }
+      const S = s.session, state = {floorChanged: false, locked: false};
+      for (let leg = 0; leg < 8; leg++) {
+        const out = await walkLeg(S, state);
+        if (out === "inside") {
+          beat("Inside");
+          await voice("How far to DJF Insurance?", {session: S});
+        } else if (out === "locked") {
+          state.locked = true;
+          beat("Something is in the way");
+          const live = $("live").checked;
+          const r = await voice("This door is locked.", {session: S, agent: live});
+          if (r.pending) await voice("Yes.", {session: S});
+        } else if (out === "arrived") {
+          beat("Arrived");
+          await say(`This is DJF Insurance. Have a good appointment, Maya.`);
+          break;
+        } else if (out === "stopped") break;
+      }
+    } catch (e) {
+      await say("Something went wrong in the demo: " + e.message);
+    } finally {
+      running = false; $("start").disabled = false;
+    }
+  }
+
+  $("start").onclick = run;
+  $("help").onclick = async () => { beat("Maya asks for help"); await voice("I need help.", {}); };
+  $("mute").onclick = () => { muted = !muted; $("mute").setAttribute("aria-pressed", String(muted)); $("mute").textContent = muted ? "Unmute voice" : "Mute voice"; if (muted) speechSynthesis.cancel(); };
+  $("sayForm").onsubmit = async e => { e.preventDefault(); const t = $("sayText").value.trim(); if (!t) return; $("sayText").value = ""; await voice(t, {}); };
+  loadInfo().catch(e => { $("facts").innerHTML = `<li>Couldn't load the building: ${e.message}</li>`; });
+</script>
+</body>
+</html>

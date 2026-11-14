@@ -1,5 +1,6 @@
 """debug api + static web. run: python -m uvicorn nudge.server:app --port 8765"""
 import json
+import re
 import os
 import threading
 import time
@@ -183,7 +184,8 @@ def _publish(session, nav, evs, **extra):
             from .places import where_am_i
             w = where_am_i(nav.g, x, y, fl)
             if w.get("place"):
-                ctx.setdefault("place", w["place"]["name"] if isinstance(w["place"], dict) else w["place"])
+                pname = w["place"]["name"] if isinstance(w["place"], dict) else w["place"]
+                ctx.setdefault("place", re.sub(r",\s*floor \S+$", "", pname, flags=re.I))
         if nav.route:
             ctx.setdefault("remaining_m", round(max(0.0, nav.route.length - nav.progress), 1))
     except Exception:
@@ -611,6 +613,29 @@ def _here(nav):
     return n.x, n.y, n.floor
 
 
+AGENT_TIMEOUT_S = 20.0   # never leave a traveller waiting longer than this on a model
+SAY_NOW = "Stay where you are, I'm finding another way."
+
+
+def _capped(fn, timeout=None):
+    """run fn in a thread; (result, None) or (None, why). a late agent is abandoned, never waited on."""
+    box = {}
+
+    def work():
+        try:
+            box["r"] = fn()
+        except Exception as ex:
+            box["e"] = ex
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(AGENT_TIMEOUT_S if timeout is None else timeout)
+    if t.is_alive():
+        return None, f"the agent took longer than {AGENT_TIMEOUT_S:.0f} s"
+    if "e" in box:
+        return None, f"model call failed ({type(box['e']).__name__}: {str(box['e'])[:120]})"
+    return box.get("r"), None
+
+
 def _fallback_block(nav, text):
     """no model available: block the thing the user named on the route ahead, deterministically."""
     g, r = nav.g, nav.route
@@ -656,24 +681,27 @@ def nav_exception(req: ExceptionReq):
     _publish(req.session, nav, [{"type": "reported", "text": req.text}])
     from .agents import llm
     if llm.has_credentials(llm.spec()):
-        try:
-            from .agents.exception import create_exception_agent, handle_event, new_thread
+        from .agents.exception import create_exception_agent, handle_event, new_thread
+
+        def ask():
             ctx = _exc.get(req.session)
             if not ctx:
                 ctx = _exc[req.session] = {"agent": create_exception_agent(nav, nav.g, f"travels as: {nav.profile}"),
                                            "thread": new_thread()}
-            r = handle_event(ctx["agent"], ctx["thread"], req.text)
-        except Exception as ex:
-            _exc.pop(req.session, None)
-            ev, say = _fallback_block(nav, req.text)
-            _publish(req.session, nav, ev, reason=req.text)
-            return {"mode": "fallback", "reason": f"model call failed ({type(ex).__name__}: {str(ex)[:120]})",
-                    "say": say, "pending": None, "events": _events(ev), "state": _state(nav), "device": _device(nav)}
-        return {"mode": "agent", "reason": f"exception agent on {llm.spec()}", "say": r.get("say") or [],
-                "pending": r.get("pending"), "events": [], "state": _state(nav), "device": _device(nav)}
+            return handle_event(ctx["agent"], ctx["thread"], req.text)
+        r, why = _capped(ask)
+        if r is not None:
+            return {"mode": "agent", "reason": f"exception agent on {llm.spec()}", "say_now": SAY_NOW,
+                    "say": r.get("say") or [], "pending": r.get("pending"), "events": [], "state": _state(nav),
+                    "device": _device(nav)}
+        _exc.pop(req.session, None)  # a late answer must not be approved later by mistake
+        ev, say = _fallback_block(nav, req.text)
+        _publish(req.session, nav, ev, reason=req.text)
+        return {"mode": "fallback", "reason": why, "say_now": SAY_NOW, "say": say, "pending": None,
+                "events": _events(ev), "state": _state(nav), "device": _device(nav)}
     ev, say = _fallback_block(nav, req.text)
     _publish(req.session, nav, ev, reason=req.text)
-    return {"mode": "fallback", "reason": "no model credentials", "say": say, "pending": None,
+    return {"mode": "fallback", "reason": "no model credentials", "say_now": SAY_NOW, "say": say, "pending": None,
             "events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
 
@@ -715,12 +743,20 @@ def nav_explore(req: ExploreReq):
         raise HTTPException(400, "no model credentials for the explorer agent (OPENROUTER_API_KEY or ANTHROPIC_API_KEY)")
     from .agents.exception import handle_event, new_thread
     from .agents.explorer import create_explorer_agent
-    if req.session not in _explorers:
-        _explorers[req.session] = (create_explorer_agent(nav, nav.g, sid=_session_sid.get(req.session)), new_thread())
-    agent, thread = _explorers[req.session]
-    r = handle_event(agent, thread, req.text)
+    def ask():
+        if req.session not in _explorers:
+            _explorers[req.session] = (create_explorer_agent(nav, nav.g, sid=_session_sid.get(req.session)),
+                                       new_thread())
+        agent, thread = _explorers[req.session]
+        return handle_event(agent, thread, req.text)
+    r, why = _capped(ask)
+    if r is None:
+        _explorers.pop(req.session, None)
+        return {"mode": "timeout", "reason": why, "say_now": SAY_NOW, "pending": None,
+                "say": ["I couldn't work out a way back in time. Stay where you are; say I need help and I'll let "
+                        "your caretaker know."], "state": _state(nav), "device": _device(nav)}
     _publish(req.session, nav, [{"type": "exploring", "text": " ".join(r.get("say") or [])}])
-    return {**r, "state": _state(nav), "device": _device(nav)}
+    return {**r, "say_now": SAY_NOW, "state": _state(nav), "device": _device(nav)}
 
 
 @app.post("/api/nav/explore/decide")
@@ -954,12 +990,125 @@ def _register_voice_session(nav, sid):
     return s
 
 
-app.include_router(voice_router(get_navigator, register_session=_register_voice_session))
+def _has_caretaker(tid):
+    """someone is following this traveller: a paired imessage caretaker, or the on-screen caretaker view."""
+    from . import hub
+    return bool(hub.caretakers(tid)) or (_view is not None and tid in _view.watched)
+
+
+_voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker)
+app.include_router(_voice)
+
+
+# the maya demo: briefing, the walk, what the agents found, and sam's live view of his imessages
+
+from . import demo as _maya  # noqa: E402
+
+_view = None
+
+
+def _caretaker_view():
+    global _view
+    if _view is None:
+        _view = _maya.CaretakerView()
+    return _view
+
+
+@app.get("/api/briefing/{sid}")
+def briefing(sid: str, goal: str | None = None, lat: float | None = None, lon: float | None = None,
+             profile: str = "blind"):
+    start = {"lat": lat, "lon": lon} if lat is not None and lon is not None else None
+    try:
+        return _maya.briefing(sid, goal, start, profile)
+    except Exception as ex:
+        raise HTTPException(502, f"could not build the briefing: {ex}")
+
+
+@app.get("/api/demo/{sid}")
+def demo_info(sid: str):
+    d = _maya.DEMO.get(sid)
+    if not d:
+        raise HTTPException(404, "no demo story for this building")
+    from . import hub
+    code = hub.register_traveller(d["traveller"], d["name"])
+    _caretaker_view()
+    try:
+        start = _maya.demo_start(sid)
+    except Exception as ex:
+        start, err = None, str(ex)
+    else:
+        err = None
+    from .buildings import label
+    return {**d, "sid": sid, "building": label(sid), "code": code, "start": start, "start_error": err,
+            "found": _maya.behind_the_scenes(sid)}
+
+
+@app.post("/api/demo/{sid}/reset")
+def demo_reset(sid: str):
+    d = _maya.DEMO.get(sid) or {}
+    tid = d.get("traveller", "maya")
+    _caretaker_view().reset(tid)
+    _voice.conversations.pop(tid, None)
+    return {"ok": True}
+
+
+@app.get("/api/demo/{sid}/walk")
+def demo_walk(sid: str, session: str, step: float = 0.8):
+    """the rest of the live route as positions to feed back: lat/lon outside, model x, y, floor inside."""
+    d = _d2d.get(session)
+    if d is not None:
+        if d.phase == "outdoor":
+            return {"phase": "outdoor", "points": _maya.walk_points(d.outside, d.site.og, step)}
+        return {"phase": "indoor", "points": _maya.walk_points(d.inside, None, step)}
+    nav = _sessions.get(session)
+    if nav is None:
+        raise HTTPException(404, "unknown session")
+    return {"phase": "indoor", "points": _maya.walk_points(nav, None, step)}
+
+
+@app.get("/api/demo/{sid}/facade.jpg")
+def demo_facade(sid: str):
+    f = ROOT / "cache" / f"demo_facade_{sid}.jpg"
+    if not f.exists():
+        raise HTTPException(404, "no facade view cached")
+    return Response(f.read_bytes(), media_type="image/jpeg")
+
+
+@app.get("/api/traveller/{tid}/messages")
+def caretaker_messages(tid: str, after: int = 0):
+    """the imessages a caretaker following this traveller would have received, in order."""
+    msgs = _caretaker_view().messages(tid, after)
+    return {"messages": msgs, "next": after + len(msgs)}
+
+
+@app.get("/api/traveller/{tid}/events")
+async def caretaker_events(tid: str, after: int = 0):
+    """the same messages as server-sent events, live."""
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+    view = _caretaker_view()
+
+    async def stream():
+        n = after
+        yield "retry: 2000\n\n"
+        while True:
+            msgs = await asyncio.to_thread(view.wait, tid, n, 15.0)
+            if not msgs:
+                yield ": keepalive\n\n"
+                continue
+            for m in msgs:
+                n += 1
+                yield f"id: {n}\ndata: {_json.dumps(m)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/")
 def index():
-    return RedirectResponse("/debug.html")
+    return RedirectResponse("/index.html")
 
 
 app.mount("/", StaticFiles(directory=ROOT / "web"), name="web")

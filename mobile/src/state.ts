@@ -10,7 +10,12 @@ export interface Settings {
   recent: Building[];  // last buildings, newest first (shown by address)
   traveller: string;   // stable id for voice turns and caretaker pairing
   caretakerCode: string | null;  // code the caretaker texts to follow this traveller
+  caretakerLine: string | null;  // the nudge imessage number, when the server shares it
+  posSource: PosSource;          // where positions come from (developer setting)
 }
+
+export const POS_SOURCES = ["simulated walk", "steps + compass", "manual"] as const;
+export type PosSource = (typeof POS_SOURCES)[number];
 
 // web: same origin as the page (served next to the api or behind a proxy), or localhost:8765 from the expo dev
 // server. phone: the laptop that serves the bundle also runs the api, so reuse the dev server's host.
@@ -29,7 +34,7 @@ export const DEFAULT_SERVER = defaultServer();
 export const DEMO_BUILDING: Building = { sid: "MgGNVWsyXtH", address: "1255 S Atlantic Blvd", city: "Los Angeles" };
 
 export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: [DEMO_BUILDING],
-  traveller: "", caretakerCode: null };
+  traveller: "", caretakerCode: null, caretakerLine: null, posSource: "simulated walk" };
 
 const KEY = "nudge.settings.v2";  // v2: recent holds buildings, not raw ids
 

@@ -147,6 +147,10 @@ class Navigator:
         if not visible(self.g, x, y, floor, k=1):
             return False, "no_pano"
         has_rooms = any(r["floor"] == floor and r["poly"] for r in self.g.rooms.values())
+        # standing on a scan position is on the map, even outside every room (porches, entry landings)
+        near = visible(self.g, x, y, floor, k=1)
+        if near and near[0][1] <= 1.0:
+            return True, None
         if has_rooms and self.g.room_at(x, y, floor) is None:
             loc = self._locate(x, y, floor) if self.route else None
             if loc is None or loc[1] > UNMAPPED_ROUTE_M:

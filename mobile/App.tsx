@@ -43,6 +43,10 @@ export default function App() {
         // merge only the code, so a building picked meanwhile isn't overwritten
         if (code) setSettingsState((prev) => { const n = { ...prev, caretakerCode: code }; saveSettings(n); return n; });
       } catch { /* server without pairing, or offline: keep going */ }
+      try {
+        const line = (await new Api(next.server, 5000).config()).imessage_line;
+        if (line) setSettingsState((prev) => { const n = { ...prev, caretakerLine: line }; saveSettings(n); return n; });
+      } catch { /* older server */ }
     });
   }, []);
 
@@ -57,7 +61,8 @@ export default function App() {
         {/* navigate and band stay mounted while a trip runs, so the walk and the band link keep going on other tabs */}
         <Pane visible={tab === "Navigate"}>
           {trip
-            ? <Navigate key={trip.session} trip={trip} settings={settings} onEnd={() => { setTrip(null); setTab("Where to"); }} />
+            ? <Navigate key={trip.session} trip={trip} settings={settings} onNewTrip={setTrip}
+                onEnd={() => { setTrip(null); setTab("Where to"); }} />
             : <View style={{ padding: 16 }}><Text style={{ color: C.text, fontSize: 22 }}>No trip yet. Choose a destination under Where to.</Text></View>}
         </Pane>
         <Pane visible={tab === "Band"}><Band trip={trip} settings={settings} /></Pane>

@@ -67,6 +67,54 @@ def fixture(name):
         return mod
 
 
+FT = 0.3048
+
+
+def _floor_elevations(sid):
+    """floor id -> elevation in metres, the median of its rooms' lowerElevation. panos often don't say their
+    floor, and a floor with no panos (an unscanned basement) breaks the z-gap split."""
+    m = graph("""query($id: ID!) { model(id: $id) { rooms { floor { id } dimensionEstimates { lowerElevation units } } } }""",
+              id=sid)["model"]
+    by = {}
+    for r in m.get("rooms") or []:
+        d = r.get("dimensionEstimates") or {}
+        if d.get("lowerElevation") is None:
+            continue
+        v = d["lowerElevation"] * (FT if (d.get("units") or "").lower() == "imperial" else 1.0)
+        by.setdefault(r["floor"]["id"], []).append(v)
+    return {f: sorted(vs)[len(vs) // 2] for f, vs in by.items()}
+
+
+def _enrich(sid, model):
+    """fill in floor elevations and a missing geolocation (from reference/extra_models.csv). true if changed."""
+    changed = False
+    floors = model.get("floors") or []
+    if floors and "_elevations" not in model:
+        try:
+            el = _floor_elevations(sid)
+        except Exception:
+            el = {}
+        for f in floors:
+            if f["id"] in el:
+                f["elevation_m"] = round(el[f["id"]], 3)
+        model["_elevations"] = bool(el)
+        changed = True
+    from .buildings import extra_row
+    r = extra_row(sid)
+    names = dict(kv.split("=", 1) for kv in (r or {}).get("floor_names", "").split(";") if "=" in kv)
+    for f in floors:  # spoken names ("upper floor") where matterport's numbering misleads (unscanned basement)
+        if names.get(f["id"]) and f.get("label") != names[f["id"]]:
+            f["label"] = names[f["id"]]
+            changed = True
+    if not model.get("geolocation"):
+        if r and r.get("lat"):
+            model["geolocation"] = {"lat": r["lat"], "long": r["lon"]}
+            if r.get("address"):
+                model["address"] = {"address": r["address"], "locality": r.get("city") or ""}
+            changed = True
+    return changed
+
+
 def load(sid, refresh=False):
     if sid == "synthetic":
         return fixture("synthetic").building()
@@ -74,7 +122,10 @@ def load(sid, refresh=False):
         return fixture("synthetic_building").lobby()
     path = CACHE / f"{sid}.json"
     if path.exists() and not refresh:
-        return json.loads(path.read_text(encoding="utf-8"))
+        model = json.loads(path.read_text(encoding="utf-8"))
+        if _enrich(sid, model):
+            path.write_text(json.dumps(model), encoding="utf-8")
+        return model
     drop = []
     while True:
         try:
@@ -86,6 +137,7 @@ def load(sid, refresh=False):
                 raise
             drop.append(k)
     model["_dropped"] = drop
+    _enrich(sid, model)
     CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(model), encoding="utf-8")
     return model

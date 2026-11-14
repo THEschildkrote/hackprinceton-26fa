@@ -52,6 +52,8 @@ export class Api {
   }
 
   profiles() { return this.req<Record<string, unknown>>("GET", "/api/profiles"); }
+  // server config; imessage_line is optional (the caretaker texts it)
+  config() { return this.req<{ matterport_sdk_key?: string | null; imessage_line?: string | null }>("GET", "/api/config"); }
   graph(sid: string) { return this.req<Graph>("GET", `/api/graph/${encodeURIComponent(sid)}`); }
   buildings(q = "") { return this.req<{ results: Building[]; demo: string }>("GET", `/api/buildings?q=${encodeURIComponent(q)}&limit=12`); }
   places(sid: string) { return this.req<{ places: Place[] }>("GET", `/api/places/${encodeURIComponent(sid)}`, undefined, 30000); }

@@ -183,10 +183,25 @@ def _room_poly(room, V, E):
     return [V[v] for v in loop if v in V]
 
 
-def _assign_floors_by_z(panos, floor_ids):
-    """when panos don't say their floor: split sorted z at the largest gaps."""
+CAMERA_H = 1.4  # tripod height above the floor, roughly
+
+
+def _assign_floors_by_z(panos, floor_ids, elevations=None):
+    """when panos don't say their floor: nearest floor elevation if known (floors without panos, like an
+    unscanned basement, stay empty), else split sorted z at the largest gaps."""
     if len(floor_ids) <= 1:
         return {p["id"]: floor_ids[0] if floor_ids else "f0" for p in panos}
+    split = _split_by_gaps(panos, floor_ids)
+    if elevations and all(f in elevations for f in floor_ids):
+        # trust the gap split unless it puts panos on a floor far from their height (a floor with no panos)
+        off = max(abs(p["position"]["z"] - CAMERA_H - elevations[split[p["id"]]]) for p in panos)
+        if off > 2.5:
+            return {p["id"]: min(floor_ids, key=lambda f: abs(p["position"]["z"] - CAMERA_H - elevations[f]))
+                    for p in panos}
+    return split
+
+
+def _split_by_gaps(panos, floor_ids):
     zs = sorted(panos, key=lambda p: p["position"]["z"])
     gaps = sorted(range(1, len(zs)), key=lambda i: zs[i]["position"]["z"] - zs[i - 1]["position"]["z"],
                   reverse=True)[:len(floor_ids) - 1]
@@ -232,7 +247,8 @@ def build(model, annotations=None, use_doorways=True):
         g.rooms[r["id"]] = {"label": _label(r), "floor": fid, "poly": _room_poly(r, V, E)}
 
     panos = [p for p in model.get("panoLocations") or [] if p.get("position")]
-    by_z = _assign_floors_by_z(panos, floor_ids) if any(not (p.get("floor") or {}).get("id") for p in panos) else {}
+    elev = {f["id"]: f["elevation_m"] for f in floors if f.get("elevation_m") is not None}
+    by_z = _assign_floors_by_z(panos, floor_ids, elev) if any(not (p.get("floor") or {}).get("id") for p in panos) else {}
     for p in panos:
         pos = p["position"]
         fid = (p.get("floor") or {}).get("id") or by_z.get(p["id"]) or "f0"
@@ -261,7 +277,12 @@ def build(model, annotations=None, use_doorways=True):
         for b in nbrs:
             if a in g.nodes and b in g.nodes:
                 g.link(a, b, ["sdk"])
+    # node tags from the dossier (an agent confirmed "stairs" or "elevator" by looking) join floors for real
+    for nid, info in ((annotations or {}).get("nodes") or {}).items():
+        if nid in g.nodes:
+            g.nodes[nid].tags |= {t for t in info.get("tags") or [] if t in ("stairs", "elevator")}
     _link_floors(g, [f["id"] for f in g.floors])
+    _join_clear(g)
     _bridge(g)
     shape_edges(g)
     if annotations:
@@ -316,6 +337,34 @@ def _link_floors(g, floor_ids):
             e = g.link(a.id, b.id, ["vertical", "vertical_unknown"])
             e.length = abs(b.z - a.z) + dist(a.xy, b.xy)
             g.warnings.append(f"no stairs/elevator room between {lo} and {hi}: guessed link {a.label}-{b.label}")
+
+
+JOIN_CLEAR = 8.0  # big open rooms (foyers) are scanned with panos 5-7 m apart
+
+
+def _join_clear(g):
+    """join separate pieces through the shortest clear line of sight up to JOIN_CLEAR m on the same floor.
+    only runs on graphs that would otherwise be disconnected, so well-linked scans are unchanged."""
+    while True:
+        comp = g.components()
+        if len(set(comp.values())) <= 1:
+            return
+        best = None
+        ns = list(g.nodes.values())
+        for i, a in enumerate(ns):
+            for b in ns[i + 1:]:
+                if comp[a.id] == comp[b.id] or a.floor != b.floor:
+                    continue
+                d = dist(a.xy, b.xy)
+                if d <= JOIN_CLEAR and (best is None or d < best[0]) and not g.blocked_line(a.xy, b.xy, a.floor):
+                    best = (d, a, b)
+        if not best:
+            return
+        _, a, b = best
+        tags = ["door"] if g.door_crossings(a.xy, b.xy, a.floor) else []
+        if a.room and b.room and a.room != b.room:
+            tags.append("room_change")
+        g.link(a.id, b.id, tags)
 
 
 def _bridge(g):

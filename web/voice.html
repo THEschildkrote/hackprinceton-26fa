@@ -30,17 +30,28 @@
   #log li.me { border-color: var(--talk); }
   .code { font: 700 22px ui-monospace, monospace; letter-spacing: 3px; color: var(--accent); }
   .sr { position: absolute; left: -9999px; }
+  #bldg { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  #bldgName { font-weight: 700; font-size: 20px; }
+  #bsearch { display: none; flex-direction: column; gap: 8px; margin-top: 8px; }
+  #bsearch.open { display: flex; }
+  #bresults { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  #bresults button { width: 100%; text-align: left; }
 </style>
 </head>
 <body>
 <main>
-  <div class="row" style="justify-content:space-between">
-    <h1>Nudge</h1>
-    <div class="row">
-      <label class="muted" for="sid">Building</label>
-      <input id="sid" type="text" value="synthetic" style="width:9em;flex:none;padding:8px;font-size:16px" aria-label="Building id">
+  <h1>Nudge</h1>
+  <section id="bldg" aria-label="Building">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="muted">Building</div><div id="bldgName" aria-live="polite">Loading…</div></div>
+      <button id="bchange" aria-expanded="false" aria-controls="bsearch">Change building</button>
     </div>
-  </div>
+    <div id="bsearch">
+      <label class="muted" for="bq">Search an address or building</label>
+      <input id="bq" type="text" autocomplete="off" placeholder="e.g. 1255 Atlantic, Houston, Rabinowitz">
+      <ul id="bresults" aria-label="Matching buildings"></ul>
+    </div>
+  </section>
 
   <button id="talk" aria-describedby="talkhint">Hold to talk</button>
   <p id="talkhint" class="muted">Hold the button, or hold the space bar, and speak. Release to send.</p>
@@ -82,6 +93,45 @@ const CUES = { left: [120, 80, 120], right: [120, 80, 120, 80, 120], bear_left: 
   unmapped: [600, 300, 600], straight: [60] };
 let muted = false, userActed = false, path = null, walking = false, walkTimer = null;
 
+// building: the featured one (1255 s atlantic) unless the traveller picked another before
+let building = null;
+try { building = JSON.parse(store.get("nudge.building") || "null"); } catch { building = null; }
+const label = (b) => b ? [b.address || b.name, b.city].filter(Boolean).join(", ") : "";
+function useBuilding(b, announce) {
+  building = b; store.set("nudge.building", JSON.stringify({ sid: b.sid, address: b.address, city: b.city, name: b.name }));
+  $("bldgName").textContent = label(b);
+  $("bsearch").classList.remove("open"); $("bchange").setAttribute("aria-expanded", "false");
+  path = null;
+  if (announce) show(label(b) + ". Where would you like to go?");
+}
+async function findBuildings(q) {
+  try { const r = await fetch("/api/buildings?limit=8&q=" + encodeURIComponent(q || "")); return r.ok ? (await r.json()).results || [] : []; }
+  catch { return []; }
+}
+(async () => {
+  if (building && building.sid) { $("bldgName").textContent = label(building); return; }
+  const featured = await findBuildings("");
+  if (featured.length) useBuilding(featured[0], false);
+  else $("bldgName").textContent = "No building yet. Tap Change building.";
+})();
+let searchTimer = null;
+async function renderResults() {
+  const list = await findBuildings($("bq").value.trim());
+  const ul = $("bresults"); ul.innerHTML = "";
+  if (!list.length) { const li = document.createElement("li"); li.className = "muted"; li.textContent = "No buildings match that."; ul.append(li); return; }
+  list.forEach((b) => {
+    const li = document.createElement("li"), bt = document.createElement("button");
+    bt.textContent = label(b); bt.addEventListener("click", () => { userActed = true; useBuilding(b, true); $("talk").focus(); });
+    li.append(bt); ul.append(li);
+  });
+}
+$("bchange").addEventListener("click", () => {
+  const open = !$("bsearch").classList.contains("open");
+  $("bsearch").classList.toggle("open", open); $("bchange").setAttribute("aria-expanded", String(open));
+  if (open) { $("bq").value = ""; renderResults(); $("bq").focus(); }
+});
+$("bq").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderResults, 250); });
+
 function vibrate(cue) {
   if (!userActed || !navigator.vibrate || !cue || !CUES[cue]) return;
   try { navigator.vibrate(CUES[cue]); } catch {}
@@ -103,7 +153,7 @@ async function send(text) {
   $("reply").textContent = "…";
   try {
     const r = await fetch("/api/voice/turn", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ traveller, text, sid: $("sid").value.trim() || null }) });
+      body: JSON.stringify({ traveller, text, sid: building ? building.sid : null }) });
     const j = await r.json();
     if (!r.ok) { show("Sorry, something went wrong: " + (j.detail || r.status)); return; }
     show(j.say);
@@ -192,7 +242,7 @@ $("walk").addEventListener("click", () => {
 (async () => {
   try {
     const r = await fetch("/api/traveller/register", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ traveller, name: null }) });
+      body: JSON.stringify({ traveller_id: traveller, name: null }) });
     if (r.ok) { const j = await r.json(); $("code").textContent = j.code || "—"; } else { $("code").textContent = "—"; }
   } catch { $("code").textContent = "—"; }
 })();

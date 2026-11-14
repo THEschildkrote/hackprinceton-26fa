@@ -1,0 +1,2 @@
+sid,name,segment,lat,lon,address,city,state,costar_property_id,pano_count,room_count,floor_count,floor_names,note
+R1FX6EmdcDt,Rabinowitz Hall,venue,40.3490893,-74.6554659,"Rabinowitz Hall, Princeton University",Princeton,NJ,,66,32,2,tsmq1wak12rhgn0mawksxcwcd=the lower level;pd0i1c4yq9w0y2zsb07ed23sb=the ground floor;h0ysdfsrzyt6errbx1x8g92wc=the upper floor,HackPrinceton 2026 venue; same capture as P3S6VUTP3qB (which has the geolocation but no MatterPak)

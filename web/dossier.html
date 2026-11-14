@@ -78,14 +78,13 @@
 </head>
 <body>
 <header>
-  <h1>Nudge dossier agent</h1>
-  <label>model <input id="sid" type="text" value="synthetic"></label>
-  <button id="load">Load</button>
+  <h1>Building survey <span id="bname" class="meta" style="font-weight:400"></span></h1>
+  <label id="sidwrap" hidden>building id <input id="sid" type="text"></label>
+  <button id="load" hidden>Load</button>
   <label>floor <select id="floor"></select></label>
-  <button id="build" class="primary">Build dossier</button>
-  <button id="demo">Demo run</button>
+  <button id="build" class="primary">Survey this building</button>
+  <button id="demo">Replay a sample agent run</button>
   <span id="status"></span>
-  <a href="debug.html">route debugger</a>
 </header>
 <main>
   <div id="left">
@@ -100,21 +99,56 @@
     </div>
     <section id="briefing">
       <h2>Briefing <button id="read" style="margin-left:8px">Read aloud</button></h2>
-      <p id="brieftext" class="meta">No dossier yet. Run the demo or build one.</p>
+      <p id="brieftext" class="meta">No survey yet for this building.</p>
     </section>
   </div>
   <aside>
-    <h2>Lead's plan</h2>
-    <div id="plan"><span class="meta">waiting for write_todos</span></div>
-    <h2>Activity</h2>
+    <h2>The lead agent's plan</h2>
+    <div id="plan"><span class="meta">No plan yet.</span></div>
+    <h2>What the agents did</h2>
     <div id="feed"></div>
-    <h2>Files in /dossier/</h2>
+    <h2>Saved files</h2>
     <div id="files"></div>
   </aside>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
-const COLORS = { lead: "var(--lead)", "hazard-scout": "var(--scout)", "landmark-writer": "var(--writer)", "site-surveyor": "var(--site)" };
+const COLORS = { lead: "var(--lead)", "hazard-scout": "var(--scout)", "landmark-writer": "var(--writer)", "site-surveyor": "var(--site)",
+  "place-indexer": "var(--ok)", "building-cartographer": "var(--look)" };
+const WHO = { lead: "Lead", "hazard-scout": "Hazard scout", "landmark-writer": "Landmark writer", "site-surveyor": "Site surveyor",
+  "place-indexer": "Place namer", "building-cartographer": "Building cartographer" };
+const NAMES = { MgGNVWsyXtH: "1255 S Atlantic Blvd, Los Angeles", R1FX6EmdcDt: "Rabinowitz Hall, Princeton", synthetic: "sample building" };
+const Q = new URLSearchParams(location.search);
+const DEV = Q.get("dev") === "1";
+// plain words for the tools the agents call
+const TOOL_WORDS = {
+  overhang_candidates: "Checked for things at head height", glass_suspects: "Checked for glass walls",
+  list_panos: "Listed the scan points", building_overview: "Read the building overview", building_models: "Looked for other scans of this building",
+  validate_annotations: "Checked the survey", audit_routes: "Checked the routes", place_seed: "Read the room list",
+  validate_places: "Checked the place names", costar_record: "Read the CoStar building record", aerial_view: "Looked at the aerial photo",
+  merge_dossier: "Merged the survey", finalize_dossier: "Finished the survey", read_file: "Read its instructions", ls: "Looked at its files",
+  entrance_candidates_tool: "Listed possible entrances", facade_view: "Looked at the building's front", confirm_entrance: "Confirmed the entrance",
+  portal_candidates: "Looked for links between scans", validate_portals: "Checked the links between scans",
+};
+// agent messages are free text: drop file paths, tool syntax and internal names before showing them
+function plain(t) {
+  return String(t ?? "").replace(/\/(dossier|memories|agent)\/[^\s,.;)]+(\.\w+)?/g, "")
+    .replace(/\blook\(\)/g, "a look").replace(/\btask\(\)/g, "a job").replace(/\bsynthetic\b/g, "the sample building")
+    .replace(/\b(Wrote|Write)\s*\.\s*/g, "").replace(/\s{2,}/g, " ").trim();
+}
+function writeWords(path) {
+  path = path || "";
+  if (/hazards/.test(path)) return "Saved the hazards it found";
+  if (/landmarks/.test(path)) return "Saved landmarks you can feel or hear";
+  if (/places/.test(path)) return "Saved the place names";
+  if (/annotations\.json/.test(path)) return "Merged everything into the survey";
+  if (/briefing/.test(path)) return "Wrote the spoken briefing";
+  if (/site\.md/.test(path)) return "Wrote the site report";
+  if (/audit/.test(path)) return "Wrote the audit";
+  if (/portals/.test(path)) return "Saved the links between scans";
+  if (/memories/.test(path)) return "Saved a lesson for next time";
+  return "Saved a file";
+}
 let G = null, D = null, floor = null, cursor = 0, polling = null, cards = {}, looking = null;
 
 function status(t, err) { $("status").textContent = t || ""; $("status").className = err ? "err" : ""; }
@@ -127,7 +161,8 @@ async function api(path, opt) {
 
 async function load() {
   const sid = $("sid").value.trim();
-  status("loading…");
+  $("bname").textContent = NAMES[sid] ? `· ${NAMES[sid]}` : `· ${sid}`;
+  status("Loading…");
   try {
     await api(`/api/reload/${sid}`, { method: "POST" });
     G = await api(`/api/graph/${sid}`);
@@ -209,12 +244,12 @@ function esc(t) { return String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;"
 
 function renderDossier() {
   if (!D) return;
-  $("brieftext").textContent = D.briefing_md || "No dossier yet. Run the demo or build one.";
+  $("brieftext").textContent = D.briefing_md || "No survey yet for this building. Tap Survey this building to have the agents walk it.";
   $("brieftext").className = D.briefing_md ? "" : "meta";
   const v = D.validation || {};
-  $("files").innerHTML = (D.files || []).map(f => `<code>/dossier/${esc(f)}</code>`).join("") +
-    (v.ok ? `<div style="margin-top:6px;color:var(--ok)">valid · ${v.hazards} hazards · ${v.landmarked_panos} landmarked panos · ${v.edges_marked_hazard} edges marked</div>`
-          : (D.files || []).length ? `<div style="margin-top:6px;color:var(--hazard)">${esc((v.errors || []).join("; "))}</div>` : "<span>(empty)</span>");
+  $("files").innerHTML = (DEV ? (D.files || []).map(f => `<code>${esc(f)}</code>`).join("") : "") +
+    (v.ok ? `<div style="margin-top:6px;color:var(--ok)">Survey checks out: ${v.hazards} hazards, landmarks at ${v.landmarked_panos} spots, ${v.edges_marked_hazard} paths marked to avoid.</div>`
+          : (D.files || []).length ? `<div style="margin-top:6px">${(D.files || []).length} ${(D.files || []).length === 1 ? "file" : "files"} saved.${DEV ? " " + esc((v.errors || []).join("; ")) : ""}</div>` : "<span class='meta'>Nothing saved yet.</span>");
 }
 
 function renderPlan(ev) {
@@ -226,7 +261,15 @@ function renderPlan(ev) {
 
 function row(ev) {
   const cls = ev.kind === "write" ? "write" : ev.kind === "look" ? "look" : ev.kind === "say" ? "say" : ev.kind === "error" ? "error" : "";
-  const label = ev.kind === "write" ? `wrote <code>${esc(ev.path)}</code>` : ev.kind === "look" ? `looked from ${esc(ev.pano)} at ${Math.round(ev.yaw)}°${ev.pitch ? `, pitch ${ev.pitch}°` : ""}` : esc(ev.text);
+  let label;
+  if (ev.kind === "write") label = esc(writeWords(ev.path));
+  else if (ev.kind === "look") {
+    const n = nodeById(ev.pano), room = n && n.room_label && n.room_label !== "Void" && n.room_label !== "Other" ? n.room_label.toLowerCase() : null;
+    label = room ? `Looking at the ${esc(room)}` : "Looking around";
+    if (ev.pitch && ev.pitch < -30) label += " (at the floor)";
+  } else if (ev.kind === "tool") label = esc(TOOL_WORDS[ev.name] || "Used a tool");
+  else if (ev.kind === "error") label = "Something went wrong" + (DEV ? `: ${esc(ev.text)}` : "");
+  else label = esc(plain(ev.text));
   const d = document.createElement("div");
   d.className = `row ${cls}`;
   d.innerHTML = label;
@@ -239,12 +282,12 @@ function onEvent(ev) {
   if (ev.kind === "delegate") {
     const c = document.createElement("div");
     c.className = "card running";
-    c.innerHTML = `<div class="who"><i style="background:${COLORS[ev.subagent] || "var(--muted)"}"></i>${esc(ev.subagent)} <span class="pill">task()</span></div><div class="desc">${esc(ev.text)}</div><div class="body"></div>`;
+    c.innerHTML = `<div class="who"><i style="background:${COLORS[ev.subagent] || "var(--muted)"}"></i>${esc(WHO[ev.subagent] || ev.subagent)} <span class="pill">handed a job</span></div><div class="desc">${esc(plain(ev.text))}</div><div class="body"></div>`;
     feed.appendChild(c);
     cards[ev.subagent] = c;
   } else if (ev.kind === "returned") {
     const c = cards[ev.who];
-    if (c) { c.classList.remove("running"); c.insertAdjacentHTML("beforeend", `<div class="res">${esc(ev.text)}</div>`); delete cards[ev.who]; }
+    if (c) { c.classList.remove("running"); c.insertAdjacentHTML("beforeend", `<div class="res">${esc(plain(ev.text))}</div>`); delete cards[ev.who]; }
     looking = null;
   } else if (ev.who !== "lead" && cards[ev.who]) {
     cards[ev.who].querySelector(".body").appendChild(row(ev));
@@ -281,7 +324,7 @@ function startPolling() {
     if (r.status !== "running") {
       clearInterval(polling);
       $("build").disabled = $("demo").disabled = false;
-      status(r.status === "error" ? r.error : `${r.mode} run ${r.status}`, r.status === "error");
+      status(r.status === "error" ? "The survey stopped early." + (DEV ? " " + r.error : "") : "Survey finished.", r.status === "error");
       looking = null;
       refreshSoon();
     }
@@ -293,24 +336,29 @@ async function start(kind) {
   try {
     await api(`/api/dossier/${sid}/${kind}`, { method: "POST" });
   } catch (e) { status(e.message, true); return; }
-  $("feed").innerHTML = ""; $("plan").innerHTML = '<span class="meta">waiting for write_todos</span>';
+  $("feed").innerHTML = ""; $("plan").innerHTML = '<span class="meta">Planning…</span>';
   cards = {}; cursor = 0; looking = null;
   if (kind === "demo") { D = { ...D, annotations_json: null, briefing_md: null, files: [], validation: {} }; renderDossier(); }
   $("build").disabled = $("demo").disabled = true;
-  status(kind === "demo" ? "demo run: scripted model, real agent, real tools" : "building dossier…");
+  status(kind === "demo" ? "Replaying a sample run: real agents and tools, scripted model, on the sample building." : "The agents are surveying the building…");
   startPolling();
 }
 
 $("load").onclick = load;
 $("floor").onchange = (e) => { floor = e.target.value; draw(); };
 $("build").onclick = () => start("run");
-$("demo").onclick = () => start("demo");
+$("demo").onclick = async () => {
+  if ($("sid").value.trim() !== "synthetic") { $("sid").value = "synthetic"; await load(); }
+  start("demo");
+};
 $("read").onclick = () => {
   const t = $("brieftext").textContent;
   if (!("speechSynthesis" in window) || !D || !D.briefing_md) return;
   speechSynthesis.cancel();
   speechSynthesis.speak(new SpeechSynthesisUtterance(t));
 };
+$("sid").value = Q.get("sid") || "MgGNVWsyXtH";
+$("sidwrap").style.display = $("load").style.display = DEV ? "" : "none";  // page css overrides [hidden]
 load();
 </script>
 </body>

@@ -7,12 +7,14 @@ import { Big, C, Choice, Field, H, P } from "../ui/kit";
 import { TalkBar } from "../ui/TalkBar";
 import { tripFromReply, type VoiceReply } from "../lib/talk";
 
-const PROFILES = ["blind", "wheelchair", "default"] as const;
+// what the traveller sees; the api still gets blind / wheelchair / default
+const PROFILES = ["I use a cane", "I use a wheelchair", "I'm sighted"] as const;
 type Profile = (typeof PROFILES)[number];
+const PROFILE_API: Record<Profile, string> = { "I use a cane": "blind", "I use a wheelchair": "wheelchair", "I'm sighted": "default" };
 const PROFILE_SAY: Record<Profile, string> = {
-  blind: "blind or low vision: fewer turns, hazards avoided",
-  wheelchair: "wheelchair: never stairs",
-  default: "default: shortest safe route",
+  "I use a cane": "I use a cane: fewer turns, hazards avoided",
+  "I use a wheelchair": "I use a wheelchair: never stairs or narrow doors",
+  "I'm sighted": "I'm sighted: shortest safe route",
 };
 const SHOW = 12;  // destinations before "More"
 
@@ -24,7 +26,7 @@ export function WhereTo({ settings, setSettings, onStarted }: {
   const [places, setPlaces] = useState<string[]>([]);
   const [more, setMore] = useState(false);
   const [goal, setGoal] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Profile>("blind");
+  const [profile, setProfile] = useState<Profile>("I use a cane");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [query, setQuery] = useState("");
@@ -73,11 +75,11 @@ export function WhereTo({ settings, setSettings, onStarted }: {
     if (!n) return report("This building has no scan positions.");
     setBusy(true);
     try {
-      const r = await api.start({ sid, to: goal, profile, x: n.x, y: n.y, floor: n.floor });
+      const r = await api.start({ sid, to: goal, profile: PROFILE_API[profile], x: n.x, y: n.y, floor: n.floor });
       const lines = r.events.map((e) => e.text).filter(Boolean).join(" ");
       say(`Starting at the ${n.room_label ?? "entrance"}. ${lines}`, settings.rate);
       r.events.forEach((e) => feel(e.vibrate, settings.haptics));
-      onStarted({ api, sid, goal, profile, session: r.session, state: r.state, start: { x: n.x, y: n.y, floor: n.floor } });
+      onStarted({ api, sid, goal, profile: PROFILE_API[profile], session: r.session, state: r.state, start: { x: n.x, y: n.y, floor: n.floor } });
     } catch (e) {
       report(e instanceof ApiError ? `Couldn't start: ${e.message}` : "Couldn't start.");
     } finally { setBusy(false); }
@@ -89,7 +91,7 @@ export function WhereTo({ settings, setSettings, onStarted }: {
     if (!t) return;
     try {
       const full = await api.update({ session: t.session, x: t.start.x, y: t.start.y, floor: t.start.floor });
-      onStarted({ api, sid: t.sid, goal: t.goal, profile, session: t.session, state: full.state, start: t.start });
+      onStarted({ api, sid: t.sid, goal: t.goal, profile: PROFILE_API[profile], session: t.session, state: full.state, start: t.start });
     } catch {
       report("I started your trip, but couldn't open the navigation screen.");
     }

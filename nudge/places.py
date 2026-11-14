@@ -17,7 +17,7 @@ import re
 from .geom import dist, point_in_poly
 
 KINDS = {"room", "zone", "feature", "tenant", "entrance", "outdoor_zone", "floor"}
-SOURCES = {"matterport", "agent", "costar", "vexcel", "osm"}
+SOURCES = {"matterport", "agent", "costar", "costar+guess", "vexcel", "osm"}
 GENERIC = {"room", "area", "space", "place", "the", "a", "an", "my", "of", "to", "on", "in", "at", "floor"}
 
 # what a room label suggests it is for. the agent refines these per building.
@@ -184,27 +184,102 @@ def seed_from_graph(g, sid=None, costar=None, site=None):
                        "serves": [], "description": "", "map": _map_of(ids[0], sid), "floor": f["id"],
                        "rooms": [], "panos": ids, "entry_panos": sorted(conn), "polygon": None,
                        "source": "matterport", "confidence": 0.9})
-    places += _tenants(places, costar)
+    places += _tenants(places, costar, g)
     places += _entrances(g, sid, site)
     return {"places": places, "meta": {"sid": sid, "seeded": True, "rooms": len(g.rooms), "unnamed": unnamed}}
 
 
-def _tenants(places, costar):
-    """costar tenants: matched to a room by suite name, else a tenant whose location is unknown."""
+FLOOR_WORDS = {"basement": 0, "lowerlevel": 0, "groundfloor": 1, "firstfloor": 1, "secondfloor": 2,
+               "thirdfloor": 3, "fourthfloor": 4, "fifthfloor": 5}
+# rooms that can't be someone's office or suite
+NOT_SUITE = {"hallway", "bathroom", "closet", "laundry", "kitchen", "staircase", "stairs", "elevator", "void", "other",
+             "entrance", "utility", "garage"}
+SUITE_WORDS = ("office", "suite", "reception", "lobby", "conference")
+
+
+def _costar_tenants(costar):
+    """tenants from whichever shape the costar record came in (top level, _related, or facts)."""
+    c = costar or {}
+    return c.get("tenants") or (c.get("_related") or {}).get("tenants") or (c.get("facts") or {}).get("tenants") or []
+
+
+def _tenant_room(places, g, floor_word):
+    """the room a tenant most likely occupies on its costar floor: a suite-like label first, else the biggest
+    room people work in. returns (room place, guessed)."""
+    n = FLOOR_WORDS.get(re.sub(r"[^a-z]", "", str(floor_word or "").lower()))
+    if n is None or g is None or not g.floors:
+        return None, True
+    floors = [f["id"] for f in g.floors]
+    fid = floors[min(max(n - 1, 0), len(floors) - 1)] if n else floors[0]
+    rooms = [p for p in places if p["kind"] == "room" and p.get("floor") == fid and p.get("panos")]
+    suite = [p for p in rooms if any(w in (p.get("matterport_label") or p["name"]).lower() for w in SUITE_WORDS)]
+    if suite:
+        return max(suite, key=lambda p: _area(p["polygon"]) if p.get("polygon") else 0), len(suite) > 1
+    work = [p for p in rooms if (p.get("matterport_label") or p["name"].split(",")[0].split(" ")[0]).lower()
+            not in NOT_SUITE]
+    if not work:
+        return None, True
+    return max(work, key=lambda p: _area(p["polygon"]) if p.get("polygon") else 0), True
+
+
+def plural(phrase):
+    """pluralise the head noun: "place to get water" -> "places to get water", "bathroom" -> "bathrooms"."""
+    words = phrase.split()
+    i = next((k for k, w in enumerate(words) if w in ("to", "for", "with", "of")), len(words)) - 1
+    if i < 0:
+        return phrase
+    w = words[i]
+    words[i] = w[:-1] + "ies" if w.endswith("y") and w[-2:-1] not in "aeiou" else \
+        w + "es" if w.endswith(("s", "x", "ch", "sh")) else w + "s"
+    return " ".join(words)
+
+
+def the(place):
+    """a place name as it's said in a sentence: "the kitchen", but "Hallway 2, Floor 1" and "DJF Insurance"."""
+    name = place.get("name") if isinstance(place, dict) else str(place)
+    kind = place.get("kind") if isinstance(place, dict) else None
+    head = name.split(",")[0]
+    if kind == "tenant" or re.search(r"\d", head) or name[:1].isdigit():
+        return name
+    return f"the {name}"
+
+
+def _tenant_aliases(name):
+    words = [w for w in re.findall(r"[a-z]+", name.lower()) if w not in ("llc", "inc", "co", "corp", "the", "of", "de")]
+    al = set()
+    for kind in ("insurance", "dental", "law", "medical", "clinic", "bank", "realty", "accounting", "consulting"):
+        if kind in words:
+            al |= {kind, f"{kind} office", f"the {kind} office", f"{kind} agency" if kind == "insurance" else kind}
+    if words:
+        al.add(words[0])  # "djf"
+    return sorted(al - {name.lower()})
+
+
+def _tenants(places, costar, g=None):
+    """costar tenants as destinations: matched by suite name, else placed on their costar floor (a guess that says
+    so), else kept with an unknown location."""
     out = []
-    for t in (costar or {}).get("tenants") or []:
+    for t in _costar_tenants(costar):
         name = t.get("name") or t.get("tenant") or t.get("tenantName")
         if not name:
             continue
         suite = str(t.get("suite") or t.get("suiteName") or t.get("location") or "").strip()
         room = next((p for p in places if p["kind"] == "room" and suite and
                      (p.get("matterport_label") or "").lower() == suite.lower()), None) if suite else None
-        out.append({"id": f"tenant:{_slug(name)}", "name": name, "kind": "tenant", "aliases": [suite] if suite else [],
-                    "serves": [], "description": f"{name}" + (f", in {suite}" if suite else ""),
+        source, conf = "costar", 0.7
+        if room is None:
+            room, guessed = _tenant_room(places, g, t.get("floor"))
+            source, conf = ("costar+guess", 0.6) if room else ("costar", 0.3)
+        floor_txt = _floor_label(g, room["floor"]) if room and g is not None else None
+        desc = f"{name}" + (f", in {suite}" if suite else "") + (f", on {floor_txt}" if floor_txt else "")
+        out.append({"id": f"tenant:{_slug(name)}", "name": name, "kind": "tenant",
+                    "aliases": ([suite] if suite else []) + _tenant_aliases(name),
+                    "serves": [], "description": desc,
                     "map": room["map"] if room else None, "floor": room["floor"] if room else None,
                     "rooms": room["rooms"] if room else [], "panos": room["panos"] if room else [],
-                    "entry_panos": room["entry_panos"] if room else [], "polygon": None, "source": "costar",
-                    "confidence": 0.7 if room else 0.3, "location_known": bool(room)})
+                    "entry_panos": room["entry_panos"] if room else [], "polygon": None, "source": source,
+                    "confidence": conf if room else 0.3, "location_known": bool(room),
+                    "in_room": room["name"] if room else None})
     return out
 
 
@@ -565,7 +640,7 @@ def resolve(src, query, here=None, profile="blind", catalog=None):
             opts.append(where)
         need = next((NEED_WORDS[i] for i in its if i in NEED_WORDS), None)
         kind = need or (nq or "place")
-        out["question"] = (f"There are {len(distinct)} {kind}s: " if need else
+        out["question"] = (f"There are {len(distinct)} {plural(kind)}: " if need else
                            f"There are {len(distinct)} places that match {kind}: ") + "; ".join(opts) + ". Which one?"
         out["options"] = [_summary(c["place"]) for c in distinct[:4]]
         return out
@@ -596,7 +671,7 @@ def where_am_i(g, x, y, floor, catalog=None):
     if place.get("unnamed"):
         text = "You're in an unnamed space" + ("," + name.split(",", 1)[1] if "," in name else "") + "."
     else:
-        text = f"You're in the {name}."
+        text = f"You're in {the(place)}."
     if place.get("description"):
         text += " " + place["description"]
     feats = [p for p in cat["places"] if p["kind"] == "feature" and set(p.get("rooms") or []) & set(place.get("rooms") or [])]

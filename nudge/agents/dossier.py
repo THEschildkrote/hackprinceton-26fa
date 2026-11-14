@@ -109,6 +109,9 @@ def _error_advice(name, ex):
     if any(k in low for k in ("is not set", "key rejected", "401", "403", "api_key", "not configured", "kit not")):
         return (f"Error: {name} is unavailable here ({msg}). This data source has no access in this environment. "
                 f"Do not call {name} again in this run; work from what the other tools give you and note the gap.")
+    if any(k in low for k in ("toomanyrequests", "429", "rate limit", "rate-limit", "provider returned error")):
+        return (f"Error: {name} hit the model provider's rate limit ({msg}). Nothing was wrong with your arguments. "
+                f"Retry it once on its own; if you were running several subagents at once, run them one at a time.")
     if any(k in low for k in ("no pano", "not a pano", "unknown floor", "not in this scan", "no such")):
         return (f"Error: {name} failed: {msg}. Use only ids from building_overview / list_panos / place_seed for "
                 f"THIS sid. Fix the id and try once; if it fails again, skip it.")

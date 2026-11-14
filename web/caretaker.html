@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sam's messages</title>
+<style>
+  :root { --bg: #0b0d10; --phone: #111418; --ink: #f2f4f7; --muted: #9aa3ad; --bubble: #2a2f36; --urgent: #ff5d5d;
+          --line: #2b3138; --accent: #4da3ff; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef1f4; --phone: #ffffff;
+    --ink: #111418; --muted: #5b6570; --bubble: #e9ecef; --line: #d5dae0; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .phone { max-width: 380px; margin: 0 auto; min-height: 100vh; background: var(--phone); display: flex; flex-direction: column;
+           border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); text-align: center; }
+  header .who { font-weight: 650; font-size: 17px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .thread { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .bubble { align-self: flex-start; max-width: 85%; background: var(--bubble); padding: 9px 12px; border-radius: 18px 18px 18px 6px; }
+  .bubble.urgent { border: 2px solid var(--urgent); }
+  .bubble .tag { display: block; font-size: 12px; font-weight: 700; color: var(--urgent); letter-spacing: .02em; margin-bottom: 2px; }
+  .time { align-self: center; color: var(--muted); font-size: 12px; margin: 4px 0; }
+  .empty { color: var(--muted); text-align: center; margin-top: 30px; padding: 0 16px; }
+  footer { padding: 10px 14px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  footer b { color: var(--ink); letter-spacing: .08em; }
+</style>
+</head>
+<body>
+<main class="phone" aria-label="Sam's phone: messages from Nudge">
+  <header>
+    <div class="who">Nudge</div>
+    <div class="sub" id="sub">iMessage · following Maya</div>
+  </header>
+  <section class="thread" id="thread" aria-live="polite" aria-relevant="additions">
+    <p class="empty" id="empty">No messages yet. Sam gets a text when Maya starts walking, if she needs help, and when she arrives.</p>
+  </section>
+  <footer id="foot">Real iMessage: text <b>follow <span id="code">······</span></b> to the Nudge line.</footer>
+</main>
+<script>
+  // what sam would receive on imessage, live. the server formats these with the same rules as the real bot.
+  const q = new URLSearchParams(location.search);
+  const tid = q.get("traveller") || "maya";
+  const sid = q.get("sid") || "MgGNVWsyXtH";
+  const thread = document.getElementById("thread");
+  let seen = 0, lastStamp = 0;
+
+  fetch(`/api/demo/${encodeURIComponent(sid)}`).then(r => r.ok ? r.json() : null).then(d => {
+    if (!d) return;
+    document.getElementById("code").textContent = d.code;
+    document.getElementById("sub").textContent = `iMessage · following ${d.name}`;
+  }).catch(() => {});
+
+  function add(m) {
+    document.getElementById("empty")?.remove();
+    const ts = (m.ts || Date.now() / 1000) * 1000;
+    if (ts - lastStamp > 60000) {
+      const t = document.createElement("div");
+      t.className = "time";
+      t.textContent = new Date(ts).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+      thread.appendChild(t);
+    }
+    lastStamp = ts;
+    const b = document.createElement("div");
+    b.className = "bubble" + (m.urgent ? " urgent" : "");
+    if (m.urgent) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = "Urgent";
+      b.appendChild(tag);
+    }
+    b.appendChild(document.createTextNode(m.text));
+    thread.appendChild(b);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function poll() {
+    fetch(`/api/traveller/${encodeURIComponent(tid)}/messages?after=${seen}`).then(r => r.json()).then(d => {
+      d.messages.forEach(add); seen = d.next;
+    }).catch(() => {}).finally(() => setTimeout(poll, 1500));
+  }
+
+  if (window.EventSource) {
+    const es = new EventSource(`/api/traveller/${encodeURIComponent(tid)}/events?after=0`);
+    es.onmessage = e => { add(JSON.parse(e.data)); seen += 1; };
+    es.onerror = () => { es.close(); poll(); };
+  } else {
+    poll();
+  }
+</script>
+</body>
+</html>

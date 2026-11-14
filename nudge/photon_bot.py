@@ -28,6 +28,21 @@ from .mp import ROOT, secret
 from .navigator import Navigator
 from .router import PROFILES
 
+
+_GENERIC = ("kitchen", "bathroom", "restroom", "lobby", "office", "hallway", "room", "conference", "elevator", "stair",
+            "entrance", "lounge", "atrium", "corridor", "gallery", "laundry", "bedroom", "closet", "living", "foyer",
+            "arcade", "destination", "fountain", "desk", "seminar")
+
+
+def _the(name):
+    """"the kitchen", but "Hallway 2, Floor 1" and "DJF Insurance" as they are."""
+    if not name:
+        return "the destination"
+    head = name.split(",")[0]
+    if re.search(r"\d", head) or not any(w in head.lower() for w in _GENERIC):
+        return name
+    return name if name.lower().startswith("the ") else f"the {name}"
+
 HELP = ("I'm Nudge. Text me where you're going, like: take me to the kitchen at synthetic, "
         "or ask: where can I get water? "
         "Say wheelchair or blind to set how you travel. While walking, tell me what's wrong, "
@@ -108,7 +123,7 @@ class Brain:
             st = s.nav.state()
             here = where_am_i(s.nav.g, *s.nav.pos)["text"] if s.nav.pos else ""
             nxt = st["next"]["text"] if st["next"] else "you are there"
-            return [f"{here} {meters(st['remaining'])} to go to the {s.goal}. Next: {nxt}".strip()]
+            return [f"{here} {meters(st['remaining'])} to go to {_the(s.goal)}. Next: {nxt}".strip()]
         if low in ("stop", "end", "quit", "cancel"):
             self.sessions.pop(user, None)
             return ["Navigation ended."]
@@ -316,7 +331,7 @@ class Voice:
 def _where(st):
     bits = []
     if st.get("place"):
-        bits.append(f"in the {st['place'].lower()}" if not st["place"].lower().startswith("the ") else f"in {st['place']}")
+        bits.append(f"in {_the(st['place'])}")
     if st.get("floor"):
         bits.append(f"on {st['floor']}")
     return " ".join(bits)
@@ -335,11 +350,11 @@ def status_text(st, v, now_ts=None):
         rem = st.get("remaining_m")
         left = f", about {meters(rem)} to go" + (f" (about {st['eta_min']} min)" if st.get("eta_min") else "") if rem is not None else ""
         extra = " Nudge just rerouted them." if state != "walking" else ""
-        return f"{v.Who} is walking to the {goal}" + (f", now {where}" if where else "") + f"{left}. Last update {ago}.{extra}"
+        return f"{v.Who} is walking to {_the(goal)}" + (f", now {where}" if where else "") + f"{left}. Last update {ago}.{extra}"
     if state == "arrived":
         if (st.get("place") or "").lower() == (goal or "").lower():
             where = f"on {st['floor']}" if st.get("floor") else ""
-        return f"{v.Who} arrived at the {goal}" + (f", {where}" if where else "") + f". Last update {ago}."
+        return f"{v.Who} arrived at {_the(goal)}" + (f", {where}" if where else "") + f". Last update {ago}."
     if state == "unmapped":
         return f"{v.Who} is outside the mapped area" + (f", last known {where}" if where else "") + \
             f". Nudge is guiding {v.them} back. Last update {ago}."
@@ -409,9 +424,9 @@ class CaretakerBrain:
             return [("Yes. " if good else "Not quite. ") + status_text(st, v)]
         if re.search(r"\beta\b|how long|how far", low):
             if st and st["state"] == "arrived":
-                return [f"{v.Who} already arrived at the {st['goal']}."]
+                return [f"{v.Who} already arrived at {_the(st['goal'])}."]
             if st and st.get("remaining_m") is not None:
-                return [f"About {st.get('eta_min') or 1} min to the {st['goal']} ({meters(st['remaining_m'])} left)."]
+                return [f"About {st.get('eta_min') or 1} min to {_the(st['goal'])} ({meters(st['remaining_m'])} left)."]
             return [status_text(st, v)]
         if "last update" in low and st and st["recent"]:
             e = st["recent"][-1]
@@ -458,9 +473,9 @@ class Notifier:
             rem = e.get("remaining_m") or st.get("remaining_m")
             eta = st.get("eta_min")
             dist = f": about {meters(rem)}" + (f", roughly {eta} min" if eta else "") if rem else ""
-            return False, f"{v.Who} started walking to the {e['goal']}{dist}."
+            return False, f"{v.Who} started walking to {_the(e['goal'])}{dist}."
         if typ == "arrive":
-            return False, f"{v.Who} arrived at the {st.get('goal') or 'destination'}."
+            return False, f"{v.Who} arrived at {_the(st.get('goal'))}."
         if typ == "help":
             quote = (e.get("text") or "").strip()
             return True, f"{v.Who} asked for help" + (f" {where}" if where else "") + (f': "{quote}"' if quote else ".")

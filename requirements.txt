@@ -11,3 +11,5 @@ python-dotenv
 requests
 uvicorn
 pyzipper
+google-genai>=3.3
+langchain-google-genai>=4.5

@@ -162,13 +162,15 @@
 </main>
 
 <script>
+if (location.hostname === "127.0.0.1") location.replace(location.href.replace("//127.0.0.1", "//localhost"));
 const $ = (id) => document.getElementById(id);
 const P = new URLSearchParams(location.search);
-const SID = P.get("sid") || "synthetic";
+const SID = P.get("sid") || "MgGNVWsyXtH";  // the demo building
+const DEV = P.get("dev") === "1";
 const PASSABLE = new Set(["opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage"]);
 const STEP = 0.35, TURN = Math.PI / 12;
 
-let G = null, CFG = {}, hazards = [], session = null, lastState = null;
+let G = null, CFG = {}, hazards = [], session = null, lastState = null, PLACES = [];
 let walker = { x: 0, y: 0, floor: null, h: 0 };
 let viewFloor = null, sdk = null, xform = null, walkTimer = null;
 let busy = false, queued = false;
@@ -191,7 +193,10 @@ function say(text, kind = "") {
   if (speechSynthesis.pending && kind !== "arrive") speechSynthesis.cancel();
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
-function buzz(pattern) { if (pattern && navigator.vibrate) navigator.vibrate(pattern); }
+let acted = false;  // browsers block vibration until the user has tapped
+addEventListener("pointerdown", () => { acted = true; }, { once: true });
+addEventListener("keydown", () => { acted = true; }, { once: true });
+function buzz(pattern) { if (acted && pattern && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
 
 function handle(resp) {
   for (const e of resp.events || []) {
@@ -424,15 +429,21 @@ function refreshView() {
     img.src = `/api/look/${encodeURIComponent(SID)}?${q}`;
     const near = G.nodes.filter((n) => n.floor === walker.floor)
       .reduce((b, n) => (!b || Math.hypot(n.x - walker.x, n.y - walker.y) < Math.hypot(b.x - walker.x, b.y - walker.y) ? n : b), null);
-    $("viewtag").textContent = near ? `${near.room_label || ""} · pano ${near.label} · ${yaw}°` : "";
+    $("viewtag").textContent = near && near.room_label && near.room_label !== "Void" ? near.room_label : "";
   }, 300);
 }
 
 // ---------- navigation ----------
 async function start() {
-  const dest = $("dest").value;
+  let dest = $("dest").value;
   if (!dest) return;
   $("log").innerHTML = "";
+  try {
+    const q = new URLSearchParams({ q: dest, x: walker.x, y: walker.y, floor: walker.floor, profile: $("profile").value });
+    const res = await api(`/api/places/${encodeURIComponent(SID)}/resolve?${q}`);
+    if (res.ambiguous) { flashInstr(res.question); say(res.question); return; }
+    const b = res.best || {}; if (b.name || (b.place && b.place.name)) dest = b.name || b.place.name;
+  } catch (e) { /* older server: send the name as is */ }
   try {
     const r = await api("/api/nav/start", { sid: SID, to: dest, profile: $("profile").value,
       x: walker.x, y: walker.y, floor: walker.floor, heading: walker.h });
@@ -455,22 +466,39 @@ async function sendUpdate() {
 
 async function exception(text) {
   if (!session || !text) { flashInstr("Start guidance first.", true); return; }
-  $("excmode").textContent = "thinking…";
+  const ack = "Stay where you are, I'm finding another way.";
+  say(ack, "reroute"); flashInstr(ack);
+  document.querySelectorAll("[data-exc], #excsend").forEach((b) => (b.disabled = true));
+  const t0 = Date.now();
+  const tick = setInterval(() => { $("excmode").textContent = `Finding another way… ${Math.round((Date.now() - t0) / 1000)} s`; }, 500);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const r = await api("/api/nav/exception", { session, text });
-    $("excmode").textContent = r.mode === "agent" ? `answered by the Deep Agents exception agent · ${r.reason || ""}` :
-      `blocked it deterministically and rerouted · ${r.reason || "no model"}`;
+    const resp = await fetch("/api/nav/exception", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, text }), signal: ctrl.signal });
+    if (!resp.ok) throw new Error("server");
+    const r = await resp.json();
+    if (r.say_now && r.say_now !== ack) say(r.say_now, "reroute");
+    $("excmode").textContent = r.mode === "agent" ? "Answered by the exception agent." :
+      "Found a way around the problem.";
     for (const s of r.say || []) say(s, "reroute");
     handle(r);
     showPending(r.pending);
-  } catch (e) { $("excmode").textContent = e.message; }
+  } catch (e) {
+    const m = e.name === "AbortError" ? "That's taking too long. Stay where you are; you can ask someone nearby, or try again."
+      : "I couldn't reach Nudge. Stay where you are and ask someone nearby.";
+    $("excmode").textContent = m; say(m, "hazard");
+  } finally {
+    clearInterval(tick); clearTimeout(timer);
+    document.querySelectorAll("[data-exc], #excsend").forEach((b) => (b.disabled = false));
+  }
 }
 
 function showPending(p) {
   $("pending").style.display = p ? "block" : "none";
   if (p) {
     const args = p.args || {};
-    $("pendtext").textContent = p.description || args.reason || JSON.stringify(args);
+    $("pendtext").textContent = p.description || args.reason || "Take the new route?";
     $("approve").focus();
   }
 }
@@ -553,7 +581,7 @@ function calibrate(sweeps) {
   }
   xform = best ? Object.assign(best, { method }) : null;
   const box = $("calib");
-  box.hidden = false;
+  box.hidden = !DEV;
   box.textContent = xform ? `sdk→model: ${method}, ${xform.n} sweeps, axes #${AXES.indexOf(xform.A)}, ` +
     `rot ${(Math.atan2(xform.s, xform.c) * 180 / Math.PI).toFixed(1)}°, rms ${xform.rms.toFixed(3)} m` : "calibration failed";
 }
@@ -587,7 +615,7 @@ async function connectSdk(key) {
   await new Promise((ok) => frame.addEventListener("load", ok, { once: true }));
   try { sdk = await window.MP_SDK.connect(frame, key); }
   catch (e) { sdk = await window.MP_SDK.connect(frame.contentWindow, key); }
-  $("mode").textContent = `Matterport tour · ${SID} · SDK connected`;
+  $("mode").textContent = "Matterport 3D tour";
   sdk.Sweep.data.subscribe({ onCollectionUpdated(coll) { calibrate(coll); } });
   let lastPose = 0;
   sdk.Sweep.current.subscribe((sw) => {
@@ -617,7 +645,7 @@ async function boot() {
     const ann = d.annotations_json && !d.annotations_json.error ? d.annotations_json : null;
     hazards = (ann && ann.hazards) || [];
   } catch (e) { hazards = []; }
-  $("hazards").innerHTML = hazards.length ? "" : "<li class='meta'>No dossier yet for this building.</li>";
+  $("hazards").innerHTML = hazards.length ? "" : "<li class='meta'>No hazards on record for this building yet.</li>";
   for (const h of hazards) {
     const li = document.createElement("li");
     const fl = floorById(h.floor);
@@ -625,27 +653,43 @@ async function boot() {
     $("hazards").appendChild(li);
   }
 
-  const labels = roomLabels();
-  for (const sel of ["startsel", "dest"]) {
-    $(sel).innerHTML = "";
-    for (const l of labels) { const o = document.createElement("option"); o.value = o.textContent = l; $(sel).appendChild(o); }
-  }
+  const labels = roomLabels().filter((l) => l !== "Other");
+  try {
+    const cat = await api(`/api/places/${encodeURIComponent(SID)}`);
+    const seen = new Set(), rooms = [], rest = [];
+    for (const pl of cat.places || []) {
+      if (!pl.name || pl.unnamed || /^(other|unknown)\b/i.test(pl.name) || seen.has(pl.name)) continue;
+      if (pl.kind === "floor") continue;
+      seen.add(pl.name);
+      (pl.kind === "room" || pl.kind === "tenant" ? rooms : rest).push(pl.name);
+    }
+    PLACES = [...rooms.sort(), ...rest.sort()];
+  } catch (e) { PLACES = []; }
+  $("startsel").innerHTML = "";
+  for (const l of labels) { const o = document.createElement("option"); o.value = o.textContent = l; $("startsel").appendChild(o); }
+  $("dest").innerHTML = "";
+  for (const l of (PLACES.length ? PLACES : labels)) { const o = document.createElement("option"); o.value = o.textContent = l; $("dest").appendChild(o); }
   const from = P.get("from");
   const fromNode = from && G.nodes.find((n) => n.label === from || n.id === from);
   const lobby = labels.find((l) => /lobby|entr|foyer|reception/i.test(l)) || labels[0];
   $("startsel").value = fromNode && fromNode.room_label ? fromNode.room_label : lobby;
-  $("dest").value = P.get("to") || labels.find((l) => l !== $("startsel").value) || labels[0];
+  const dests = [...$("dest").options].map((o) => o.value);
+  $("dest").value = P.get("to") || dests.find((l) => /kitchen|bathroom|office/i.test(l) && l !== $("startsel").value) || dests[0];
   viewFloor = (fromNode || repNode($("startsel").value) || G.nodes[0]).floor;
   fillFloors();
   placeAt(fromNode || repNode($("startsel").value) || G.nodes[0]);
 
   const key = CFG.matterport_sdk_key;
   if (key && SID !== "synthetic") {
-    $("mode").textContent = `Matterport tour · ${SID} · connecting…`;
-    connectSdk(key).catch((e) => { $("mode").textContent = `SDK failed (${e.message}); first-person fallback`; sdk = null; $("fp").style.display = "block"; refreshView(); });
+    $("mode").textContent = "Loading the 3D tour…";
+    connectSdk(key).catch((e) => {
+      if (DEV) console.warn(e);
+      $("mode").textContent = "The 3D tour couldn't load here, so this is the walk-through view. Open the page on localhost to load the tour.";
+      sdk = null; $("fp").style.display = "block"; refreshView();
+    });
   } else {
     $("fp").style.display = "block";
-    $("mode").textContent = `first-person fallback · ${SID === "synthetic" ? "synthetic building" : SID + " (no SDK key)"}`;
+    $("mode").textContent = "Walk-through view";
   }
   updateFloorBtn();
 }

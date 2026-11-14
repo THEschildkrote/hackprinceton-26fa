@@ -2,31 +2,53 @@ import { Magnetometer, Pedometer } from "expo-sensors";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
 import { ApiError, describePending, fmtMetres, type ExceptionReply, type NavReply, type NavState, type Pending } from "../lib/api";
+import { decodeLive } from "../lib/device";
+import { BandEngine, L, R } from "../lib/haptics";
 import { calibrateOffset, modelHeading, StepTracker } from "../lib/pdr";
 import { SimWalk, type Pose } from "../lib/sim";
+import { tripFromReply, type VoiceReply } from "../lib/talk";
 import { feel, say, stopSpeaking } from "../lib/voice";
 import type { Settings, Trip } from "../state";
-import { Big, C, Choice, Field, H, P } from "../ui/kit";
+import { Big, C, Field, H, P } from "../ui/kit";
 import { TalkBar } from "../ui/TalkBar";
 
-const SOURCES = ["simulated walk", "steps + compass", "manual"] as const;
-type Source = (typeof SOURCES)[number];
 const PROBLEMS = ["Elevator out", "Door locked", "I'm lost"] as const;
 
-function direction(bearing: number | null | undefined): string {
-  if (bearing == null) return "Direction unknown";
+// a small left/right strip that pulses with the same grammar as the band, so the haptics are visible mid-walk
+function MotorStrip({ motors }: { motors: number }) {
+  const pill = (side: string, on: boolean) => (
+    <View key={side} style={{ flex: 1, height: 40, borderRadius: 20, borderWidth: 3, alignItems: "center", justifyContent: "center",
+      borderColor: on ? C.accent : C.line, backgroundColor: on ? C.accent : C.card }}>
+      <Text style={{ fontSize: 18, fontWeight: "800", color: on ? C.accentText : C.dim }}>{side}{on ? " ●" : ""}</Text>
+    </View>
+  );
+  return (
+    <View accessible accessibilityLabel={`Haptic band: left ${motors & L ? "on" : "off"}, right ${motors & R ? "on" : "off"}`}
+      style={{ flexDirection: "row", gap: 12, marginVertical: 8 }}>
+      {pill("Left", !!(motors & L))}
+      {pill("Right", !!(motors & R))}
+    </View>
+  );
+}
+
+function direction(bearing: number | null | undefined): string | null {
+  if (bearing == null) return null;
   const a = Math.round(Math.abs(bearing));
   if (a <= 15) return "Straight ahead";
   if (a >= 160) return "Turn around";
   return `${a} degrees to your ${bearing > 0 ? "left" : "right"}`;
 }
 
-export function Navigate({ trip, settings, onEnd }: { trip: Trip; settings: Settings; onEnd: () => void }) {
+export function Navigate({ trip, settings, onEnd, onNewTrip }: {
+  trip: Trip; settings: Settings; onEnd: () => void; onNewTrip: (t: Trip) => void;
+}) {
   const { api, session } = trip;
   const [nav, setNav] = useState<NavState>(trip.state);
   const [instr, setInstr] = useState(trip.state.next?.text ?? "Starting.");
-  const [source, setSource] = useState<Source>("simulated walk");
+  const source = settings.posSource;
   const [running, setRunning] = useState(false);
+  const [motors, setMotors] = useState(0);
+  const engine = useRef(new BandEngine());
   const [problemOpen, setProblemOpen] = useState(false);
   const [freeText, setFreeText] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
@@ -69,6 +91,35 @@ export function Navigate({ trip, settings, onEnd }: { trip: Trip; settings: Sett
       setNote(e instanceof ApiError ? e.message : "update failed");
     } finally { busy.current = false; }
   }, [api, session, handle]);
+
+  // band feed for the motor strip (same lines the real band gets)
+  useEffect(() => {
+    let alive = true, seq = -1;
+    const poll = setInterval(async () => {
+      try {
+        const r = await api.deviceLive(session);
+        if (!alive || r.seq === seq) return;
+        seq = r.seq;
+        const p = decodeLive(r.line);
+        if (p) engine.current.onLive(p, Date.now());
+      } catch { /* no band feed on this server */ }
+    }, 400);
+    const tick = setInterval(() => setMotors(engine.current.tick(Date.now())), 40);
+    return () => { alive = false; clearInterval(poll); clearInterval(tick); };
+  }, [api, session]);
+
+  // a voice or typed reply that started a different trip replaces this screen's whole state
+  const onTalk = useCallback(async (r: VoiceReply) => {
+    const t = tripFromReply(r);
+    if (t && t.session !== session) {
+      try {
+        const full = await api.update({ session: t.session, x: t.start.x, y: t.start.y, floor: t.start.floor });
+        onNewTrip({ api, sid: t.sid, goal: t.goal, profile: trip.profile, session: t.session, state: full.state, start: t.start });
+      } catch { setNote("I started the new trip, but couldn't load it."); }
+      return;
+    }
+    if (r.state?.next?.text) setInstr(r.state.next.text);
+  }, [api, session, trip.profile, onNewTrip]);
 
   // simulated walk: 0.5 s ticks at walking speed
   useEffect(() => {
@@ -152,6 +203,7 @@ export function Navigate({ trip, settings, onEnd }: { trip: Trip; settings: Sett
   function end() { setRunning(false); stopSpeaking(); onEnd(); }
 
   const bearing = nav.bearing_to_next_deg;
+  const dir = direction(bearing);
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
       <Text accessibilityRole="header" style={{ color: C.dim, fontSize: 18 }}>To the {trip.goal}</Text>
@@ -160,38 +212,33 @@ export function Navigate({ trip, settings, onEnd }: { trip: Trip; settings: Sett
       </View>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 18, marginVertical: 8 }}
-        accessible accessibilityLabel={`Next maneuver in ${fmtMetres(nav.distance_to_next_m)}. ${direction(bearing)}. ${fmtMetres(nav.remaining)} to go.`}>
-        <Text style={{ fontSize: 72, color: C.accent, transform: [{ rotate: `${-(bearing ?? 0)}deg` }] }}>↑</Text>
+        accessible accessibilityLabel={nav.done ? "Arrived." : `Next step in ${fmtMetres(nav.distance_to_next_m)}.${dir ? ` ${dir}.` : ""} ${fmtMetres(nav.remaining)} to go.`}>
+        {dir && !nav.done && <Text style={{ fontSize: 72, color: C.accent, transform: [{ rotate: `${-(bearing ?? 0)}deg` }] }}>↑</Text>}
         <View>
-          <Text style={{ color: C.text, fontSize: 30, fontWeight: "800" }}>{fmtMetres(nav.distance_to_next_m)}</Text>
-          <Text style={{ color: C.dim, fontSize: 18 }}>{direction(bearing)}</Text>
-          <Text style={{ color: C.dim, fontSize: 18 }}>{fmtMetres(nav.remaining)} to go{nav.reroutes ? ` · rerouted ${nav.reroutes}×` : ""}</Text>
+          <Text style={{ color: C.text, fontSize: 30, fontWeight: "800" }}>{nav.done ? "Arrived" : `${fmtMetres(nav.distance_to_next_m)} to the next step`}</Text>
+          {dir && !nav.done && <Text style={{ color: C.dim, fontSize: 18 }}>{dir}</Text>}
+          {!nav.done && <Text style={{ color: C.dim, fontSize: 18 }}>{fmtMetres(nav.remaining)} to go{nav.reroutes ? ` · rerouted ${nav.reroutes}×` : ""}</Text>}
         </View>
       </View>
 
       <TalkBar settings={settings} sid={trip.sid} session={trip.session}
         prompt="Ask anything: what's next, how far, or tell me what's wrong."
         here={() => ({ x: pose.current.x, y: pose.current.y, floor: pose.current.floor })}
-        onReply={(r) => { if (r.state?.next?.text) setInstr(r.state.next.text); }} />
+        onReply={onTalk} />
+
+      <MotorStrip motors={motors} />
 
       {nav.done ? (
         <Big kind="primary" label="Arrived. Done" onPress={end} />
       ) : (
         <>
-          <Big label="Repeat" hint="Says the current step again" onPress={() => speak(nav.next?.text ?? instr)} />
-          <Big label="Where am I" hint="Distance left and the next step"
-            onPress={() => speak(`${fmtMetres(nav.remaining).replace(" m", " meters")} to the ${trip.goal}. Next: ${nav.next?.text ?? "you are there"}`)} />
           <Big kind="danger" label={thinking ? "Finding another way…" : "Report a problem"} hint="Elevator out, door locked, lost"
             onPress={() => setProblemOpen(true)} disabled={thinking} />
         </>
       )}
 
-      <H>Position</H>
-      <Choice label="Where my position comes from" options={SOURCES} value={source}
-        onChange={(v) => { setRunning(false); setSource(v); }}
-        describe={(v) => v === "steps + compass" ? "steps and compass, experimental" : v} />
       {source === "simulated walk" && (
-        <Big kind={running ? "normal" : "primary"} label={running ? "Pause walk" : "Walk the route"}
+        <Big kind={running ? "normal" : "primary"} label={running ? "Pause demo walk" : "Start demo walk"}
           hint="A demo walker follows the route at walking speed" onPress={() => setRunning(!running)} disabled={nav.done} />
       )}
       {source === "steps + compass" && (
