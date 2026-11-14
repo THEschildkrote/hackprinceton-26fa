@@ -30,37 +30,54 @@ struct PairView: View {
             VStack(spacing: 28) {
                 Spacer()
                 Image(systemName: "figure.walk.motion")
-                    .font(.system(size: 64, weight: .semibold))
-                    .foregroundStyle(.tint)
+                    .font(.system(size: 54, weight: .semibold))
+                    .foregroundStyle(Theme.navy)
+                    .frame(width: 116, height: 116)
+                    .background(Theme.yellow, in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.9), lineWidth: 4))
+                    .shadow(color: .black.opacity(0.25), radius: 14, y: 8)
                     .symbolEffect(.pulse)
+                    .accessibilityHidden(true)
                 VStack(spacing: 8) {
-                    Text("Follow a traveller").font(.largeTitle.bold())
+                    Text("Follow a traveller").font(.largeTitle.bold()).foregroundStyle(.white)
                     Text("Enter the 6-digit code shown in their Nudge setup.")
-                        .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.9))
                 }
                 TextField("000000", text: $code)
                     .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.navy)
                     .multilineTextAlignment(.center)
                     .keyboardType(.numberPad)
                     .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                    .background(.white, in: RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 5)
                     .onChange(of: code) { _, v in code = String(v.filter(\.isNumber).prefix(6)) }
-                if !error.isEmpty { Text(error).foregroundStyle(.red).font(.callout) }
+                if !error.isEmpty {
+                    // red text on blue would be hard to read, so the error is a white-on-red pill
+                    Text(error).font(.callout.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Theme.red, in: Capsule())
+                }
                 Button {
                     Task { await pair() }
                 } label: {
                     Label(working ? "Pairing…" : "Follow", systemImage: "link")
-                        .font(.headline).frame(maxWidth: .infinity, minHeight: 54)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(code.count != 6 || working)
                 Spacer()
             }
             .padding(24)
+            .background(
+                LinearGradient(colors: [Theme.blue, Theme.navy], startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+            )
             .toolbar {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .tint(.white)
                     .accessibilityLabel("Settings")
             }
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showSettings) { CareSettingsView().environment(store) }
         }
     }
@@ -97,15 +114,20 @@ struct HomeView: View {
                 .padding()
                 .animation(.smooth, value: store.alert)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.paper)
             .navigationTitle(store.displayName)
+            .navigationBarTitleDisplayMode(.inline)   // the large title vanished against the blue bar
+            .brandBar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                        .tint(.white)
                         .accessibilityLabel("Settings")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    // yellow on the blue bar is 6.7:1; it would fail on white, which is why it lives here
                     Button { showTrip = true } label: { Label("Send trip", systemImage: "paperplane.fill") }
+                        .tint(Theme.yellow)
                 }
             }
             .sheet(isPresented: $showTrip) { SendTripView().environment(store) }
@@ -120,7 +142,10 @@ struct AlertBanner: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Needs attention", systemImage: "exclamationmark.triangle.fill").font(.headline)
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.yellow)  // 3.8:1, an icon not text
+                Text("Needs attention").font(.headline)
+            }
             Text(message.text).font(.body)
             HStack {
                 if let url = URL(string: "tel:\(store.callNumber.filter { $0.isNumber || $0 == "+" })"),
@@ -128,7 +153,7 @@ struct AlertBanner: View {
                     Link(destination: url) {
                         Label("Call", systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.red)
+                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(Theme.red)
                 }
                 Button("Dismiss") { store.dismissAlert() }
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -138,21 +163,25 @@ struct AlertBanner: View {
         .foregroundStyle(.white)
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.red.gradient, in: RoundedRectangle(cornerRadius: 20))
+        .background(Theme.red, in: RoundedRectangle(cornerRadius: 22))
+        .shadow(color: Theme.red.opacity(0.35), radius: 12, y: 6)
         .transition(.move(edge: .top).combined(with: .opacity))
         .accessibilityElement(children: .contain)
     }
 }
 
-// state -> words, symbol, colour
-private func look(_ state: String?) -> (String, String, Color) {
+// state -> words, symbol, badge fill, symbol colour.
+// the symbol sits on a filled circle, so each pair is chosen for contrast on its own fill:
+// white on blue or red, navy on yellow. that is how yellow can mean "careful" without
+// ever being yellow-on-white.
+private func look(_ state: String?) -> (String, String, Color, Color) {
     switch state {
-    case "walking": return ("Walking", "figure.walk", .blue)
-    case "arrived": return ("Arrived", "checkmark.circle.fill", .green)
-    case "help": return ("Needs help", "exclamationmark.triangle.fill", .red)
-    case "unmapped": return ("Off the map", "questionmark.circle.fill", .orange)
-    case "off_route", "rerouting": return ("Finding a new way", "arrow.triangle.turn.up.right.diamond.fill", .orange)
-    default: return ("Not on a trip", "moon.zzz.fill", .gray)
+    case "walking": return ("Walking", "figure.walk", Theme.blue, .white)
+    case "arrived": return ("Arrived", "checkmark", Theme.navy, Theme.yellow)
+    case "help": return ("Needs help", "exclamationmark", Theme.red, .white)
+    case "unmapped": return ("Off the map", "questionmark", Theme.yellow, Theme.navy)
+    case "off_route", "rerouting": return ("Finding a new way", "arrow.triangle.turn.up.right.diamond.fill", Theme.yellow, Theme.navy)
+    default: return ("Not on a trip", "moon.zzz.fill", Color(.systemGray4), Theme.navy)
     }
 }
 
@@ -161,10 +190,12 @@ struct StatusCard: View {
 
     var body: some View {
         let s = store.status
-        let (word, symbol, colour) = look(s?.state)
+        let (word, symbol, fill, glyph) = look(s?.state)
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: symbol).font(.title).foregroundStyle(colour)
+                Image(systemName: symbol).font(.title3.weight(.bold)).foregroundStyle(glyph)
+                    .frame(width: 48, height: 48)
+                    .background(fill, in: Circle())
                     .symbolEffect(.bounce, value: s?.state)
                 VStack(alignment: .leading) {
                     Text(word).font(.title2.bold())
@@ -174,7 +205,7 @@ struct StatusCard: View {
                 }
                 Spacer()
                 if !store.reachable {
-                    Label("Offline", systemImage: "wifi.slash").font(.caption).foregroundStyle(.orange)
+                    Label("Offline", systemImage: "wifi.slash").font(.caption.weight(.semibold)).foregroundStyle(Theme.red)
                 }
             }
             HStack(spacing: 12) {
@@ -192,7 +223,7 @@ struct StatusCard: View {
             }
         }
         .padding()
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .card()
         .accessibilityElement(children: .combine)
     }
 }
@@ -209,7 +240,7 @@ struct Metric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.mist, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -236,7 +267,7 @@ struct MapCard: View {
             }
         }
         .padding()
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .card()
     }
 }
 
@@ -271,7 +302,7 @@ struct TimelineCard: View {
             ForEach(items) { item in
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: symbol(for: item.text, urgent: item.urgent))
-                        .foregroundStyle(item.urgent ? .red : .accentColor)
+                        .foregroundStyle(item.urgent ? Theme.red : Theme.blue)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.text)
@@ -285,7 +316,7 @@ struct TimelineCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .card()
         .animation(.smooth, value: store.messages)
     }
 
@@ -352,13 +383,18 @@ struct SendTripView: View {
                         .labelsHidden()
                     }
                 }
-                if !error.isEmpty { Text(error).foregroundStyle(.red) }
+                if !error.isEmpty { Text(error).foregroundStyle(Theme.red) }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
+            .brandBar()
             .navigationTitle("Send a trip")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                // the app tint is blue, which would vanish on the blue bar
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.tint(.white) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(sending ? "Sending…" : "Send") { Task { await send() } }
+                        .tint(Theme.yellow)
                         .disabled(building == nil || destination == nil || sending)
                 }
             }
@@ -422,8 +458,11 @@ struct CareSettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
+            .brandBar()
             .navigationTitle("Settings")
-            .toolbar { Button("Done") { dismiss() } }
+            .toolbar { Button("Done") { dismiss() }.tint(Theme.yellow) }
         }
     }
 }

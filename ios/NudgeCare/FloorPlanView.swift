@@ -44,7 +44,7 @@ struct FloorPlanView: View {
                             if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
                         }
                         path.closeSubpath()
-                        ctx.fill(path, with: .color(.accentColor.opacity(0.07)))
+                        ctx.fill(path, with: .color(Theme.blue.opacity(0.07)))
                         if let label = r.label, !["Void", "Other", "Unknown"].contains(label) {
                             let cx = poly.compactMap { $0.first }.reduce(0, +) / Double(poly.count)
                             let cy = poly.compactMap { $0.count > 1 ? $0[1] : nil }.reduce(0, +) / Double(poly.count)
@@ -65,10 +65,13 @@ struct FloorPlanView: View {
                         var p = Path()
                         p.move(to: map(routeHere[0].x, routeHere[0].y))
                         for pt in routeHere.dropFirst() { p.addLine(to: map(pt.x, pt.y)) }
-                        ctx.stroke(p, with: .color(.accentColor), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                        ctx.stroke(p, with: .color(Theme.blue), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                         if let last = routeHere.last {
+                            // the destination: a yellow sun with a navy ring
                             let e = map(last.x, last.y)
-                            ctx.fill(Path(ellipseIn: CGRect(x: e.x - 6, y: e.y - 6, width: 12, height: 12)), with: .color(.green))
+                            let dot = Path(ellipseIn: CGRect(x: e.x - 8, y: e.y - 8, width: 16, height: 16))
+                            ctx.fill(dot, with: .color(Theme.yellow))
+                            ctx.stroke(dot, with: .color(Theme.navy), lineWidth: 2.5)
                         }
                     }
                 }
@@ -85,11 +88,12 @@ struct FloorPlanView: View {
 struct PulsingDot: View {
     var body: some View {
         ZStack {
-            Circle().fill(.blue.opacity(0.25)).frame(width: 34, height: 34)
+            Circle().fill(Theme.red.opacity(0.3)).frame(width: 34, height: 34)
                 .phaseAnimator([false, true]) { v, on in
                     v.scaleEffect(on ? 1.4 : 0.7).opacity(on ? 0 : 1)
                 } animation: { _ in .easeOut(duration: 1.4) }
-            Circle().fill(.blue).frame(width: 14, height: 14)
+            // red against the blue route, so the traveller is the first thing the eye finds
+            Circle().fill(Theme.red).frame(width: 16, height: 16)
                 .overlay(Circle().stroke(.white, lineWidth: 3))
                 .shadow(radius: 3)
         }
