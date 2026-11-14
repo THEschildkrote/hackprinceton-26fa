@@ -165,7 +165,9 @@ def test_place_indexer_subagent_names_the_floor():
     out = agent.invoke({"messages": [{"role": "user", "content": "define the places"}]},
                        config={"configurable": {"thread_id": "places"}, "recursion_limit": 100})
     assert out["messages"][-1].content == "Places defined."
-    assert (T.dossier_dir(SID) / "places.json").exists()
+    # a write to /dossier/places.json is redirected to a per-floor fragment so parallel indexers can't collide
+    frags = list((T.dossier_dir(SID) / "places").glob("*.json"))
+    assert frags and not (T.dossier_dir(SID) / "places.json").exists()
     seed = next(m for m in out["messages"] if getattr(m, "name", None) == "validate_places")
     assert json.loads(seed.content)["ok"]
     assert places.resolve(g, "break room")["best"]["name"] == "Kitchen"

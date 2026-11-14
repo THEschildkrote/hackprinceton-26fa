@@ -319,7 +319,8 @@ def _parse_xyz(lines):
 def cloud(sid, stride=CLOUD_STRIDE):
     """(n, 3) float32 xyz in the model frame, every `stride`th point, cached."""
     if sid == "synthetic":
-        from tests.synthetic_perceive import cloud as syn
+        from .fetch import fixture
+        syn = fixture("synthetic_perceive").cloud
         return syn()
     path = CACHE / "clouds" / f"{sid}_s{stride}.npy"
     if path.exists():

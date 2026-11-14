@@ -48,4 +48,5 @@ def model(s=None, role="text", **kw):
     if s.startswith("openrouter:"):
         kw.setdefault("app_url", "https://github.com/arkankau/hackprinceton-26fa")
         kw.setdefault("max_retries", 4)  # free tier rate-limits
+        kw.setdefault("timeout", 180_000)  # ms; one stuck free-tier call shouldn't eat the run's budget
     return init_chat_model(s, **kw)

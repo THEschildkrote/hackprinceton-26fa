@@ -266,14 +266,39 @@ def places_path(sid):
     return dossier_dir(sid) / "places.json"
 
 
+def place_files(sid):
+    """places.json plus per-floor fragments places/<floor>.json (subagents run in parallel, one file each)."""
+    main = places_path(sid)
+    frags = sorted((main.parent / "places").glob("*.json")) if (main.parent / "places").exists() else []
+    return ([main] if main.exists() else []) + frags
+
+
 def read_agent(sid):
-    p = places_path(sid)
-    if not p.exists():
+    """the agent's catalog, merged across files by id. a broken file is reported but doesn't hide the others."""
+    files = place_files(sid)
+    if not files:
         return None, None
-    try:
-        return json.loads(p.read_text(encoding="utf-8")), None
-    except json.JSONDecodeError as ex:
-        return None, f"places.json is not valid json: {ex}"
+    merged, order, errs = {}, [], []
+    for p in files:
+        name = p.name if p.parent.name != "places" else f"places/{p.name}"
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as ex:
+            errs.append(f"{name} is not valid json ({ex}); rewrite it with write_file")
+            continue
+        items = data if isinstance(data, list) else (data or {}).get("places") or []
+        for it in items:
+            if not isinstance(it, dict) or not it.get("id"):
+                if isinstance(it, dict):
+                    merged.setdefault(f"__noid{len(order)}", it)
+                    order.append(f"__noid{len(order)}")
+                continue
+            if it["id"] not in merged:
+                order.append(it["id"])
+                merged[it["id"]] = dict(it)
+            else:
+                merged[it["id"]].update({k: v for k, v in it.items() if v not in (None, "", [])})
+    return {"places": [merged[k] for k in order]}, ("; ".join(errs) or None)
 
 
 WORD_FIELDS = ("name", "aliases", "serves", "description", "kind", "confidence")

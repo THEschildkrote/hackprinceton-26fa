@@ -1,13 +1,13 @@
 ---
 name: place-catalog
-description: Schema, naming style, serves vocabulary and description rules for /dossier/places.json, the catalog that answers "how do I get to X" and "where can I get Y" at runtime. Load before writing or editing places.json.
+description: Schema, naming style, serves vocabulary and description rules for the place catalog (/dossier/places/<floor_id>.json files), the catalog that answers "how do I get to X" and "where can I get Y" at runtime. Load before writing or editing places.json.
 ---
 
 # Place catalog
 
 The router answers a visitor's question by matching their words against this catalog: exact name, then alias, then what a place *serves*, then similar words. When two places match about equally, it asks a question; it never guesses. Your job is to make the right place match and the wrong ones not match.
 
-## Schema (`/dossier/places.json`)
+## Schema (`/dossier/places/<floor_id>.json`, one file per floor, merged by id into the catalog)
 
 ```json
 {"places": [

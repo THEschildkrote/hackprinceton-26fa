@@ -1,8 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "dossier": "./nudge/agents/graphs.py:dossier",
-    "exception": "./nudge/agents/graphs.py:exception"
+    "dossier": "nudge.agents.graphs:dossier",
+    "exception": "nudge.agents.graphs:exception"
   },
   "env": ".env",
   "python_version": "3.12"

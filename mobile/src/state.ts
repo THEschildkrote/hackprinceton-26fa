@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import type { Api, NavState } from "./lib/api";
 
@@ -10,13 +11,15 @@ export interface Settings {
 }
 
 // web: same origin as the page (served next to the api or behind a proxy), or localhost:8765 from the expo dev
-// server. phone: the laptop's lan ip, set in settings.
+// server. phone: the laptop that serves the bundle also runs the api, so reuse the dev server's host.
 function defaultServer() {
   if (Platform.OS === "web" && typeof window !== "undefined" && window.location) {
     const dev = ["8081", "19006"].includes(window.location.port);
     return dev ? "http://localhost:8765" : window.location.origin;
   }
-  return "http://192.168.1.10:8765";
+  const host = Constants.expoConfig?.hostUri?.split(":")[0];
+  if (host && !host.includes(".exp.direct")) return `http://${host}:8765`;
+  return "http://192.168.1.10:8765";  // fallback; change it in settings
 }
 export const DEFAULT_SERVER = defaultServer();
 

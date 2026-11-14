@@ -10,13 +10,14 @@ filesystem the agent sees:
 """
 import argparse
 import json
+import time
 from pathlib import Path
 from uuid import uuid4
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from deepagents.middleware.filesystem import FilesystemPermission
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import TodoListMiddleware, wrap_tool_call
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..mp import ROOT
@@ -32,7 +33,7 @@ SUBAGENTS = {
                       "aliases, what each place serves (water, restroom, exit, help desk...), a short non-visual "
                       "description, features it sees (water fountain, reception desk) anchored to a pano and "
                       "bearing, and CoStar tenants. Give it the sid and one floor id (or a list of room ids for a "
-                      "quick survey). Writes /dossier/places.json.", PLACE_TOOLS),
+                      "quick survey). Writes /dossier/places/<floor_id>.json.", PLACE_TOOLS),
     "hazard-scout": ("Finds and confirms hazards on one floor: protruding objects a cane misses, glass, "
                      "open stair undersides, level changes. Give it one floor id and the sid. "
                      "Writes /dossier/hazards/<floor_id>.json.", SCOUT_TOOLS),
@@ -68,6 +69,47 @@ def backend(sid):
 READ_ONLY_AGENT = [FilesystemPermission(operations=["write"], paths=["/agent/**"], mode="deny")]
 
 
+def _fragment_name(content):
+    """which floor a places write is about: meta.floor, else the most common floor among its entries."""
+    try:
+        data = json.loads(content or "")
+    except (json.JSONDecodeError, TypeError):
+        return "misc"
+    meta = data.get("meta") if isinstance(data, dict) else None
+    if isinstance(meta, dict) and meta.get("floor"):
+        return str(meta["floor"])
+    items = data if isinstance(data, list) else (data or {}).get("places") or []
+    floors = [i.get("floor") for i in items if isinstance(i, dict) and i.get("floor")]
+    return max(set(floors), key=floors.count) if floors else "misc"
+
+
+@wrap_tool_call
+def tool_errors_as_messages(request, handler):
+    """a tool that raises must not kill the whole run: hand the error back so the model can fix its call."""
+    from langchain_core.messages import ToolMessage
+    try:
+        return handler(request)
+    except (Exception, SystemExit) as ex:  # noqa: BLE001  (mp.secret exits when a key is missing)
+        tc = request.tool_call
+        return ToolMessage(content=f"Error: {tc.get('name')} failed: {type(ex).__name__}: {str(ex)[:300]}. "
+                                   f"Check the arguments (exact sid, floor and pano ids) and try once more, "
+                                   f"or skip this step and note it.",
+                           tool_call_id=tc.get("id", ""), name=tc.get("name"), status="error")
+
+
+@wrap_tool_call
+def places_to_fragments(request, handler):
+    """parallel place-indexers must not overwrite each other: a write to /dossier/places.json goes to
+    /dossier/places/<floor>.json instead (the catalog merges fragments by id)."""
+    tc = request.tool_call
+    args = tc.get("args") or {}
+    if tc.get("name") == "write_file" and str(args.get("file_path", "")).rstrip("/") == "/dossier/places.json":
+        safe = "".join(ch for ch in _fragment_name(args.get("content")) if ch.isalnum() or ch in "-_") or "misc"
+        tc = {**tc, "args": {**args, "file_path": f"/dossier/places/{safe}.json"}}
+        request = request.override(tool_call=tc)
+    return handler(request)
+
+
 def create_dossier_agent(sid, model=None, checkpointer=None, vision_model=None):
     """model drives the lead; vision_model the subagents that look() (defaults: llm.spec / llm.spec('vision')).
     passing only model uses it everywhere, which is what the scripted tests do."""
@@ -75,12 +117,14 @@ def create_dossier_agent(sid, model=None, checkpointer=None, vision_model=None):
     vm = vision_model if vision_model is not None else (m if model is not None else llm.model(role="vision"))
     subagents = [{"name": name, "description": desc, "system_prompt": _prompt(name), "tools": tools,
                   "skills": ["/agent/skills/"], "permissions": READ_ONLY_AGENT, "model": vm}
+                 | {"middleware": [tool_errors_as_messages] + ([places_to_fragments] if name == "place-indexer" else [])}
                  for name, (desc, tools) in SUBAGENTS.items()]
+    from .finalize import finalize_dossier, merge_dossier
     return create_deep_agent(
         model=m,
-        tools=LEAD_TOOLS,
+        tools=LEAD_TOOLS + [merge_dossier, finalize_dossier],
         subagents=subagents,
-        middleware=[TodoListMiddleware()],
+        middleware=[TodoListMiddleware(), tool_errors_as_messages],
         memory=["/agent/AGENTS.md"],
         skills=["/agent/skills/"],
         permissions=READ_ONLY_AGENT,
@@ -104,20 +148,52 @@ def kickoff(sid, focus=None, goal=None):
                 f"audit_routes lists. Write a short /dossier/briefing.md. After that, continue with the full survey.")
     return (f"Build the accessibility dossier for building {sid}. Follow /agent/AGENTS.md. "
             f"Start with building_overview('{sid}'), building_models('{sid}') and /memories/lessons.md, plan with "
-            f"write_todos. Define the places first (place-indexer per floor -> /dossier/places.json, then "
+            f"write_todos. Define the places first (place-indexer per floor -> /dossier/places/<floor_id>.json, then "
             f"validate_places), and finish with a valid /dossier/annotations.json, /dossier/audit.md and "
             f"/dossier/briefing.md.")
 
 
-def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=None):
-    """focus: pano ids to survey first (route-scoped quick dossier for a first visit); see tools.route_focus."""
+MAX_MINUTES = 30      # wall clock for one run
+MAX_MODEL_CALLS = 250  # across the lead and every subagent
+
+
+def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=None,
+        max_minutes=MAX_MINUTES, max_model_calls=MAX_MODEL_CALLS):
+    """focus: pano ids to survey first (route-scoped quick dossier for a first visit); see tools.route_focus.
+    whatever happens (budget, recursion limit, a flaky model), the run ends with finalize(): valid files + gaps."""
+    from .finalize import finalize
     agent = create_dossier_agent(sid, model, vision_model=vision_model)
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 400}
-    for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]}, config=config,
-                              stream_mode="updates", subgraphs=True):
-        for ev in describe(chunk):
-            on_event(ev)
+    t0, calls, reason = time.time(), 0, "the lead finished"
+    try:
+        for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]},
+                                  config=config, stream_mode="updates", subgraphs=True):
+            calls += _model_calls(chunk)
+            for ev in describe(chunk):
+                on_event(ev)
+            if time.time() - t0 > max_minutes * 60:
+                reason = f"time budget of {max_minutes} min reached"
+                break
+            if calls >= max_model_calls:
+                reason = f"budget of {max_model_calls} model calls reached"
+                break
+    except Exception as ex:  # recursion limit, provider errors: keep what we have
+        reason = f"run stopped: {type(ex).__name__}: {str(ex)[:200]}"
+    on_event(f"[finalize] {reason}")
+    summary = finalize(sid, reason)
+    on_event(f"[finalize] annotations {summary['annotations']['hazards']} hazards, "
+             f"{summary['annotations']['landmarked_panos']} landmarked panos; places ok={summary['places']['ok']}; "
+             f"{len(summary['gaps'])} gaps listed in /dossier/audit.md")
     return dossier_dir(sid)
+
+
+def _model_calls(chunk):
+    _, update = chunk if isinstance(chunk, tuple) else ((), chunk)
+    n = 0
+    for val in (update or {}).values():
+        if isinstance(val, dict):
+            n += sum(1 for m in val.get("messages", []) or [] if type(m).__name__ == "AIMessage")
+    return n
 
 
 def describe(chunk):

@@ -50,13 +50,28 @@ def _culprit(msg, drop):
     return None
 
 
+def fixture(name):
+    """tests/<name>.py by file path, so it loads even where another package is called "tests" (langgraph dev)."""
+    import importlib.util
+    import sys
+    key = f"tests.{name}"
+    if key in sys.modules:
+        return sys.modules[key]
+    try:
+        return importlib.import_module(key)
+    except ImportError:
+        spec = importlib.util.spec_from_file_location(key, ROOT / "tests" / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[key] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+
 def load(sid, refresh=False):
     if sid == "synthetic":
-        from tests.synthetic import building
-        return building()
+        return fixture("synthetic").building()
     if sid == "synthetic-lobby":  # a second scan of the synthetic building (multi-model tests and demo)
-        from tests.synthetic_building import lobby
-        return lobby()
+        return fixture("synthetic_building").lobby()
     path = CACHE / f"{sid}.json"
     if path.exists() and not refresh:
         return json.loads(path.read_text(encoding="utf-8"))

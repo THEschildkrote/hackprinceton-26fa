@@ -4,6 +4,7 @@
 import csv
 import json
 import math
+import threading
 from functools import lru_cache
 
 from langchain_core.tools import tool
@@ -27,9 +28,14 @@ def dossier_dir(sid):
     return d
 
 
+_LOAD_LOCK = threading.RLock()
+
+
 def _model(sid):
+    # agents call tools in parallel threads; lazy imports and the cache inside load() aren't thread-safe
     from ..fetch import load
-    return load(sid)
+    with _LOAD_LOCK:
+        return load(sid)
 
 
 def read_annotations(sid):
@@ -252,25 +258,14 @@ def costar_record(sid: str) -> str:
     if sid == "synthetic":
         return _j({"synthetic": True, "year_built": 1984, "floors": 2, "rentable_sf": 4200,
                    "tenants": [{"name": "Acme Dental", "suite": "Office"}], "parking": "surface lot, 2 accessible stalls"})
-    row = _index_row(sid) or {}
-    key = row.get("costar_property_id") or row.get("homes_listing_id")
-    if not key:
-        return _j({"error": "this model has no CoStar property id or Homes listing id"})
-    files = _kit_files()
-    if not files:
-        return _j({"error": f"CoStar kit not extracted to {KIT}; property id is {key}"})
-    for f in files:
-        with open(f, encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if key in line:
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if any(str(v) == key for v in _flat_values(rec)):
-                        s = json.dumps(rec, default=str)
-                        return _j({"file": f.name, "key": key, "record": json.loads(s) if len(s) < 12000 else s[:12000]})
-    return _j({"error": f"property {key} not found in the kit"})
+    from .. import costar
+    r = costar.lookup(sid)
+    if r.get("error"):
+        return _j({"error": r["error"]})
+    rec = r["record"]
+    s = json.dumps(rec, default=str)
+    return _j({"key": r["key"], "kind": r["kind"], "file": r["file"], **costar.accessibility_facts(rec),
+               "record": rec if len(s) < 12000 else s[:12000]})
 
 
 def _flat_values(o):
@@ -510,7 +505,7 @@ def validate_portals(sid: str) -> str:
 def place_seed(sid: str, floor: str = "") -> str:
     """The draft place catalog from the scan: one place per room (polygon, panos, entry panos, a guess at what it
     serves), floors, CoStar tenants, and entrances when the site is loaded. Unnamed or low-confidence rooms are the
-    ones to look at and name. Write your catalog to /dossier/places.json using these ids.
+    ones to look at and name. Write your part of the catalog to /dossier/places/<floor_id>.json using these ids.
 
     Args:
         sid: Matterport model id.
@@ -536,7 +531,7 @@ def place_seed(sid: str, floor: str = "") -> str:
 
 @tool(parse_docstring=True)
 def validate_places(sid: str) -> str:
-    """Check /dossier/places.json: schema, ids that exist in the scan, feature anchors (pano + bearing), no authored
+    """Check the place catalog (/dossier/places/*.json merged, plus /dossier/places.json if present): schema, ids that exist in the scan, feature anchors (pano + bearing), no authored
     polygons, the serves vocabulary, and names or aliases that point at two different places.
 
     Args:
