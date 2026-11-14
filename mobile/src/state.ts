@@ -11,10 +11,12 @@ export interface Settings {
   traveller: string;   // stable id for voice turns and caretaker pairing
   caretakerCode: string | null;  // code the caretaker texts to follow this traveller
   caretakerLine: string | null;  // the nudge imessage number, when the server shares it
-  posSource: PosSource;          // where positions come from (developer setting)
+  posSource: PosSource;          // where positions come from; "live" = this phone's steps + compass, streamed to the pi
+  stepM: number;                 // metres per step for live mode
 }
 
-export const POS_SOURCES = ["simulated walk", "steps + compass", "manual"] as const;
+export const POS_SOURCES = ["live", "simulated walk", "fake walk (dev)", "manual"] as const;
+export const LIVE_SOURCES: readonly PosSource[] = ["live", "fake walk (dev)"];
 export type PosSource = (typeof POS_SOURCES)[number];
 
 // web: same origin as the page (served next to the api or behind a proxy), or localhost:8765 from the expo dev
@@ -34,7 +36,7 @@ export const DEFAULT_SERVER = defaultServer();
 export const DEMO_BUILDING: Building = { sid: "MgGNVWsyXtH", address: "1255 S Atlantic Blvd", city: "Los Angeles" };
 
 export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: [DEMO_BUILDING],
-  traveller: "", caretakerCode: null, caretakerLine: null, posSource: "simulated walk" };
+  traveller: "", caretakerCode: null, caretakerLine: null, posSource: "live", stepM: 0.7 };
 
 const KEY = "nudge.settings.v2";  // v2: recent holds buildings, not raw ids
 
@@ -42,9 +44,13 @@ export async function loadSettings(): Promise<Settings> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return DEFAULTS;
-    const s = { ...DEFAULTS, ...JSON.parse(raw) } as Settings;
+    const saved = JSON.parse(raw);
+    const s = { ...DEFAULTS, ...saved } as Settings;
     const recent = (s.recent ?? []).filter((b) => b && typeof b === "object" && b.sid);
-    return { ...s, recent: recent.length ? recent : [DEMO_BUILDING] };
+    // saved before live mode existed (no stepM): switch to live once, keep everything else
+    const known = (POS_SOURCES as readonly string[]).includes(s.posSource);
+    const posSource = !("stepM" in saved) || !known ? "live" : s.posSource;
+    return { ...s, posSource, recent: recent.length ? recent : [DEMO_BUILDING] };
   } catch {
     return DEFAULTS;
   }
@@ -62,4 +68,5 @@ export interface Trip {
   session: string;
   state: NavState;
   start: { x: number; y: number; floor: string };
+  startHeading?: number | null;  // live mode: compass heading of the first instruction, when the pi knows it
 }

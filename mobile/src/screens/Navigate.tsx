@@ -1,15 +1,14 @@
-import { Magnetometer, Pedometer } from "expo-sensors";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
-import { ApiError, describePending, fmtMetres, type ExceptionReply, type NavReply, type NavState, type Pending } from "../lib/api";
+import { ApiError, describePending, fmtMetres, type ExceptionReply, type NavReply, type NavState, type Pending, type StepReply } from "../lib/api";
 import { decodeLive } from "../lib/device";
 import { BandEngine, L, R } from "../lib/haptics";
-import { calibrateOffset, modelHeading, StepTracker } from "../lib/pdr";
 import { SimWalk, type Pose } from "../lib/sim";
 import { tripFromReply, type VoiceReply } from "../lib/talk";
 import { feel, say, stopSpeaking } from "../lib/voice";
-import type { Settings, Trip } from "../state";
+import { LIVE_SOURCES, type Settings, type Trip } from "../state";
 import { Big, C, Field, H, P } from "../ui/kit";
+import { LivePanel } from "../ui/LivePanel";
 import { TalkBar } from "../ui/TalkBar";
 
 const PROBLEMS = ["Elevator out", "Door locked", "I'm lost"] as const;
@@ -56,13 +55,11 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
   const [thinking, setThinking] = useState(false);
 
   const sim = useRef(new SimWalk(trip.state.route?.points ?? [], 1.1));
-  const tracker = useRef(new StepTracker(trip.start.x, trip.start.y, trip.start.floor));
-  const mag = useRef<{ x: number; y: number } | null>(null);
-  const offset = useRef<number | null>(null);
+  const instrRef = useRef(trip.state.next?.text ?? "");
   const busy = useRef(false);
   const pose = useRef<Pose>({ ...trip.start, heading: 0, done: false });
 
-  const speak = useCallback((t: string) => { setInstr(t); say(t, settings.rate); }, [settings.rate]);
+  const speak = useCallback((t: string) => { setInstr(t); instrRef.current = t; say(t, settings.rate); }, [settings.rate]);
 
   const applyState = useCallback((st: NavState) => {
     setNav((old) => {
@@ -81,6 +78,19 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
     if (r.state) applyState(r.state);
   }, [speak, applyState, settings.haptics]);
 
+  const onStepReply = useCallback((r: StepReply) => {
+    const lines = r.say?.length ? r.say : (r.events ?? []).map((e) => e.text ?? "").filter(Boolean);
+    if (lines.length) speak(lines.join(" "));
+    for (const e of r.events ?? []) feel(e.vibrate, settings.haptics);
+    setNav((old) => ({
+      ...old, ...(r.state ?? {}),
+      distance_to_next_m: r.distance_to_next_m ?? r.state?.distance_to_next_m ?? old.distance_to_next_m,
+      bearing_to_next_deg: r.bearing_to_next_deg ?? r.state?.bearing_to_next_deg ?? old.bearing_to_next_deg,
+      done: r.done ?? r.state?.done ?? old.done,
+    }));
+  }, [speak, settings.haptics]);
+  const lastInstruction = useCallback(() => instrRef.current, []);
+
   const send = useCallback(async (p: Pose, heading?: number | null) => {
     if (busy.current) return;
     busy.current = true;
@@ -94,15 +104,17 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
 
   // band feed for the motor strip (same lines the real band gets)
   useEffect(() => {
-    let alive = true, seq = -1;
+    let alive = true, seq = -1, inflight = false, gone = false;
     const poll = setInterval(async () => {
+      if (inflight || gone) return;  // never stack requests behind a slow server; stop once the trip is gone
+      inflight = true;
       try {
         const r = await api.deviceLive(session);
         if (!alive || r.seq === seq) return;
         seq = r.seq;
         const p = decodeLive(r.line);
         if (p) engine.current.onLive(p, Date.now());
-      } catch { /* no band feed on this server */ }
+      } catch (e) { if (e instanceof ApiError && e.status === 404) gone = true; /* no feed, or the pi forgot the trip */ } finally { inflight = false; }
     }, 400);
     const tick = setInterval(() => setMotors(engine.current.tick(Date.now())), 40);
     return () => { alive = false; clearInterval(poll); clearInterval(tick); };
@@ -127,41 +139,6 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
     const id = setInterval(() => { const p = sim.current.step(0.5); send(p); if (p.done) setRunning(false); }, 500);
     return () => clearInterval(id);
   }, [running, source, send]);
-
-  // steps + compass (experimental)
-  useEffect(() => {
-    if (!running || source !== "steps + compass") return;
-    let stepSub: { remove: () => void } | null = null, magSub: { remove: () => void } | null = null, alive = true;
-    (async () => {
-      try {
-        const ok = (await Pedometer.isAvailableAsync()) && (await Magnetometer.isAvailableAsync());
-        if (!ok) { speak("Step counting isn't available here. Use a development build on a phone, or the simulated walk."); setRunning(false); return; }
-        await Pedometer.requestPermissionsAsync();
-        Magnetometer.setUpdateInterval(200);
-        magSub = Magnetometer.addListener(({ x, y }) => { mag.current = { x, y }; });
-        stepSub = Pedometer.watchStepCount(({ steps }) => {
-          if (!alive) return;
-          if (mag.current && offset.current != null) tracker.current.setHeading(modelHeading(offset.current, mag.current.x, mag.current.y));
-          if (tracker.current.onSteps(steps) > 0) {
-            const t = tracker.current;
-            send({ x: t.x, y: t.y, floor: t.floor, heading: t.heading, done: false }, t.heading);
-          }
-        });
-      } catch {
-        speak("Couldn't start the step counter."); setRunning(false);
-      }
-    })();
-    return () => { alive = false; stepSub?.remove(); magSub?.remove(); };
-  }, [running, source, send, speak]);
-
-  function calibrate() {
-    const pts = nav.route?.points ?? [];
-    if (!mag.current || pts.length < 2) return speak("Start steps mode first so I can read the compass.");
-    const h = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]);
-    offset.current = calibrateOffset(h, mag.current.x, mag.current.y);
-    tracker.current.setHeading(h);
-    speak("Calibrated. Walk normally.");
-  }
 
   function nextTurn() {
     const p = sim.current.snapForward();
@@ -221,6 +198,11 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
         </View>
       </View>
 
+      {LIVE_SOURCES.includes(source) && !nav.done && (
+        <LivePanel trip={trip} settings={settings} fake={source === "fake walk (dev)"}
+          onReply={onStepReply} speak={speak} lastInstruction={lastInstruction} />
+      )}
+
       <TalkBar settings={settings} sid={trip.sid} session={trip.session}
         prompt="Ask anything: what's next, how far, or tell me what's wrong."
         here={() => ({ x: pose.current.x, y: pose.current.y, floor: pose.current.floor })}
@@ -240,13 +222,6 @@ export function Navigate({ trip, settings, onEnd, onNewTrip }: {
       {source === "simulated walk" && (
         <Big kind={running ? "normal" : "primary"} label={running ? "Pause demo walk" : "Start demo walk"}
           hint="A demo walker follows the route at walking speed" onPress={() => setRunning(!running)} disabled={nav.done} />
-      )}
-      {source === "steps + compass" && (
-        <>
-          <P dim>Experimental: step counting drifts a few percent, and compasses are poor near steel.</P>
-          <Big kind={running ? "normal" : "primary"} label={running ? "Stop steps" : "Start steps"} onPress={() => setRunning(!running)} />
-          <Big label="Calibrate" hint="Face the way the first instruction says, then tap" onPress={calibrate} />
-        </>
       )}
       {source === "manual" && <Big kind="primary" label="I'm at the next turn" hint="Moves you to the next point on the route" onPress={nextTurn} />}
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { ApiError } from "../lib/api";
 import { ScrollView, Text, View } from "react-native";
 import { BandLink, bleSupport } from "../lib/band";
 import { decodeLive } from "../lib/device";
@@ -34,8 +35,10 @@ export function Band({ trip, settings }: { trip: Trip | null; settings: Settings
   // poll the server's live line; feed the simulated band or forward it to the real one
   useEffect(() => {
     if (!trip) return;
-    let alive = true;
+    let alive = true, inflight = false, gone = false;
     const id = setInterval(async () => {
+      if (inflight || gone) return;  // never stack requests behind a slow server; stop once the trip is gone
+      inflight = true;
       try {
         const r = await trip.api.deviceLive(trip.session);
         if (!alive) return;
@@ -54,8 +57,9 @@ export function Band({ trip, settings }: { trip: Trip | null; settings: Settings
           if (link.current.connected) link.current.write(r.line);
         }
       } catch (e) {
-        if (alive) setStatus("The server has no band feed for this trip yet (needs /api/device).");
-      }
+        if (e instanceof ApiError && e.status === 404) gone = true;
+        if (alive) setStatus("The server has no band feed for this trip (it may have restarted).");
+      } finally { inflight = false; }
     }, 400);
     return () => { alive = false; clearInterval(id); };
   }, [trip]);

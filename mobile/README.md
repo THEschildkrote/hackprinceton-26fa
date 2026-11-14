@@ -4,6 +4,24 @@ Expo (SDK 58) + TypeScript app for blind and low-vision travellers. It talks to 
 (`nudge/server.py`) for routes and live guidance, speaks every instruction, plays the haptic cues, and relays
 the live line to the haptic band. All distances are in metres.
 
+## Live mode (the real demo)
+
+The traveller wears the Raspberry Pi collar and carries the iPhone. The phone senses, the Pi guides:
+
+1. Turn on the iPhone hotspot and join the Pi to it. Start the server on the Pi (with the collar attached):
+   `NUDGE_BAND=1 python -m uvicorn nudge.server:app --host 0.0.0.0 --port 8765`.
+2. Open the app (Expo Go), Settings → Connect to Pi: `http://172.20.10.x:8765` (the Pi is usually .2–.14 on an iPhone
+   hotspot), then Save and test connection. Optionally set your step length (walk 10 steps, enter the meters).
+3. Where to → pick a place → Start. Nudge speaks the first instruction from the entrance.
+4. Face that way (it says "You're facing the right way" when you're within ~20°), tap **Calibrate**, and walk.
+
+The phone counts steps from the accelerometer (50 Hz, `src/lib/steps.ts`) and reads the compass with
+`expo-location` `watchHeadingAsync`, sending `POST /api/nav/step {session, steps, heading_deg, step_m}` on every step
+and a heading-only update every second when standing still. The Pi moves you along the map and drives the collar;
+the phone speaks what the Pi says. If the Pi drops out, steps are queued and resent, and the last instruction is
+repeated. Developer settings keep a simulated walk and a dev-only "fake walk" (synthetic accelerometer data through
+the real step detector) for testing without walking.
+
 ## Run
 
 ```bash

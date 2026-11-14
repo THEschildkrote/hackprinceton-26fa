@@ -13,7 +13,11 @@ export interface NavState {
 }
 export interface DeviceInfo { packet: unknown; line: string | null }
 export interface NavReply { events: NavEvent[]; state: NavState; device?: DeviceInfo }
-export interface StartReply extends NavReply { session: string }
+export interface StartReply extends NavReply { session: string; start_heading_deg?: number | null }
+// live mode (phone streams steps + compass to the pi)
+export interface StepReply extends Partial<NavReply> {
+  say?: string[]; position?: unknown; distance_to_next_m?: number | null; bearing_to_next_deg?: number | null; done?: boolean;
+}
 export interface GraphNode { id: string; label: string; x: number; y: number; z: number; floor: string; room: string | null; room_label: string | null; tags: string[] }
 export interface Graph { sid: string; floors: { id: string; label: string }[]; nodes: GraphNode[]; warnings: string[] }
 export interface Pending { name: string; args: Record<string, unknown>; description?: string }
@@ -60,6 +64,18 @@ export class Api {
 
   start(b: { sid: string; to: string; profile: string; x: number; y: number; floor: string; heading?: number | null }) {
     return this.req<StartReply>("POST", "/api/nav/start", b);
+  }
+  // live start: the pi resolves start ("entrance" or a place); x/y/floor are a fallback for older servers
+  startLive(b: { sid: string; to: string; profile: string; start: string; x: number; y: number; floor: string }) {
+    return this.req<StartReply>("POST", "/api/nav/start", b, 30000);  // resolving the entrance can take a while on first use
+  }
+  // compass heading the traveller faces along the first instruction (0 = north, clockwise)
+  calibrate(session: string, heading_deg: number) {
+    return this.req<StepReply>("POST", "/api/nav/calibrate", { session, heading_deg }, 5000);
+  }
+  // new steps since the last call (0 = heading only); short timeout so a dropped wifi packet doesn't stall the walk
+  step(b: { session: string; steps: number; heading_deg: number | null; step_m?: number }) {
+    return this.req<StepReply>("POST", "/api/nav/step", b, 4000);
   }
   update(b: { session: string; x: number; y: number; floor: string; heading?: number | null }) {
     return this.req<NavReply>("POST", "/api/nav/update", b);

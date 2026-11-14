@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Api, ApiError, buildingLabel, entryNode, placeNames, type Building, type Graph } from "../lib/api";
 import { feel, say } from "../lib/voice";
-import type { Settings, Trip } from "../state";
+import { LIVE_SOURCES, type Settings, type Trip } from "../state";
 import { Big, C, Choice, Field, H, P } from "../ui/kit";
 import { TalkBar } from "../ui/TalkBar";
 import { tripFromReply, type VoiceReply } from "../lib/talk";
@@ -74,12 +74,16 @@ export function WhereTo({ settings, setSettings, onStarted }: {
     const n = entryNode(graph);
     if (!n) return report("This building has no scan positions.");
     setBusy(true);
+    const live = LIVE_SOURCES.includes(settings.posSource);
     try {
-      const r = await api.start({ sid, to: goal, profile: PROFILE_API[profile], x: n.x, y: n.y, floor: n.floor });
+      // live: the pi starts the walk at the entrance; the entry pano rides along for servers that don't know `start`
+      const b = { sid, to: goal, profile: PROFILE_API[profile], x: n.x, y: n.y, floor: n.floor };
+      const r = live ? await api.startLive({ ...b, start: "entrance" }) : await api.start(b);
       const lines = r.events.map((e) => e.text).filter(Boolean).join(" ");
-      say(`Starting at the ${n.room_label ?? "entrance"}. ${lines}`, settings.rate);
+      say(live ? `${lines} Face the way I said, then tap Calibrate.` : `Starting at the ${n.room_label ?? "entrance"}. ${lines}`, settings.rate);
       r.events.forEach((e) => feel(e.vibrate, settings.haptics));
-      onStarted({ api, sid, goal, profile: PROFILE_API[profile], session: r.session, state: r.state, start: { x: n.x, y: n.y, floor: n.floor } });
+      onStarted({ api, sid, goal, profile: PROFILE_API[profile], session: r.session, state: r.state,
+        start: { x: n.x, y: n.y, floor: n.floor }, startHeading: r.start_heading_deg ?? null });
     } catch (e) {
       report(e instanceof ApiError ? `Couldn't start: ${e.message}` : "Couldn't start.");
     } finally { setBusy(false); }
