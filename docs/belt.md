@@ -13,7 +13,7 @@ It is separate from the collar in [band-pi.md](band-pi.md). `nudge/band.py` driv
 
 ## The demo setup: our phone app tracks, our server taps
 
-For the demo the Nudge iPhone app is the only source of position. It posts steps and compass to our
+For the demo the Isaac iPhone app is the only source of position. It posts steps and compass to our
 server, our tracker keeps the wearer on the route, and our server drives the belt's servos itself with the
 same cue grammar as the collar (`nudge/band.py`, `PcaBand`). The belt's own runtime is not used, so stop it
 first: it owns the I2C bus.

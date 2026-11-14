@@ -1,6 +1,6 @@
 # Architecture
 
-Nudge has three layers. Only the first and third use a language model, and neither runs inside the walk.
+Isaac has three layers. Only the first and third use a language model, and neither runs inside the walk.
 
 1. **Offline dossier.** A Deep Agent surveys one building and writes `annotations.json`: hazards, landmarks and tags.
 2. **Live navigation.** A deterministic walk graph, A*, maneuvers and device packets. No model in the loop.

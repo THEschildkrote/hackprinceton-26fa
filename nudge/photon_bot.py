@@ -43,7 +43,7 @@ def _the(name):
         return name
     return name if name.lower().startswith("the ") else f"the {name}"
 
-HELP = ("I'm Nudge. Text me where you're going, like: take me to the kitchen at synthetic, "
+HELP = ("I'm Isaac. Text me where you're going, like: take me to the kitchen at synthetic, "
         "or ask: where can I get water? "
         "Say wheelchair or blind to set how you travel. While walking, tell me what's wrong, "
         "like the elevator is out, and I'll find another way. Say next to repeat the step.")
@@ -284,7 +284,7 @@ FOLLOW = re.compile(r"^(?:follow|pair|link|connect)\s*(?:with|to)?\s*([\d\s-]{6,
 WHERE = re.compile(r"^(?:where(?:'s| is| are)\b|status\b|eta\b|how far|how long|is (?:everything|all|she|he|they)\b"
                    r"|are (?:they|you)\b|last update|how(?:'s| is| are) (?:she|he|they|it going)|any news|update)", re.I)
 URGENT = {"help", "unmapped", "stuck"}
-CARETAKER_HELP = ("I'm Nudge. I keep you posted while someone you care for walks with Nudge's voice guide. "
+CARETAKER_HELP = ("I'm Isaac. I keep you posted while someone you care for walks with Isaac's voice guide. "
                   "Text follow plus the 6-digit code from their app to start. Then ask: where are they? eta? "
                   "is everything ok? Text notify all for room-by-room updates, notify important to go back. "
                   "You can set pronouns with: pronouns she, he or they.")
@@ -349,7 +349,7 @@ def status_text(st, v, now_ts=None):
     if state == "walking" or state in ("off_route", "rerouting"):
         rem = st.get("remaining_m")
         left = f", about {meters(rem)} to go" + (f" (about {st['eta_min']} min)" if st.get("eta_min") else "") if rem is not None else ""
-        extra = " Nudge just rerouted them." if state != "walking" else ""
+        extra = " Isaac just rerouted them." if state != "walking" else ""
         return f"{v.Who} is walking to {_the(goal)}" + (f", now {where}" if where else "") + f"{left}. Last update {ago}.{extra}"
     if state == "arrived":
         if (st.get("place") or "").lower() == (goal or "").lower():
@@ -357,7 +357,7 @@ def status_text(st, v, now_ts=None):
         return f"{v.Who} arrived at {_the(goal)}" + (f", {where}" if where else "") + f". Last update {ago}."
     if state == "unmapped":
         return f"{v.Who} is outside the mapped area" + (f", last known {where}" if where else "") + \
-            f". Nudge is guiding {v.them} back. Last update {ago}."
+            f". Isaac is guiding {v.them} back. Last update {ago}."
     if state == "help":
         return f"{v.Who} asked for help" + (f" {where}" if where else "") + f". Last update {ago}."
     return f"{v.Who} isn't on a trip right now" + (f"; last known {where}" if where else "") + f". Last update {ago}."
@@ -393,7 +393,7 @@ class CaretakerBrain:
         if m:
             tid = hub.pair(handle, m.group(1))
             if not tid:
-                return ["That code didn't match anyone. It's the 6-digit code in the traveller's Nudge app."]
+                return ["That code didn't match anyone. It's the 6-digit code in the traveller's Isaac app."]
             v = self.voice(handle)
             return [f"You're now following {v.who}. I'll text you when {v.they} start a trip, change floors, "
                     f"arrive, or need help. Ask where are they? any time."]
@@ -486,7 +486,7 @@ class Notifier:
             if "unmapped" in flags:
                 return None
             flags.add("unmapped")
-            back = f"Nudge is guiding {v.them} back." if e.get("can_return") else f"Nudge asked {v.them} to stop and wait."
+            back = f"Isaac is guiding {v.them} back." if e.get("can_return") else f"Isaac asked {v.them} to stop and wait."
             return True, f"Heads up: {v.who} walked outside the mapped area" + (f" near {where[3:] if where.startswith('in ') else where}" if where else "") + f". {back}"
         if typ == "remapped":
             flags.discard("unmapped")
@@ -497,7 +497,7 @@ class Notifier:
                            else f"{v.Who} approved a new route.")
         if typ == "reroute":
             if e.get("reason"):  # a problem they reported, handled without the agent
-                return False, f"{v.Who} reported: {e['reason'].strip().rstrip('.').lower()}. Nudge rerouted around it."
+                return False, f"{v.Who} reported: {e['reason'].strip().rstrip('.').lower()}. Isaac rerouted around it."
             if "off the route" in (e.get("text") or "").lower():
                 ts = e.get("ts") or hub.now()
                 hits = [t for t in self.offroute.get(tid, []) if ts - t < 120] + [ts]
@@ -505,7 +505,7 @@ class Notifier:
                 if len(hits) >= 3 and "offroute" not in flags:
                     flags.add("offroute")
                     return False, f"{v.Who} has drifted off route a few times" + (f" {where}" if where else "") + \
-                        ". Nudge keeps rerouting."
+                        ". Isaac keeps rerouting."
             return None
         if e.get("floor_changed") and e.get("floor"):
             return False, f"{v.Who} is now on {e['floor']}."

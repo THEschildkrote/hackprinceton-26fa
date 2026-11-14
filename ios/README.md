@@ -1,11 +1,11 @@
-# Nudge for iOS
+# Isaac for iOS
 
 Two SwiftUI apps in one Xcode project:
 
-- **Nudge**: the traveller's app. Worn on the back, voice only.
-- **Nudge Care**: the caretaker's app. Live status, map, help alerts, send a trip.
+- **Isaac** (target `Nudge`): the traveller's app. Worn on the back, voice only.
+- **Isaac Care** (target `NudgeCare`): the caretaker's app. Live status, map, help alerts, send a trip.
 
-Both talk to the Nudge server on the Raspberry Pi over HTTP.
+Both talk to the Isaac server on the Raspberry Pi over HTTP.
 
 ## Build
 
@@ -28,13 +28,13 @@ Or open the checked-in `Nudge.xcodeproj` directly.
 4. Run. On first launch, trust the developer under Settings > General > VPN & Device Management.
 5. Allow the permissions when asked.
 
-Tests: ⌘U on the Nudge scheme, on a simulator.
+Tests: ⌘U on the `Nudge` scheme, on a simulator.
 
 ## Use
 
 1. The Pi, the traveller's phone and the caretaker's phone share the traveller's hotspot. Start the server on the Pi (see `docs/live-demo.md`).
-2. **Nudge:** enter the Pi address, choose how the phone is worn, set step length, and note the code. Long-press the screen for 2 s to reopen setup.
-3. **Nudge Care:** set the same Pi address in Settings, enter the code, then Send Trip.
+2. **Isaac:** enter the Pi address, choose how the phone is worn, set step length, and note the code. Long-press the screen for 2 s to reopen setup.
+3. **Isaac Care:** set the same Pi address in Settings, enter the code, then Send Trip.
 
 ## Check before the demo
 

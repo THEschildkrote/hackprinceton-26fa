@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nudge Care</string>
+	<string>Isaac Care</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -33,7 +33,7 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Nudge Care connects to the Nudge server on the local network to follow your traveller live.</string>
+	<string>Isaac Care connects to the Isaac server on the local network to follow your traveller live.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

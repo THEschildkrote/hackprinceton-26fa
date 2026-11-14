@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nudge</title>
+<title>Isaac</title>
 <style>
   /* the ios theme (ios/Shared/Format.swift). measured contrast: white on blue 9.9, navy on yellow 10.5,
      white on red 5.6, navy on white 15.4, secondary on white 6.8. yellow is never text on light. */
@@ -199,7 +199,7 @@
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
 <header class="appbar">
-  <span class="title">Nudge</span>
+  <span class="title">Isaac</span>
   <select id="sess" aria-label="Session"></select>
   <label class="check soft"><input type="checkbox" id="follow" checked> Follow</label>
   <span class="spacer"></span>
@@ -1008,7 +1008,7 @@ function handle(ev) {
       if (ev.kind === "reroute") snapshot();
       break;
     case "voice": if (!mine) break;
-      hot("voice"); put("v-voice", esc(ev.who === "traveller" ? `“${ev.text}”` : ev.text)); put("d-voice", ev.who === "traveller" ? "Traveller" : "Nudge");
+      hot("voice"); put("v-voice", esc(ev.who === "traveller" ? `“${ev.text}”` : ev.text)); put("d-voice", ev.who === "traveller" ? "Traveller" : "Isaac");
       break;
     case "calibrate": if (!mine) break;
       hot("phone"); put("d-phone", `Facing ${Math.round(ev.heading_deg)}°`);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nudge Voice</title>
+<title>Isaac Voice</title>
 <style>
   :root { --bg:#0b0d10; --fg:#f4f6f8; --muted:#a9b2bc; --accent:#ffd23f; --talk:#1f6feb; --live:#e5534b; --panel:#161b22; --line:#30363d; }
   :root[data-theme="light"] { --bg:#ffffff; --fg:#0b0d10; --muted:#4a525c; --accent:#7a5c00; --talk:#0b57d0; --live:#b42318; --panel:#f3f5f7; --line:#d0d7de; }
@@ -40,7 +40,7 @@
 </head>
 <body>
 <main>
-  <h1>Nudge</h1>
+  <h1>Isaac</h1>
   <section id="bldg" aria-label="Building">
     <div class="row" style="justify-content:space-between">
       <div><div class="muted">Building</div><div id="bldgName" aria-live="polite">Loading…</div></div>
@@ -142,7 +142,7 @@ function speak(text) {
   const u = new SpeechSynthesisUtterance(text); u.rate = 1.0; speechSynthesis.speak(u);
 }
 function log(text, me) {
-  const li = document.createElement("li"); li.textContent = (me ? "You: " : "Nudge: ") + text;
+  const li = document.createElement("li"); li.textContent = (me ? "You: " : "Isaac: ") + text;
   if (me) li.className = "me"; $("log").prepend(li);
 }
 function show(say) { if (!say) return; $("reply").textContent = say; log(say, false); speak(say); }
@@ -159,7 +159,7 @@ async function send(text) {
     show(j.say);
     if (j.state && j.state.path) path = j.state.path;
     if (j.state && j.state.next && j.state.next.cue) vibrate(j.state.next.cue);
-  } catch (e) { show("I can't reach the Nudge server."); }
+  } catch (e) { show("I can't reach the Isaac server."); }
 }
 
 // hold to talk

@@ -36,7 +36,7 @@ def test_find_building():
 
 def test_help_and_profile():
     b = brain()
-    assert "Nudge" in b.handle(U, "hi")[0]
+    assert "Isaac" in b.handle(U, "hi")[0]
     assert "wheelchair" in b.handle(U, "I use a wheelchair")[0]
     assert b.profiles[U] == "wheelchair"
 

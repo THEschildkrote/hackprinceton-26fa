@@ -1,7 +1,7 @@
 # Live demo: a real person, the Pi collar, the phone
 
-A blind traveller wears the servo collar (see [band-pi.md](band-pi.md)) and carries an iPhone running the Nudge app.
-The phone counts steps and reads its compass; the Pi runs Nudge, keeps the traveller on the building's walk
+A blind traveller wears the servo collar (see [band-pi.md](band-pi.md)) and carries an iPhone running the Isaac app.
+The phone counts steps and reads its compass; the Pi runs Isaac, keeps the traveller on the building's walk
 graph, and taps the left or right shoulder in real time. The phone speaks distances and turns.
 
 ## 1. Network
@@ -23,7 +23,7 @@ reason in `error` if the servos couldn't be opened). Use `NUDGE_BAND=dry` on a l
 
 ## 3. On the phone
 
-In the Nudge app, set the server address to `http://<pi-ip>:8765`, pick the building and the destination.
+In the Isaac app, set the server address to `http://<pi-ip>:8765`, pick the building and the destination.
 
 ## 4. At the entrance
 
@@ -46,9 +46,9 @@ In the Nudge app, set the server address to `http://<pi-ip>:8765`, pick the buil
 - Steps move the traveller **along the route** (default 0.7 m a step), not in open space, so step-count error
   stays along the corridor instead of putting them inside a wall.
 - The compass only matters when it disagrees with the route for 3 steps or more:
-  - 50 to 135 degrees off: they took another way. Nudge follows the walk-graph edge that matches their heading,
+  - 50 to 135 degrees off: they took another way. Isaac follows the walk-graph edge that matches their heading,
     the navigator notices they've left the route and plans a new one from there.
-  - more than 135 degrees off: they turned around; Nudge walks them back along the route.
+  - more than 135 degrees off: they turned around; Isaac walks them back along the route.
   - a single odd reading is ignored.
 - **Stairs:** 16 steps on a staircase moves them to the next floor. **Elevator:** after 10 s standing in it, the
   first step out puts them on the new floor. The app can also send `floor_confirm: true`.

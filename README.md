@@ -1,4 +1,4 @@
-# Nudge
+# Isaac
 
 Indoor wayfinding for blind and low-vision visitors, built on CoStar Group's data for the same buildings: Matterport 3D twins, Vexcel aerial imagery and CoStar building records (Houston and Los Angeles).
 
@@ -82,7 +82,7 @@ Both use human-in-the-loop `interrupt_on`, so nothing changes until the travelle
 |---|---|
 | `nudge/` | The Python package: data clients, walk graph, router, navigator, position tracking, band, server, voice, hub. |
 | `nudge/agents/` | The three Deep Agents (dossier, exception, explorer), their tools, prompts, skills and the model picker. |
-| `ios/` | Two native SwiftUI apps in one Xcode project: **Nudge** (the traveller's, voice only, worn on the back) and **Nudge Care** (the caretaker's). See [ios/README.md](ios/README.md). |
+| `ios/` | Two native SwiftUI apps in one Xcode project: **Isaac** (the traveller's, voice only, worn on the back) and **Isaac Care** (the caretaker's). See [ios/README.md](ios/README.md). |
 | `mobile/` | An earlier Expo (React Native) traveller app that talks to the same server. |
 | `web/` | Browser pages served by the server (below). |
 | `firmware/` | The earlier ESP32 vibration-motor band. |
@@ -94,8 +94,8 @@ Both use human-in-the-loop `interrupt_on`, so nothing changes until the travelle
 
 | Surface | For | Notes |
 |---|---|---|
-| **Nudge** (iOS) | Traveller | Waits for a trip, calibrates with a spoken countdown, streams steps and compass to the Pi, speaks every instruction, and takes voice commands ("where am I", "repeat", "how far", "I need help", "stop", "yes" / "no"). |
-| **Nudge Care** (iOS) | Caretaker | Pair with the traveller's 6-digit code, send a trip, watch status, a live floor-plan map and a timeline, get a help alert. |
+| **Isaac** (iOS) | Traveller | Waits for a trip, calibrates with a spoken countdown, streams steps and compass to the Pi, speaks every instruction, and takes voice commands ("where am I", "repeat", "how far", "I need help", "stop", "yes" / "no"). |
+| **Isaac Care** (iOS) | Caretaker | Pair with the traveller's 6-digit code, send a trip, watch status, a live floor-plan map and a timeline, get a help alert. |
 | **iMessage via Photon** (`nudge/photon_bot.py`) | Caretaker | `follow 123456` pairs; then calm status messages per trip and "where are they?" at any time, answered from live state with no model call. A "travel mode" keeps the older traveller commands for testing. |
 | **Voice API** (`nudge/voice.py`) | Any voice front end | `POST /api/voice/turn` takes one utterance and returns one short spoken reply. Place lookups, "where am I" and "how far" need no model; anything else during a trip goes to the exception agent. There is also an ElevenLabs tool-definition endpoint. |
 | `web/debug.html` | Developers | Floor plan, walk graph, route and a simulated walk with speech. Drag the walker off route to see a reroute, block an edge, and tick **collar** to drive the Pi band from the simulated walk. |
@@ -103,11 +103,11 @@ Both use human-in-the-loop `interrupt_on`, so nothing changes until the travelle
 
 ### Door to door
 
-Nudge guides from the street to the destination. Outside, the traveller follows a street-level graph where phone GPS works (OpenStreetMap topology, with Vexcel measuring slopes, curb steps and obstacles). At the entrance, guidance hands over to the Matterport scan. See [docs/outdoor.md](docs/outdoor.md). `nudge/handoff.py` and `nudge/georef.py` do the join.
+Isaac guides from the street to the destination. Outside, the traveller follows a street-level graph where phone GPS works (OpenStreetMap topology, with Vexcel measuring slopes, curb steps and obstacles). At the entrance, guidance hands over to the Matterport scan. See [docs/outdoor.md](docs/outdoor.md). `nudge/handoff.py` and `nudge/georef.py` do the join.
 
 ## How the data layers are used
 
-| Layer | What Nudge takes from it |
+| Layer | What Isaac takes from it |
 |---|---|
 | Matterport panoramas | `look()` renders a perspective view from any scan position in any model-frame direction. Subagents use it to confirm hazards and to describe floor material, handrails and wall ends. |
 | Matterport wall graph + rooms | The walkable graph: line of sight between panos, doors and openings, room labels for destinations and for "into the lobby". |

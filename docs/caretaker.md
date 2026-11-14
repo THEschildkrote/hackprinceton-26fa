@@ -1,6 +1,6 @@
 # Caretakers over iMessage
 
-The traveller talks to Nudge by voice. The person who worries about them, a parent, partner or support worker, follows along by text through Photon iMessage. They get a few calm messages per trip and can ask for status at any time. Status questions are answered from the hub's live state, with no model call.
+The traveller talks to Isaac by voice. The person who worries about them, a parent, partner or support worker, follows along by text through Photon iMessage. They get a few calm messages per trip and can ask for status at any time. Status questions are answered from the hub's live state, with no model call.
 
 ## Setup
 
@@ -17,10 +17,10 @@ The traveller talks to Nudge by voice. The person who worries about them, a pare
 | floor change | "Sam is now on Floor 2." |
 | arrival | "Sam arrived at the Conference Room." |
 | reported problem, then an approved reroute | "Sam reported: the elevator is out. They approved a new route." |
-| off the map (immediate, once) | "Heads up: your traveller walked outside the mapped area near the lobby on Floor 1. Nudge is guiding them back." |
+| off the map (immediate, once) | "Heads up: your traveller walked outside the mapped area near the lobby on Floor 1. Isaac is guiding them back." |
 | asks for help (immediate) | "Sam asked for help in the conference room on Floor 2: "I dropped my cane"" |
 | no progress for 3 minutes (immediate, once) | "Sam hasn't moved for a few minutes in the lobby on Floor 1. You may want to check in." |
-| drifts off route 3 times in 2 minutes | "Sam has drifted off route a few times in the lobby. Nudge keeps rerouting." |
+| drifts off route 3 times in 2 minutes | "Sam has drifted off route a few times in the lobby. Isaac keeps rerouting." |
 
 Rules:
 - Turn-by-turn steps are never sent.

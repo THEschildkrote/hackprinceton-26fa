@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nudge Tour</title>
+<title>Isaac Tour</title>
 <style>
   :root {
     --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dddcd6;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <header>
-  <h1>Nudge tour</h1>
+  <h1>Isaac tour</h1>
   <span class="sub" id="mode">loading…</span>
   <a href="/debug.html">debug view</a>
 </header>
@@ -138,7 +138,7 @@
       <div class="row" style="margin-top:8px">
         <div style="flex:1 1 200px"><label for="exctext" class="sr">Describe the problem</label>
           <input id="exctext" type="text" placeholder="e.g. the hallway is blocked by a cart" style="width:100%"></div>
-        <button id="excsend" type="button">Tell Nudge</button>
+        <button id="excsend" type="button">Tell Isaac</button>
       </div>
       <div class="meta" id="excmode" style="margin-top:6px"></div>
     </div>
@@ -486,7 +486,7 @@ async function exception(text) {
     showPending(r.pending);
   } catch (e) {
     const m = e.name === "AbortError" ? "That's taking too long. Stay where you are; you can ask someone nearby, or try again."
-      : "I couldn't reach Nudge. Stay where you are and ask someone nearby.";
+      : "I couldn't reach Isaac. Stay where you are and ask someone nearby.";
     $("excmode").textContent = m; say(m, "hazard");
   } finally {
     clearInterval(tick); clearTimeout(timer);

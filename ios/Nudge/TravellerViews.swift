@@ -86,7 +86,7 @@ struct MainView: View {
 private struct Wordmark: View {
     var body: some View {
         HStack(spacing: 10) {
-            Text("Nudge").font(.title3.weight(.heavy)).foregroundStyle(Theme.yellow)
+            Text("Isaac").font(.title3.weight(.heavy)).foregroundStyle(Theme.yellow)
             HStack(spacing: 4) {
                 Capsule().fill(Theme.red)
                 Capsule().fill(.white)
@@ -214,7 +214,7 @@ struct SetupView: View {
                     TextField("Your first name (optional)", text: $s.name,
                               prompt: Text("Your first name (optional)").foregroundStyle(.white.opacity(0.6)))
                     if let code = s.code {
-                        Text("Your caretaker enters code \(code) in Nudge Care, or texts follow \(code) to the Nudge iMessage line.")
+                        Text("Your caretaker enters code \(code) in Isaac Care, or texts follow \(code) to the Isaac iMessage line.")
                             .font(.headline)
                     } else {
                         Text("A code appears here once the Pi is reachable.")
@@ -234,7 +234,7 @@ struct SetupView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.navy)
             .listRowSeparatorTint(.white.opacity(0.16))
-            .navigationTitle("Nudge setup")
+            .navigationTitle("Isaac setup")
             .navigationBarTitleDisplayMode(.inline)
             .brandBar()
         }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nudge Companion</title>
+<title>Isaac Companion</title>
 <style>
   :root {
     --bg: #000; --fg: #fff; --accent: #ffd400; --muted: #bdbdbd; --panel: #141414; --line: #3a3a3a;
@@ -47,7 +47,7 @@
 </head>
 <body>
 <main>
-  <h1>Nudge companion</h1>
+  <h1>Isaac companion</h1>
   <div class="say" id="say" aria-live="assertive" aria-atomic="true">Not started.</div>
   <p class="status" id="status" aria-live="polite">Band: <b class="bad">not connected</b> · Server: <b class="bad">idle</b></p>
   <div id="btwarn" class="warn" hidden></div>
@@ -57,7 +57,7 @@
     <button id="lost" aria-label="I'm lost. Find me a new route">I'm lost</button>
   </div>
   <div class="row">
-    <button id="connect" aria-label="Connect the Nudge band over Bluetooth">Connect band</button>
+    <button id="connect" aria-label="Connect the Isaac band over Bluetooth">Connect band</button>
     <button id="sim" aria-pressed="false" aria-label="Simulate the band on screen">Simulate band</button>
   </div>
 
@@ -284,7 +284,7 @@ async function poll() {
 }
 function start() {
   stop();
-  if (!$("session").value.trim()) { say("No trip yet. Start one in the Nudge app or voice page, then tap Follow my latest trip.", true); return; }
+  if (!$("session").value.trim()) { say("No trip yet. Start one in the Isaac app or voice page, then tap Follow my latest trip.", true); return; }
   try { localStorage.setItem("nudge.server", $("server").value); localStorage.setItem("nudge.session", $("session").value); } catch (e) {}
   st.seq = -1; st.reroutes = -1; st.stubI = 0; st.said = "";
   poll(); st.timer = setInterval(poll, isStub() ? 900 : POLL_MS); status();
@@ -316,13 +316,13 @@ async function follow(quiet) {
   try {
     const r = await fetch(`${base()}/api/traveller/${encodeURIComponent(tid)}/status`);
     const j = r.ok ? await r.json() : null;
-    if (!j || !j.session) { if (!quiet) $("followmsg").textContent = "No trip yet. Start one in the Nudge app or voice page; this page picks it up."; return; }
+    if (!j || !j.session) { if (!quiet) $("followmsg").textContent = "No trip yet. Start one in the Isaac app or voice page; this page picks it up."; return; }
     if (j.session !== $("session").value.trim() || !st.timer) {
       $("session").value = j.session;
       $("followmsg").textContent = j.goal ? `Following the trip to ${j.goal}.` : "Following your trip.";
       start();
     }
-  } catch (e) { if (!quiet) $("followmsg").textContent = "Can't reach the Nudge server."; }
+  } catch (e) { if (!quiet) $("followmsg").textContent = "Can't reach the Isaac server."; }
 }
 function startFollowing() { follow(false); clearInterval(followTimer); followTimer = setInterval(() => follow(true), 3000); }
 

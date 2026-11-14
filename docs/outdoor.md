@@ -1,6 +1,6 @@
 # Outdoor leg: Vexcel (or open data) outside, Matterport inside
 
-Nudge guides door to door. Outside, the visitor walks a street-level graph in local east/north metres, where phone GPS works. At the building entrance, guidance hands over to the Matterport scan in the model frame. All distances, spoken and on the device, are in metres.
+Isaac guides door to door. Outside, the visitor walks a street-level graph in local east/north metres, where phone GPS works. At the building entrance, guidance hands over to the Matterport scan in the model frame. All distances, spoken and on the device, are in metres.
 
 ```
 GPS (lat, lon) ──► outdoor graph (ENU m) ──► entrance portal ──► indoor graph (model frame m) ──► destination

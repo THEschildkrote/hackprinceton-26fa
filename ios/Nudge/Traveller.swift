@@ -55,7 +55,7 @@ final class Traveller {
            let r = try? await settings.api.register(traveller: settings.traveller, name: settings.name) {
             settings.code = r.code
         }
-        say("Nudge is ready. Waiting for a trip.")
+        say("Isaac is ready. Waiting for a trip.")
         startPolling()
     }
 

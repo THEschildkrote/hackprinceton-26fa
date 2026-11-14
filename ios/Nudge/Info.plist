@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nudge</string>
+	<string>Isaac</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -38,15 +38,15 @@
 		<string>audio</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
-	<string>Nudge counts your steps and works out which way you're walking, so it can guide you.</string>
+	<string>Isaac counts your steps and works out which way you're walking, so it can guide you.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Nudge uses your location only so the compass can point to true north.</string>
+	<string>Isaac uses your location only so the compass can point to true north.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Say "where am I", "repeat", or "I need help" while you walk. Recognition stays on your phone when possible.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Nudge listens for your spoken commands while you walk.</string>
+	<string>Isaac listens for your spoken commands while you walk.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Nudge talks to the Raspberry Pi you're wearing over the hotspot.</string>
+	<string>Isaac talks to the Raspberry Pi you're wearing over the hotspot.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -1,4 +1,4 @@
-# Talking to Nudge
+# Talking to Isaac
 
 The traveller talks; the caretaker gets status over iMessage (see the caretaker channel). Every voice front end
 uses one endpoint, so the browser, the app and a phone call share the same brain:
@@ -13,7 +13,7 @@ returns `{say, session, pending, choice, trip, state, device}`. Speak `say`. Dis
 
 Handled without any AI model, instantly:
 
-| Say | Nudge does |
+| Say | Isaac does |
 |---|---|
 | "take me to the kitchen", "how do I get to the restroom", "where is the water" | resolves the place in the building's catalog, plans the route, starts guidance |
 | (when two places match) "floor 2", "the first one" | picks that one |
@@ -48,7 +48,7 @@ Settings shows the caretaker code. The app registers the traveller on first laun
 
 ## 3. A phone call
 
-Call a number and talk to Nudge, no app needed. This needs two accounts:
+Call a number and talk to Isaac, no app needed. This needs two accounts:
 
 - **Photon** voice on a **dedicated** number (an SMS number or a dedicated iMessage/WhatsApp number). Shared iMessage
   lines can't take calls. See https://photon.codes/docs/beta/get-started/voice.md.

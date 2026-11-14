@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nudge</title>
+<title>Isaac</title>
 <style>
   :root { --bg: #0b0d10; --panel: #13171c; --ink: #f2f4f7; --muted: #a2abb5; --line: #2a3139; --accent: #59b0ff;
           --maya: #ffd479; --warn: #ff6b6b; --ok: #5ad19a; }
@@ -60,9 +60,9 @@
 </head>
 <body>
 <header class="top">
-  <h1>Nudge: indoor guidance for blind travellers</h1>
+  <h1>Isaac: indoor guidance for blind travellers</h1>
   <p class="mission">Maya is blind. Her appointment is at DJF Insurance, inside a 1917 building she has never visited.
-    Nudge guides her by voice from the sidewalk to the right room, and keeps her brother Sam calmly in the loop.</p>
+    Isaac guides her by voice from the sidewalk to the right room, and keeps her brother Sam calmly in the loop.</p>
 </header>
 
 <main class="grid">
@@ -75,7 +75,7 @@
       <button id="mute" class="ghost" aria-pressed="false">Mute voice</button>
     </div>
     <label class="opt" style="margin-top:10px"><input type="checkbox" id="live"> Ask the live AI agent about the locked door (can take a minute; falls back after 20 seconds)</label>
-    <div class="log" id="log" role="log" aria-live="polite" aria-label="Conversation between Maya and Nudge"></div>
+    <div class="log" id="log" role="log" aria-live="polite" aria-label="Conversation between Maya and Isaac"></div>
     <div class="band" aria-label="Haptic band preview">
       <span class="motor" id="mL" aria-hidden="true"></span><span class="motor" id="mR" aria-hidden="true"></span>
       <span id="bandText">Band: idle</span>
@@ -96,10 +96,10 @@
 
   <section class="panel" aria-labelledby="bts-h">
     <h2 id="bts-h">Behind the scenes</h2>
-    <p class="lede">What Nudge learned about this building before Maya arrived, from CoStar, Vexcel and Matterport.</p>
+    <p class="lede">What Isaac learned about this building before Maya arrived, from CoStar, Vexcel and Matterport.</p>
     <ul class="facts" id="facts"><li>Loading…</li></ul>
     <div id="facadeBox"></div>
-    <div><b style="font-size:13px;color:var(--muted)">Places Nudge can take her</b><div class="chips" id="chips"></div></div>
+    <div><b style="font-size:13px;color:var(--muted)">Places Isaac can take her</b><div class="chips" id="chips"></div></div>
     <p class="links">
       <a href="tour.html?sid=MgGNVWsyXtH">Walk the 3D tour</a> ·
       <a href="dossier.html?sid=MgGNVWsyXtH">Watch the dossier agents work</a> ·
@@ -140,7 +140,7 @@
     d.className = `line ${who} ${cls}`;
     if (who !== "beat") {
       const w = document.createElement("span");
-      w.className = "who"; w.textContent = who === "maya" ? "Maya" : "Nudge";
+      w.className = "who"; w.textContent = who === "maya" ? "Maya" : "Isaac";
       d.appendChild(w);
     }
     d.appendChild(document.createTextNode(text));
@@ -248,7 +248,7 @@
       $("sam").src = $("sam").src;
       if (!info) await loadInfo();
       beat("Before she leaves");
-      await say("Nudge, what should I know about my appointment at DJF Insurance?", "maya");
+      await say("Isaac, what should I know about my appointment at DJF Insurance?", "maya");
       const b = await api(`/api/briefing/${SID}?goal=${encodeURIComponent(info.goal)}&lat=${info.start.lat}&lon=${info.start.lon}`);
       for (const s of b.sentences) await say(s);
       beat("On the sidewalk");

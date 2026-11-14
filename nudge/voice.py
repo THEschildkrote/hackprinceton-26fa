@@ -681,7 +681,7 @@ def elevenlabs_tool_defs(root):
         "name": "nudge_turn",
         "description": ("Send everything the blind caller says about where they want to go, where they are, "
                         "problems on the way (elevator out, door locked, lost), yes/no answers and requests for help "
-                        "to the Nudge wayfinding service. Read the 'say' field of the response to the caller "
+                        "to the Isaac wayfinding service. Read the 'say' field of the response to the caller "
                         "word for word. Never invent directions yourself."),
         "api_schema": {
             "url": f"{root}/api/voice/turn",
