@@ -76,6 +76,41 @@ def _new_code():
             return c
 
 
+def set_trip(traveller_id, trip):
+    """a caretaker asks for a trip; the traveller's phone (on their back) picks it up and starts."""
+    with _lock:
+        t = _traveller(traveller_id, create=False)
+        if t is None:
+            return None
+        t["trip"] = {**trip, "ts": now()}
+        _save()
+        return t["trip"]
+
+
+def get_trip(traveller_id):
+    with _lock:
+        t = _traveller(traveller_id, create=False)
+        return (t or {}).get("trip")
+
+
+def ack_trip(traveller_id):
+    with _lock:
+        t = _traveller(traveller_id, create=False)
+        if t is None:
+            return False
+        t["trip"] = None
+        _save()
+        return True
+
+
+def traveller_for_code(code):
+    with _lock:
+        for tid, t in _load()["travellers"].items():
+            if t.get("code") == str(code).strip():
+                return tid, t.get("name")
+    return None, None
+
+
 def register_traveller(traveller_id, name=None):
     with _lock:
         t = _traveller(traveller_id)

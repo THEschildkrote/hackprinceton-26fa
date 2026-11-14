@@ -1059,7 +1059,64 @@ def traveller_status(tid: str):
     st = hub.status(tid)
     if st is None:
         raise HTTPException(404, "unknown traveller")
+    # live position and route for the caretaker's map
+    nav = _sessions.get(st.get("session") or "")
+    st["position"], st["route"] = None, None
+    if nav is not None:
+        pos = getattr(nav, "pos", None)
+        if pos:
+            st["position"] = {"x": pos[0], "y": pos[1], "floor": pos[2], "sid": st.get("sid")}
+        r = getattr(nav, "route", None)
+        if r is not None:
+            st["route"] = {"points": r.to_dict(nav.g)["points"]}
     return st
+
+
+class TripReq(BaseModel):
+    sid: str
+    to: str
+    profile: str = "blind"
+
+
+@app.post("/api/traveller/{tid}/trip")
+def traveller_trip_set(tid: str, req: TripReq):
+    """the caretaker picks the destination; the traveller's phone starts the trip on its own."""
+    from . import hub
+    trip = hub.set_trip(tid, req.model_dump())
+    if trip is None:
+        raise HTTPException(404, "unknown traveller")
+    hub.publish(tid, {"type": "trip_requested", "text": f"Trip to {req.to} sent.", "goal": req.to})
+    return {"ok": True, "trip": trip}
+
+
+@app.get("/api/traveller/{tid}/trip")
+def traveller_trip_get(tid: str):
+    from . import hub
+    if hub.status(tid) is None:
+        raise HTTPException(404, "unknown traveller")
+    return {"trip": hub.get_trip(tid)}
+
+
+@app.post("/api/traveller/{tid}/trip/ack")
+def traveller_trip_ack(tid: str):
+    from . import hub
+    if not hub.ack_trip(tid):
+        raise HTTPException(404, "unknown traveller")
+    return {"ok": True}
+
+
+class PairReq(BaseModel):
+    code: str
+
+
+@app.post("/api/caretaker/pair")
+def caretaker_pair(req: PairReq):
+    """the caretaker app pairs with the code shown on the traveller's phone."""
+    from . import hub
+    tid, name = hub.traveller_for_code(req.code)
+    if tid is None:
+        raise HTTPException(404, "no traveller with that code")
+    return {"traveller_id": tid, "name": name}
 
 
 @app.post("/api/traveller/{tid}/help")
