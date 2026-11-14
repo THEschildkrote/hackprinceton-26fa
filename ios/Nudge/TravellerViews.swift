@@ -175,22 +175,28 @@ struct SetupView: View {
                     Button(working ? "Testing…" : "Test connection") { Task { await test() } }
                         .frame(minHeight: 44)
                     if !testResult.isEmpty { Text(testResult).accessibilityAddTraits(.updatesFrequently) }
-                } header: { Text("Raspberry Pi") } footer: {
+                } header: { Text("Raspberry Pi").foregroundStyle(Theme.sky) } footer: {
                     Text("On iPhone hotspot the Pi is usually 172.20.10.2–14, port 8765.")
+                        .foregroundStyle(.white.opacity(0.7))
                 }
+                .listRowBackground(Theme.row)
 
-                Section("How the phone is worn") {
+                Section {
                     Picker("Mount", selection: $s.mountRaw) {
                         ForEach(Mount.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                     .pickerStyle(.inline)
                     Text("Wear it upright, top edge up, in a back pocket or a backpack pouch.").font(.footnote)
-                }
+                } header: { Text("How the phone is worn").foregroundStyle(Theme.sky) }
+                .listRowBackground(Theme.row)
 
                 Section {
                     Stepper("Step length \(String(format: "%.2f", s.stepM)) m", value: $s.stepM, in: 0.3...1.2, step: 0.05)
                     HStack {
-                        TextField("Metres for 10 steps", text: $metres).keyboardType(.decimalPad)
+                        // the stock placeholder grey is 2.2:1 on this blue; this is 5.3:1
+                        TextField("Metres for 10 steps", text: $metres,
+                                  prompt: Text("Metres for 10 steps").foregroundStyle(.white.opacity(0.6)))
+                            .keyboardType(.decimalPad)
                         Button("Set") {
                             if let v = Double(metres.replacingOccurrences(of: ",", with: ".")), let m = stepLength(metres: v) {
                                 s.stepM = m
@@ -198,19 +204,23 @@ struct SetupView: View {
                             }
                         }
                     }
-                } header: { Text("Walking") } footer: {
+                } header: { Text("Walking").foregroundStyle(Theme.sky) } footer: {
                     Text("Walk 10 normal steps, measure how far you went, and enter it.")
+                        .foregroundStyle(.white.opacity(0.7))
                 }
+                .listRowBackground(Theme.row)
 
-                Section("Caretaker") {
-                    TextField("Your first name (optional)", text: $s.name)
+                Section {
+                    TextField("Your first name (optional)", text: $s.name,
+                              prompt: Text("Your first name (optional)").foregroundStyle(.white.opacity(0.6)))
                     if let code = s.code {
                         Text("Your caretaker enters code \(code) in Nudge Care, or texts follow \(code) to the Nudge iMessage line.")
                             .font(.headline)
                     } else {
                         Text("A code appears here once the Pi is reachable.")
                     }
-                }
+                } header: { Text("Caretaker").foregroundStyle(Theme.sky) }
+                .listRowBackground(Theme.row)
 
                 Section {
                     // still a real Button. yellow with navy text is 10.5:1, and it is the one thing
@@ -223,6 +233,7 @@ struct SetupView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.navy)
+            .listRowSeparatorTint(.white.opacity(0.16))
             .navigationTitle("Nudge setup")
             .navigationBarTitleDisplayMode(.inline)
             .brandBar()

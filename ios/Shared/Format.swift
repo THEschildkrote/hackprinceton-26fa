@@ -63,6 +63,9 @@ enum Theme {
     static let yellow = Color(hex: 0xFCD116)
     static let paper = Color(hex: 0xF7F4EC)   // warm white behind the cards
     static let mist = Color(hex: 0xE8EEF9)    // pale blue for tiles
+    // a row sitting on navy: the same hue one step lighter, so a list reads as blue-on-blue.
+    // the stock dark grey has no blue in it and looks pasted on.
+    static let row = Color(hex: 0x1A3277)
     // the brand blue is only 2.1:1 on black, too dim for a ring or an icon there. this is the same
     // hue lifted until it reads: 8.1:1 on black, for the traveller's dark screen.
     static let sky = Color(hex: 0x6EA0FF)
