@@ -34,28 +34,40 @@ struct MainView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 24) {
+            VStack(spacing: 28) {
+                Wordmark()
                 Spacer()
+                // one big visual that says what state we are in at a glance. decorative: the whole
+                // screen is a single VoiceOver element that reads the status, so this adds nothing there
+                Beacon(phase: traveller.phase, reachable: traveller.piReachable,
+                       distance: traveller.phase == .walking ? traveller.distanceToNext : nil)
+                    .accessibilityHidden(true)
                 Text(traveller.status)
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
-                if let d = traveller.distanceToNext, traveller.phase == .walking {
-                    Text(fmtMetres(d)).font(.system(size: 64, weight: .heavy)).foregroundStyle(.yellow)
-                }
                 // a small readout for a sighted helper; the traveller never needs it
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Text("\(traveller.steps) steps · \(traveller.heading.map { "\(Int($0))°" } ?? "no direction yet")")
-                    if traveller.compassPoor { Text("Direction is unreliable: keep the phone upright").foregroundStyle(.orange) }
-                    if !traveller.piReachable { Text("Pi not reachable").foregroundStyle(.red) }
-                    if !traveller.heard.isEmpty { Text("Heard: “\(traveller.heard)”") }
+                        .foregroundStyle(.white.opacity(0.7))
+                    if traveller.compassPoor {
+                        Label("Direction is unreliable: keep the phone upright", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.yellow)
+                    }
+                    if !traveller.piReachable {
+                        // red text is only 3.7:1 on black, so a warning is white on a red pill instead
+                        Text("Pi not reachable").font(.callout.weight(.semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(Theme.red, in: Capsule())
+                    }
+                    if !traveller.heard.isEmpty { Text("Heard: “\(traveller.heard)”").foregroundStyle(.white.opacity(0.7)) }
                 }
                 .font(.callout)
-                .foregroundStyle(.gray)
                 Spacer()
                 Button("Setup") { showSetup = true }
-                    .font(.footnote)
-                    .foregroundStyle(.gray)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(minWidth: 88, minHeight: 44)
                     .accessibilityHint("Server, step length and how the phone is worn")
             }
             .padding()
@@ -68,6 +80,80 @@ struct MainView: View {
         .accessibilityAction(named: "Start last trip") { Task { await traveller.startLastTrip() } }
         .accessibilityAction(named: "Stop trip") { traveller.stopTrip() }
         .accessibilityAction(named: "Setup") { showSetup = true }
+    }
+}
+
+private struct Wordmark: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Nudge").font(.title3.weight(.heavy)).foregroundStyle(Theme.yellow)
+            HStack(spacing: 4) {
+                Capsule().fill(Theme.red)
+                Capsule().fill(.white)
+                Capsule().fill(Theme.sky)
+            }
+            .frame(width: 40, height: 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+}
+
+// the screen is almost empty on purpose, so the one thing on it has to carry the state:
+// a ring that breathes while we wait or walk, goes solid white on arrival, and turns red when the
+// Pi is lost. the colour is never the only signal; the status line under it says the same in words.
+private struct Beacon: View {
+    let phase: Traveller.Phase
+    let reachable: Bool
+    let distance: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var colour: Color {
+        if !reachable { return Theme.red }     // 3.7:1 on black: fine for a graphic, never for text
+        switch phase {
+        case .starting, .calibrating, .walking: return Theme.yellow
+        case .arrived: return .white
+        case .waiting: return Theme.sky
+        case .stopped: return .white.opacity(0.5)
+        }
+    }
+
+    private var symbol: String {
+        switch phase {
+        case .waiting: return "figure.walk.motion"
+        case .starting: return "location.fill"
+        case .calibrating: return "scope"
+        case .walking: return "figure.walk"
+        case .arrived: return "checkmark"
+        case .stopped: return "pause.fill"
+        }
+    }
+
+    private var breathes: Bool { reachable && !reduceMotion && (phase == .waiting || phase == .walking) }
+
+    var body: some View {
+        ZStack {
+            if breathes {
+                Circle().stroke(colour.opacity(0.45), lineWidth: 4)
+                    .phaseAnimator([false, true]) { v, on in
+                        v.scaleEffect(on ? 1.22 : 1).opacity(on ? 0 : 1)
+                    } animation: { _ in .easeOut(duration: 2.0) }
+            }
+            Circle().stroke(colour, lineWidth: 12)
+            if let distance {
+                Text(fmtMetres(distance))
+                    .font(.system(size: 56, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Theme.yellow)
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .padding(.horizontal, 28)
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: 72, weight: .semibold))
+                    .foregroundStyle(colour)
+            }
+        }
+        .frame(width: 240, height: 240)
+        .animation(.smooth, value: phase)
     }
 }
 
@@ -127,13 +213,22 @@ struct SetupView: View {
                 }
 
                 Section {
+                    // still a real Button. yellow with navy text is 10.5:1, and it is the one thing
+                    // on this screen that has to be found and pressed.
                     Button("Done") { Task { await finish() } }
-                        .frame(maxWidth: .infinity, minHeight: 64)
-                        .font(.title2.bold())
+                        .buttonStyle(PrimaryButtonStyle())
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.navy)
             .navigationTitle("Nudge setup")
+            .navigationBarTitleDisplayMode(.inline)
+            .brandBar()
         }
+        .tint(Theme.yellow)
+        .preferredColorScheme(.dark)
     }
 
     private func test() async {
