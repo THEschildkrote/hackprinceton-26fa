@@ -264,15 +264,30 @@ def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=Non
     stop.set()  # a straggling call may still finish and write a file; finalize's merge is safe to re-run
     on_event(f"[finalize] {reason}")
     summary = finalize(sid, reason)
-    if snapshot is not None and not cat.exists():
+    if snapshot is not None and _catalog_size(cat) < _catalog_size(snapshot):
+        # the lead sometimes rewrites places.json in its own shape, wiping the names; keep its version aside
+        if cat.exists():
+            cat.with_suffix(".lead.json").write_text(cat.read_text(encoding="utf-8"), encoding="utf-8")
         cat.write_text(snapshot, encoding="utf-8")
-        on_event("[finalize] places.json had gone missing; restored the catalog from before the run")
+        on_event("[finalize] places.json lost names during the run; restored the catalog from before it "
+                 "(the run's version is kept as places.lead.json; per-floor agent files still merge)")
     summary["reason"], summary["model_calls"], summary["minutes"] = reason, calls, round((time.time() - t0) / 60, 1)
     on_event(f"[finalize] annotations {summary['annotations']['hazards']} hazards, "
              f"{summary['annotations']['landmarked_panos']} landmarked panos; places ok={summary['places']['ok']}; "
              f"{len(summary['gaps'])} gaps listed in /dossier/audit.md")
     run.last_summary = summary
     return dossier_dir(sid)
+
+
+def _catalog_size(src):
+    """named rooms and zones in a places.json (a path or its text); 0 if missing or not the catalog shape."""
+    try:
+        text = src.read_text(encoding="utf-8") if hasattr(src, "read_text") else src
+        data = json.loads(text)
+    except (OSError, ValueError, TypeError):
+        return 0
+    ps = data.get("places") if isinstance(data, dict) else None
+    return sum(1 for p in ps or [] if isinstance(p, dict) and p.get("kind") in ("room", "zone") and p.get("name"))
 
 
 def _model_calls(chunk):
