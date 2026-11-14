@@ -7,7 +7,7 @@ import math
 import pytest
 
 from nudge import walkgraph
-from nudge.band import NullBand, REST_DEG
+from nudge.band import RANK, NullBand, REST_DEG
 from nudge.bandrun import BandRunner, run_walk
 from nudge.navigator import Navigator
 from nudge.router import plan
@@ -22,14 +22,15 @@ def g():
     return walkgraph.build(building())
 
 
-def rig(g, goal=GOAL, profile="blind"):
+def rig(g, goal=GOAL, profile="blind", wobble=0.0, seed=0):
     """a runner over the synthetic building, plus the positions of a walk to the goal."""
     start = "p_K3"
     route = plan(g, start, goal, profile)
     s = g.nodes[start]
     band = NullBand()
     runner = BandRunner(Navigator(g, goal, profile), band=band)
-    return runner, band, list(walk(g, route, step=0.5)), (s.x, s.y, s.floor, 0.0)
+    pts = list(walk(g, route, step=0.5, wobble=wobble, seed=seed))
+    return runner, band, pts, (s.x, s.y, s.floor, 0.0)
 
 
 def strokes(band):
@@ -129,6 +130,75 @@ def test_an_empty_walk_does_nothing(g):
 
 
 # --- pacing --------------------------------------------------------------------
+
+
+MANEUVERS = {c for c, rank in RANK.items() if rank == 1}
+
+
+def cues_played(g, pace_ms, wobble=0.0, seed=0):
+    """the cue names that actually started, in order."""
+    runner, _, pts, start = rig(g, wobble=wobble, seed=seed)
+    played, real = [], runner.engine.play
+
+    def spy(cue, now, force=False):
+        ok = real(cue, now, force)
+        if ok:
+            played.append(cue)
+        return ok
+
+    runner.engine.play = spy
+    run_walk(runner, pts, start=start, pace_ms=pace_ms, virtual=True)
+    assert runner.nav.done
+    return played
+
+
+def test_a_fast_walk_loses_steering_before_maneuvers(g):
+    """the whole point of RANK. a servo renders ~3 cues a second; when positions outrun
+    it something must go, and it must be the advisory nudges, not the turns."""
+    played = cues_played(g, pace_ms=100)
+    man = sum(1 for c in played if c in MANEUVERS)
+    steer = sum(1 for c in played if c.startswith("steer"))
+    assert "arrive" in played, "never announced arrival"
+    assert man > steer, f"gave up maneuvers before steering: {played}"
+    assert man >= 3, f"only {man} maneuvers survived: {played}"
+
+
+def test_a_drifting_walker_keeps_their_turns(g):
+    """the case RANK exists for, and the one that actually bites.
+
+    a straight-line walk barely generates steering taps, so nothing collides and ranking
+    changes nothing. a walker who drifts - which is everyone - generates plenty, and at
+    speed they collide with turn cues. measured over these eight seeds at 100 ms a step:
+    without ranking 20 turn cues land against 22 steering taps; with it, 32 against 19.
+    so `turns > steering` separates the two, and fails if RANK is ever flattened.
+    """
+    turns = steer = 0
+    for seed in range(8):
+        played = cues_played(g, pace_ms=100, wobble=0.6, seed=seed)
+        turns += sum(1 for c in played if c in MANEUVERS)
+        steer += sum(1 for c in played if c.startswith("steer"))
+    assert turns > steer, f"gave up turn cues to steering taps: {turns} turns, {steer} steering"
+
+
+def test_ranking_is_inert_when_nothing_collides(g):
+    """at walking pace there is room for every cue, so ranking must not change anything."""
+    played = cues_played(g, pace_ms=420, wobble=0.6, seed=0)
+    assert any(c.startswith("steer") for c in played), "steering should survive at walking pace"
+    assert any(c in MANEUVERS for c in played)
+
+
+def test_even_a_brutal_pace_still_turns_and_arrives(g):
+    """positions ten times faster than anyone walks. the servo is the limit here, not
+    the logic, so this only claims that navigation cues are what is left."""
+    played = cues_played(g, pace_ms=40)
+    assert "arrive" in played
+    assert any(c in MANEUVERS for c in played), f"no maneuver survived at all: {played}"
+
+
+def test_walking_pace_gets_everything(g):
+    played = cues_played(g, pace_ms=420)
+    assert sum(1 for c in played if c in MANEUVERS) >= 5
+    assert any(c.startswith("steer") for c in played), "steering should survive at walking pace"
 
 
 def test_slower_pace_gives_the_engine_more_room(g):
