@@ -53,6 +53,40 @@ falls back quietly if it isn't running:
 sudo pigpiod
 ```
 
+## Driving it from a walk
+
+`nudge/band.py` only knows how to tap a shoulder. `nudge/bandrun.py` is the loop that
+connects it to a navigator:
+
+```bash
+python -m nudge.bandrun synthetic --to "Conference Room" --dry   # anywhere, instant
+python -m nudge.bandrun synthetic --to "Conference Room"         # on the pi, real servos
+```
+
+That plans a route, simulates someone walking it, and drives the band the whole way while
+printing what would be spoken. `--wobble 0.5` makes the walk untidy; `--pace` sets the
+milliseconds per half-metre step (420 is about walking speed).
+
+To drive it from something other than the simulator — the debug view, iMessage, or real
+localization when it exists — use the runner directly:
+
+```python
+runner = BandRunner(Navigator(g, goal, "blind"), band=ServoBand())
+runner.start(x, y, floor, heading, now=t)
+...
+events = runner.update(x, y, floor, heading, now=t)   # whenever a position arrives
+runner.tick(t)                                        # as often as you can, forever
+```
+
+**A position is not a tick.** Positions arrive at walking pace — every 400 ms or so — but a
+stroke only renders if `tick()` is called every few milliseconds. Call `update()` when a
+position arrives and `tick()` continuously in between, or the horn never moves. There is a
+test for exactly this (`test_a_position_is_not_a_tick`), because it is the easy thing to get
+wrong when wiring the band into something new.
+
+The runner owns no clock and starts no thread, so whatever is already running the show —
+the server, the CLI, a `while True` on the Pi — keeps control of the loop.
+
 ## The grammar
 
 | Cue | What you feel |

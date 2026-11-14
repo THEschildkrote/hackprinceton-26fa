@@ -323,12 +323,15 @@ def _wall_clock():
             lambda ms: time.sleep(ms / 1000.0))
 
 
-def _virtual_clock(step_ms):
-    """no sleeping: the dry run should be instant and identical every time."""
+def _virtual_clock():
+    """no sleeping: a dry run should be instant and identical every time.
+
+    only wait() moves time, exactly as the wall clock behaves — reading the time must not
+    change it, or a loop that reads it twice drifts against one that reads it once.
+    """
     t = [0]
 
     def now():
-        t[0] += step_ms
         return t[0]
 
     def wait(ms):
@@ -337,13 +340,18 @@ def _virtual_clock(step_ms):
     return now, wait
 
 
+def clock(virtual=False):
+    """(now_ms, wait_ms). the band and the runner both pace themselves through this."""
+    return _virtual_clock() if virtual else _wall_clock()
+
+
 def selftest(band=None, cues=None, gap_ms=1200, virtual=False, step_ms=5):
     """walk every cue so whoever is wearing the collar can tell them apart.
 
     python -m nudge.band            # on the pi, real servos
     python -m nudge.band --dry      # anywhere: no gpio, no waiting
     """
-    now, wait = _virtual_clock(step_ms) if virtual else _wall_clock()
+    now, wait = clock(virtual)
     owned = band is None
     if owned:
         band = ServoBand()
