@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in to Isaac</title>
+<style>
+  :root {
+    --bg: #04060c; --ink: #f1f3f8; --mute: #8e97ad; --mute2: #5f6880; --line: rgba(255, 255, 255, .1);
+    --blue: #4d7cff; --yellow: #fcd116; --red: #ff5a6a; --ease: cubic-bezier(.22, 1, .36, 1);
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { min-height: 100vh; min-height: 100svh; background: radial-gradient(1200px 600px at 50% 110%, rgba(77, 124, 255, .16), transparent 70%), var(--bg);
+         color: var(--ink); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
+  header { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; }
+  .mark { font-size: 22px; font-weight: 500; letter-spacing: -.04em; }
+  .mark span { color: var(--yellow); }
+  .home { font-size: 14px; color: var(--mute); }
+  .home:hover { color: var(--ink); }
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 16px 96px; }
+  form { width: min(380px, 100%); animation: rise .9s var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  h1 { font-size: clamp(40px, 7vw, 56px); font-weight: 200; letter-spacing: -.055em; line-height: 1.05; }
+  p.lede { margin-top: 12px; color: var(--mute); }
+  label { display: block; margin-top: 36px; font-size: 13px; color: var(--mute); }
+  input { width: 100%; margin-top: 8px; height: 52px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04);
+          color: var(--ink); font: inherit; font-size: 17px; outline: none; transition: border-color .3s, background .3s; }
+  input:focus { border-color: var(--blue); background: rgba(255, 255, 255, .06); }
+  .go { width: 100%; margin-top: 16px; height: 52px; border: none; border-radius: 999px; background: #e9edf5; color: #11141b; font: inherit; font-weight: 500; font-size: 15px; cursor: pointer; transition: background .3s, opacity .3s; }
+  .go:hover { background: #fff; }
+  .go:disabled { opacity: .5; cursor: default; }
+  .msg { min-height: 24px; margin-top: 14px; font-size: 14px; color: var(--red); }
+  .msg.ok { color: var(--mute); }
+  @media (max-width: 600px) { header { padding: 0 16px; } }
+  @media (prefers-reduced-motion: reduce) { form { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="mark" href="/" aria-label="Isaac, home">isaac<span>.</span></a>
+  <a class="home" href="/">Home</a>
+</header>
+<main>
+  <form id="f" novalidate>
+    <h1>Sign in.</h1>
+    <p class="lede">The live dashboard for Isaac.</p>
+    <label for="code">Access code</label>
+    <input id="code" name="code" type="password" autocomplete="current-password" required>
+    <button class="go" id="go" type="submit">Continue</button>
+    <p class="msg" id="msg" role="alert"></p>
+  </form>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+// only ever go somewhere on this site
+const next = (() => { const n = new URLSearchParams(location.search).get("next") || "/ops.html"; return n.startsWith("/") && !n.startsWith("//") ? n : "/ops.html"; })();
+
+(async () => {
+  try {
+    const s = await fetch("/api/auth/status").then(r => r.json());
+    if (s.signed_in) return location.replace(next);
+    if (!s.required) {
+      $("msg").className = "msg ok";
+      $("msg").textContent = "No access code is set on this server, so the dashboard is open.";
+      $("code").required = false;
+    }
+  } catch { /* the form still works */ }
+  $("code").focus();
+})();
+
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  $("go").disabled = true; $("msg").className = "msg"; $("msg").textContent = "";
+  try {
+    const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: $("code").value }) });
+    if (r.ok) return location.replace(next);
+    $("msg").textContent = r.status === 401 ? "That code isn't right." : "Couldn't sign in. Try again.";
+  } catch {
+    $("msg").textContent = "Can't reach the server.";
+  }
+  $("go").disabled = false;
+  $("code").select();
+};
+</script>
+</body>
+</html>

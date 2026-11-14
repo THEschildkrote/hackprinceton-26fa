@@ -22,17 +22,17 @@ class Profile:
 PROFILES = {
     "default": Profile("default", avoid={"closed"},
                        penalty={"uncertain": 15, "vertical_unknown": 30, "hazard": 5, "narrow": 2, "glass_wall": 2,
-                                "tight": 2, "narrow_door": 2}),
+                                "tight": 2, "narrow_door": 2, "stall": 10}),
     # blind cane user: fewer turns, hazards are expensive, unsure links are worse than a detour
     "blind": Profile("blind", avoid={"closed"},
                      penalty={"hazard": 40, "uncertain": 40, "vertical_unknown": 60, "stairs": 8, "door": 1.5,
                               "room_change": 0.5, "glass_wall": 15, "narrow": 4, "step": 10, "tight": 6,
-                              "narrow_door": 3},
+                              "narrow_door": 3, "stall": 25},
                      turn_cost=2.0),
     # narrow_door: under 32 in clear width (ada 404.2.3), a hard stop
     "wheelchair": Profile("wheelchair", avoid={"stairs", "closed", "step", "narrow_door"},
                           penalty={"hazard": 10, "uncertain": 50, "vertical_unknown": 200, "door": 3, "narrow": 25,
-                                   "glass_wall": 3, "tight": 15}),
+                                   "glass_wall": 3, "tight": 15, "stall": 25}),
 }
 
 

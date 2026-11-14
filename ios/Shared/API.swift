@@ -40,6 +40,7 @@ struct StepReply: Decodable {
     let bearing_to_next_deg: Double?
     let done: Bool?
     let waiting_for: String?
+    let ask: String?   // "stall": Isaac just asked whether something is in the way
 }
 
 struct Building: Decodable, Identifiable, Hashable {

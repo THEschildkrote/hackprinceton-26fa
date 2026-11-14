@@ -4,288 +4,356 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Isaac</title>
+<meta name="description" content="Isaac guides blind travellers from the street to the room, and keeps their caretaker in the loop.">
 <style>
-  :root { --bg: #0b0d10; --panel: #13171c; --ink: #f2f4f7; --muted: #a2abb5; --line: #2a3139; --accent: #59b0ff;
-          --maya: #ffd479; --warn: #ff6b6b; --ok: #5ad19a; }
-  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #f2f4f7; --panel: #ffffff; --ink: #0f1317;
-    --muted: #4f5964; --line: #d6dbe1; --accent: #0b63c7; --maya: #8a5a00; --warn: #c62828; --ok: #1f7a4f; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header.top { padding: 22px 24px 8px; max-width: 1400px; margin: 0 auto; }
-  h1 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.01em; }
-  .mission { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
-  .grid { display: grid; grid-template-columns: 1.25fr 0.8fr 1fr; gap: 16px; padding: 16px 24px 28px; max-width: 1400px; margin: 0 auto; }
-  @media (max-width: 1050px) { .grid { grid-template-columns: 1fr; padding: 12px 16px 24px; } header.top { padding: 18px 16px 4px; } }
-  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex;
-                  flex-direction: column; min-height: 0; }
-  h2 { margin: 0 0 4px; font-size: 19px; }
-  .lede { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
-  button { font: inherit; font-weight: 650; border-radius: 10px; border: 2px solid var(--accent); background: var(--accent);
-           color: #001a33; padding: 12px 16px; cursor: pointer; min-height: 48px; }
-  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--maya); outline-offset: 2px; }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .log { flex: 1; min-height: 320px; max-height: 58vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px;
-         padding: 10px; margin: 12px 0; display: flex; flex-direction: column; gap: 6px; }
-  .line { padding: 7px 10px; border-radius: 10px; max-width: 92%; }
-  .line.nudge { background: rgba(89,176,255,.12); align-self: flex-start; }
-  .line.maya { background: rgba(255,212,121,.14); align-self: flex-end; }
-  .line .who { font-size: 12px; font-weight: 700; color: var(--muted); display: block; }
-  .line.maya .who { color: var(--maya); }
-  .line.beat { align-self: center; background: none; color: var(--muted); font-size: 13px; font-weight: 650;
-               text-transform: uppercase; letter-spacing: .06em; padding: 8px 0 2px; }
-  .line.alert { border: 2px solid var(--warn); }
-  .thinking { color: var(--muted); font-style: italic; }
-  .band { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
-  .motor { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); }
-  .motor.on { background: var(--maya); border-color: var(--maya); box-shadow: 0 0 12px var(--maya); }
-  code.dev { font-size: 13px; color: var(--muted); }
-  label.opt { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
-  input[type=text] { font: inherit; flex: 1; min-width: 0; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line);
-                     background: transparent; color: var(--ink); min-height: 48px; }
-  iframe { width: 100%; flex: 1; min-height: 560px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
-  .facts { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 8px; }
-  .facts li { border-left: 3px solid var(--accent); padding: 2px 0 2px 10px; }
-  .facts b { display: block; font-size: 13px; color: var(--muted); font-weight: 650; }
-  .facade { width: 100%; border-radius: 10px; border: 1px solid var(--line); margin: 6px 0 4px; }
-  .cap { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
-  .chip { font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
-  .links a { color: var(--accent); }
-  footer.dev { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; color: var(--muted); font-size: 13px; }
-  footer.dev a { color: var(--muted); }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :root {
+    --bg: #04060c; --ink: #f1f3f8; --mute: #8e97ad; --mute2: #5f6880; --line: rgba(255, 255, 255, .08);
+    --card: rgba(255, 255, 255, .03); --blue: #4d7cff; --navy: #0a1f5c; --yellow: #fcd116; --red: #ff3b4e;
+    --ease: cubic-bezier(.22, 1, .36, 1);
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; background: var(--bg); }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 10; height: 72px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 32px;
+         background: linear-gradient(to bottom, rgba(4, 6, 12, .9), rgba(4, 6, 12, 0)); }
+  .mark { font-size: 22px; font-weight: 500; letter-spacing: -.04em; justify-self: start; }
+  .mark span { color: var(--yellow); }
+  .pills { display: flex; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(14, 18, 28, .7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .pills a { padding: 8px 16px; border-radius: 999px; font-size: 14px; color: var(--mute); transition: color .3s, background .3s; }
+  .pills a:hover { color: var(--ink); }
+  .pills a.on { color: var(--ink); background: rgba(255, 255, 255, .08); }
+  .signin { justify-self: end; padding: 9px 18px; border-radius: 999px; font-size: 14px; color: var(--ink); border: 1px solid var(--line); transition: background .3s; }
+  .signin:hover { background: rgba(255, 255, 255, .08); }
+
+  /* hero */
+  .hero { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; padding: 128px 16px 48px; text-align: center; position: relative; }
+  h1 { font-size: clamp(40px, 6.4vw, 76px); font-weight: 200; letter-spacing: -.055em; line-height: 1.06; }
+  h1 .soft { color: #9fb2d6; }
+  .stage { width: min(1060px, 100%); height: min(52vh, 520px); margin: 8px auto 0; perspective: 1400px; position: relative;
+           -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 80%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 80%, transparent); }
+  #plan { width: 100%; height: 100%; display: block; transform: rotateX(var(--tilt, 50deg)) scale(var(--sc, 1)); transform-origin: 50% 60%; }
+  .cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; padding: 16px 28px; border-radius: 999px; background: #e9edf5; color: #11141b; font-size: 15px; font-weight: 500; transition: transform .4s var(--ease), background .3s; }
+  .cta:hover { background: #fff; transform: translateY(-1px); }
+  .sub { margin-top: 18px; font-size: 14px; color: #a9bdd7; }
+  .sub:hover { color: var(--ink); }
+  .motion { margin-top: 14px; padding: 8px 14px; border-radius: 999px; font-size: 12px; color: var(--mute); border: 1px solid transparent; }
+  .motion:hover { border-color: var(--line); color: var(--ink); }
+
+  /* sections */
+  section.block { width: min(1120px, 100%); margin: 0 auto; padding: 120px 24px; }
+  .eyebrow { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute2); }
+  h2 { font-size: clamp(30px, 4vw, 46px); font-weight: 300; letter-spacing: -.04em; line-height: 1.1; margin-top: 12px; max-width: 760px; }
+  h2 .soft { color: var(--mute); }
+  .lede { margin-top: 18px; max-width: 620px; color: var(--mute); font-size: 17px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 56px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 56px; }
+  .card { border: 1px solid var(--line); border-radius: 20px; padding: 28px; background: var(--card); transition: border-color .4s, background .4s; }
+  .card:hover { border-color: rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .045); }
+  .card h3 { font-size: 21px; font-weight: 400; letter-spacing: -.02em; }
+  .card p { margin-top: 10px; color: var(--mute); font-size: 15px; }
+  .step { font-size: 13px; color: var(--mute2); margin-bottom: 36px; font-variant-numeric: tabular-nums; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 56px; border-top: 1px solid var(--line); }
+  .stat { padding-top: 24px; }
+  .stat b { display: block; font-size: clamp(40px, 5vw, 60px); font-weight: 200; letter-spacing: -.05em; line-height: 1; }
+  .stat span { display: block; margin-top: 10px; color: var(--mute); font-size: 14px; }
+  .where { margin-top: 20px; font-size: 13px; color: var(--mute2); }
+  .layer b { display: block; font-size: 14px; font-weight: 500; color: var(--yellow); letter-spacing: .02em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chips span { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: #c9d3e8; }
+  .fine { margin-top: 18px; font-size: 14px; color: var(--mute2); }
+  .phone { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  .bubble { align-self: flex-start; max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 15px; background: #1b2232; color: var(--ink); }
+  .bubble.me { align-self: flex-end; background: #0a63ff; color: #fff; }
+  .built { display: flex; flex-wrap: wrap; gap: 12px 40px; margin-top: 40px; font-size: clamp(22px, 2.6vw, 30px); font-weight: 300; letter-spacing: -.03em; color: #c9d3e8; }
+  .band { text-align: center; padding: 140px 24px; }
+  .band h2 { margin: 0 auto; }
+  footer { width: min(1120px, 100%); margin: 0 auto; padding: 32px 24px 48px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--mute2); }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity 1s var(--ease), transform 1s var(--ease); transition-delay: var(--d, 0s); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 900px) {
+    .nav { grid-template-columns: 1fr auto; padding: 0 16px; }
+    .pills { display: none; }
+    .grid4, .grid3, .grid2 { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    section.block { padding: 88px 16px; }
+    .hero { padding-top: 112px; }
+    .stage { height: 44vh; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
 </style>
 </head>
 <body>
-<header class="top">
-  <h1>Isaac: indoor guidance for blind travellers</h1>
-  <p class="mission">Maya is blind. Her appointment is at DJF Insurance, inside a 1917 building she has never visited.
-    Isaac guides her by voice from the sidewalk to the right room, and keeps her brother Sam calmly in the loop.</p>
+<header class="nav">
+  <a class="mark" href="#home" aria-label="Isaac, home">isaac<span>.</span></a>
+  <nav class="pills" aria-label="Sections">
+    <a href="#home" class="on">Home</a><a href="#how">How it works</a><a href="#inside">Inside and out</a><a href="#agents">Agents</a><a href="#care">Caretakers</a>
+  </nav>
+  <a class="signin" href="/login.html">Sign in</a>
 </header>
 
-<main class="grid">
-  <section class="panel" aria-labelledby="maya-h">
-    <h2 id="maya-h">Maya, the traveller</h2>
-    <p class="lede">Everything Maya hears is spoken. Press Start to play her visit to 1255 S Atlantic Blvd, Los Angeles.</p>
-    <div class="row">
-      <button id="start">Start Maya's visit</button>
-      <button id="help" class="ghost">Maya: "I need help"</button>
-      <button id="mute" class="ghost" aria-pressed="false">Mute voice</button>
-    </div>
-    <label class="opt" style="margin-top:10px"><input type="checkbox" id="live"> Ask the live AI agent about the locked door (can take a minute; falls back after 20 seconds)</label>
-    <div class="log" id="log" role="log" aria-live="polite" aria-label="Conversation between Maya and Isaac"></div>
-    <div class="band" aria-label="Haptic band preview">
-      <span class="motor" id="mL" aria-hidden="true"></span><span class="motor" id="mR" aria-hidden="true"></span>
-      <span id="bandText">Band: idle</span>
-      <code class="dev" id="bandLine"></code>
-    </div>
-    <form class="row" id="sayForm" style="margin-top:10px">
-      <label for="sayText" class="sr">Say something as Maya</label>
-      <input type="text" id="sayText" placeholder="Say something as Maya, e.g. where am I">
-      <button type="submit" class="ghost">Say</button>
-    </form>
+<main>
+  <section class="hero" id="home">
+    <h1>From the street to the room.<br><span class="soft">Isaac shows the way.</span></h1>
+    <div class="stage" aria-hidden="true"><canvas id="plan"></canvas></div>
+    <a class="cta" href="/login.html">Open the dashboard</a>
+    <a class="sub" href="#how">See how a walk works</a>
+    <button class="motion" id="motion" aria-pressed="false">Pause motion</button>
   </section>
 
-  <section class="panel" aria-labelledby="sam-h">
-    <h2 id="sam-h">Sam, her caretaker</h2>
-    <p class="lede">What Sam receives on iMessage: a few calm updates, and an alert if Maya needs help.</p>
-    <iframe id="sam" title="Sam's messages" src="caretaker.html?traveller=maya&sid=MgGNVWsyXtH"></iframe>
+  <section class="block" id="how">
+    <div class="eyebrow reveal">How it works</div>
+    <h2 class="reveal">From the door to the room. <span class="soft">Without sight, on your own.</span></h2>
+    <p class="lede reveal">GPS stops at the street and a cane only finds what's right ahead. Isaac covers the rest.</p>
+    <div class="grid4">
+      <article class="card reveal" style="--d:.0s"><div class="step">01</div><h3>Surveyed before you arrive</h3>
+        <p>An agent walks the building's scan once. It names every room, flags what a cane would miss, and writes landmarks you can feel or hear.</p></article>
+      <article class="card reveal" style="--d:.08s"><div class="step">02</div><h3>Door to door</h3>
+        <p>Isaac lines the scan up with the street and picks the right entrance, checked in aerial photos of the facade.</p></article>
+      <article class="card reveal" style="--d:.16s"><div class="step">03</div><h3>Turn by turn, by touch</h3>
+        <p>The phone on your back counts steps and reads the compass. The belt taps left or right at every turn.</p></article>
+      <article class="card reveal" style="--d:.24s"><div class="step">04</div><h3>Someone always knows</h3>
+        <p>Your caretaker follows on a live map or by text, and hears right away if you ask for help.</p></article>
+    </div>
   </section>
 
-  <section class="panel" aria-labelledby="bts-h">
-    <h2 id="bts-h">Behind the scenes</h2>
-    <p class="lede">What Isaac learned about this building before Maya arrived, from CoStar, Vexcel and Matterport.</p>
-    <ul class="facts" id="facts"><li>Loading…</li></ul>
-    <div id="facadeBox"></div>
-    <div><b style="font-size:13px;color:var(--muted)">Places Isaac can take her</b><div class="chips" id="chips"></div></div>
-    <p class="links">
-      <a href="tour.html?sid=MgGNVWsyXtH">Walk the 3D tour</a> ·
-      <a href="dossier.html?sid=MgGNVWsyXtH">Watch the dossier agents work</a> ·
-      <a href="voice.html?sid=R1FX6EmdcDt">Try Rabinowitz Hall (this building)</a>
-    </p>
+  <section class="block" id="inside">
+    <div class="eyebrow reveal">Inside and out</div>
+    <h2 class="reveal">Built on the building's own data.</h2>
+    <div class="stats">
+      <div class="stat reveal" style="--d:0s"><b>66</b><span>scan positions</span></div>
+      <div class="stat reveal" style="--d:.08s"><b>2</b><span>floors, joined at the real stairs and elevator</span></div>
+      <div class="stat reveal" style="--d:.16s"><b>18</b><span>named places to ask for</span></div>
+      <div class="stat reveal" style="--d:.24s"><b>0.7 m</b><span>scan lined up with the street</span></div>
+    </div>
+    <p class="where reveal">The Julis Romo Rabinowitz Building, Princeton.</p>
+    <div class="grid3">
+      <article class="card layer reveal" style="--d:0s"><b>Matterport</b><h3>The inside</h3>
+        <p>Walls and rooms become the walking map. The point cloud finds doorways and head-height hazards; the panoramas confirm them.</p></article>
+      <article class="card layer reveal" style="--d:.08s"><b>Vexcel</b><h3>The outside</h3>
+        <p>Facade photos show which door is the entrance and whether it has steps. At JRR: the level glass doors on the west side.</p></article>
+      <article class="card layer reveal" style="--d:.16s"><b>CoStar</b><h3>The record</h3>
+        <p>Year built, ADA status and tenants, so "the insurance office on the second floor" is a place you can ask for.</p></article>
+    </div>
+  </section>
+
+  <section class="block" id="agents">
+    <div class="eyebrow reveal">Agents</div>
+    <h2 class="reveal">Agents in the back. <span class="soft">Never in the way.</span></h2>
+    <div class="grid2">
+      <article class="card reveal"><h3>Before the visit</h3>
+        <p>A LangChain Deep Agent surveys the building with five specialists, checks its own work against the router, and caches the result for the next visitor.</p>
+        <div class="chips"><span>place-indexer</span><span>hazard-scout</span><span>landmark-writer</span><span>site-surveyor</span><span>building-cartographer</span></div></article>
+      <article class="card reveal" style="--d:.08s"><h3>When something changes</h3>
+        <p>A locked door or a blocked hall goes to a second agent. It proposes a way around in about four seconds and waits for a yes. Stop or turn back, and Isaac asks whether something is in the way.</p>
+        <p class="fine">The route itself is plain A*, in milliseconds. No model guesses during the walk.</p></article>
+    </div>
+  </section>
+
+  <section class="block" id="care">
+    <div class="eyebrow reveal">Caretakers</div>
+    <h2 class="reveal">For the people who look out for them.</h2>
+    <div class="grid2">
+      <article class="card reveal"><h3>Isaac Care</h3>
+        <p>A live floor-plan map, a timeline of the trip and an alert the moment help is asked for. Send a trip and the traveller's phone starts it.</p></article>
+      <article class="card reveal" style="--d:.08s"><h3>Or just text</h3>
+        <p>Over iMessage, through Photon. Ask where they are, and hear when they arrive.</p>
+        <div class="phone" aria-label="Example messages">
+          <div class="bubble me">where is he?</div>
+          <div class="bubble">Arkan is in the Atrium on the ground floor, about 18 meters to go.</div>
+        </div></article>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="eyebrow reveal">Built on</div>
+    <div class="built reveal"><span>Matterport</span><span>Vexcel</span><span>CoStar</span><span>LangChain</span><span>Photon</span><span>Gemini</span></div>
+  </section>
+
+  <section class="band">
+    <h2 class="reveal">See it live.</h2>
+    <a class="cta reveal" style="margin-top:32px" href="/login.html">Open the dashboard</a>
   </section>
 </main>
-<footer class="dev"><a href="debug.html">Developer tools</a></footer>
+
+<footer>
+  <span>Isaac, indoor wayfinding for blind travellers</span>
+  <span>HackPrinceton 2026</span>
+</footer>
 
 <script>
-  const SID = "MgGNVWsyXtH", T = "maya";
-  const $ = id => document.getElementById(id);
-  const log = $("log");
-  let info = null, muted = false, running = false;
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let paused = REDUCED;
 
-  // ---------- speech: nudge and maya get different voices, and lines play in order ----------
-  let voices = [];
-  const loadVoices = () => { voices = speechSynthesis.getVoices(); };
-  if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
-  function speak(text, who) {
-    return new Promise(res => {
-      if (muted || !window.speechSynthesis || !text) return setTimeout(res, Math.min(2200, 40 * (text || "").length));
-      const u = new SpeechSynthesisUtterance(text);
-      const en = voices.filter(v => /^en/i.test(v.lang));
-      if (who === "maya") { u.voice = en.find(v => /female|zira|samantha|aria|jenny/i.test(v.name)) || en[1] || null; u.pitch = 1.15; }
-      else { u.voice = en.find(v => /google us|guy|david|daniel/i.test(v.name)) || en[0] || null; }
-      u.rate = 1.05;
-      let done = false;
-      const fin = () => { if (!done) { done = true; res(); } };
-      u.onend = fin; u.onerror = fin;
-      setTimeout(fin, 400 + 90 * text.length);  // never hang the demo on a stuck synth
-      speechSynthesis.speak(u);
-    });
-  }
-  function line(text, who = "nudge", cls = "") {
-    if (!text) return;
-    const d = document.createElement("div");
-    d.className = `line ${who} ${cls}`;
-    if (who !== "beat") {
-      const w = document.createElement("span");
-      w.className = "who"; w.textContent = who === "maya" ? "Maya" : "Isaac";
-      d.appendChild(w);
-    }
-    d.appendChild(document.createTextNode(text));
-    log.appendChild(d); log.scrollTop = log.scrollHeight;
-    return d;
-  }
-  async function say(text, who = "nudge", cls = "") { if (!text) return; line(text, who, cls); await speak(text, who); }
-  const beat = t => line(t, "beat");
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+// --- the hero: the real JRR floor plan, a route drawing itself, a traveller walking it with taps -------
+const cv = document.getElementById("plan"), cx = cv.getContext("2d");
+let W = 0, H = 0, plan = null, view = null, t0 = performance.now(), frozenAt = null;
+const DRAW = 2.2, WALK = 8, HOLD = 2.2, CYCLE = DRAW + WALK + HOLD;
+const easeOut = p => 1 - (1 - p) ** 3, easeInOut = p => p < .5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
 
-  // ---------- band preview: the same left/right pulses the haptic band plays ----------
-  function band(ev, device) {
-    if (device && device.line) $("bandLine").textContent = device.line;
-    const cue = ev && ev.cue;
-    if (!cue) return;
-    const left = /left/.test(cue), right = /right/.test(cue), both = !left && !right;
-    const pulses = (ev.vibrate || [120]).length;
-    $("bandText").textContent = "Band: " + ({left: "pulse left", right: "pulse right", bear_left: "pulse left",
-      bear_right: "pulse right", arrive: "arrived", hazard: "caution", floor: "floor change", uturn: "turn around",
-      off_route: "off route", unmapped: "off the map", straight: "straight on"}[cue] || cue);
-    let i = 0;
-    const tick = () => {
-      if (i >= Math.min(6, pulses)) { $("mL").classList.remove("on"); $("mR").classList.remove("on"); return; }
-      const on = i % 2 === 0;
-      $("mL").classList.toggle("on", on && (left || both));
-      $("mR").classList.toggle("on", on && (right || both));
-      i++; setTimeout(tick, 160);
-    };
-    tick();
-    // browsers only allow vibration after a real tap on the page
-    const tapped = !navigator.userActivation || navigator.userActivation.hasBeenActive;
-    if (navigator.vibrate && ev.vibrate && tapped) { try { navigator.vibrate(ev.vibrate); } catch (e) {} }
-  }
+function size() {
+  const dpr = Math.min(2, devicePixelRatio || 1), r = cv.getBoundingClientRect();
+  W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (plan) fit();
+}
 
-  // ---------- api ----------
-  async function api(path, body) {
-    const r = await fetch(path, body ? {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(body)} : {});
-    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
-    return r.json();
+function procedural() {
+  // no api (a static copy of the site): a plain three-room plan and an L-shaped walk
+  const R = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0]], [[x1, y0], [x1, y1]], [[x1, y1], [x0, y1]], [[x0, y1], [x0, y0]]];
+  const walls = [...R(0, 0, 30, 18), ...R(30, 0, 44, 18), ...R(0, 18, 44, 30)].map(([a, b]) => [a, b, false]);
+  return { walls, rooms: [], route: [[4, 24], [24, 24], [24, 9], [38, 9]] };
+}
+
+async function load() {
+  try {
+    const sid = "R1FX6EmdcDt";
+    const [g, r] = await Promise.all([
+      fetch(`/api/graph/${sid}`).then(x => { if (!x.ok) throw 0; return x.json(); }),
+      fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sid, from: "0f2a2fyf5iibscursb5gkyu9a", to: "East corridor" }) }).then(x => { if (!x.ok) throw 0; return x.json(); }),
+    ]);
+    const pts = r.route.points, floor = pts[0][2], fl = g.floors.find(f => f.id === floor);
+    plan = { walls: (fl?.walls || []).map(([a, b, k]) => [a, b, !!k && k !== "wall"]),
+             rooms: Object.values(g.rooms || {}).filter(x => x.floor === floor && x.poly && x.poly.length > 2).map(x => x.poly),
+             route: pts.filter(p => p[2] === floor).map(p => [p[0], p[1]]) };
+    if (plan.route.length < 2 || !plan.walls.length) throw 0;
+  } catch { plan = procedural(); }
+  fit();
+}
+
+function fit() {
+  // frame the walk with a good margin of building round it, not the whole floor (the walls run off the edge)
+  const rx = plan.route.map(p => p[0]), ry = plan.route.map(p => p[1]);
+  const cx0 = (Math.min(...rx) + Math.max(...rx)) / 2, cy0 = (Math.min(...ry) + Math.max(...ry)) / 2;
+  const ext = Math.max(Math.max(...rx) - Math.min(...rx), Math.max(...ry) - Math.min(...ry), 12);
+  const half = ext * .9, aspect = W / (H || 1);
+  const x0 = cx0 - half * Math.max(1, aspect * .75), x1 = cx0 + half * Math.max(1, aspect * .75), y0 = cy0 - half, y1 = cy0 + half, pad = 0;
+  const k = Math.min((W - 2 * pad) / (x1 - x0 || 1), (H - 2 * pad) / (y1 - y0 || 1));
+  const ox = (W - (x1 - x0) * k) / 2, oy = (H - (y1 - y0) * k) / 2;
+  const P = ([x, y]) => [ox + (x - x0) * k, oy + (y1 - y) * k];   // model y up, screen y down
+  const route = plan.route.map(P), segs = [];
+  let len = 0;
+  for (let i = 1; i < route.length; i++) { const d = Math.hypot(route[i][0] - route[i - 1][0], route[i][1] - route[i - 1][1]); segs.push(d); len += d; }
+  const turns = [];   // where the belt taps, and on which side
+  let acc = 0;
+  for (let i = 1; i < route.length - 1; i++) {
+    acc += segs[i - 1];
+    const ax = route[i][0] - route[i - 1][0], ay = route[i][1] - route[i - 1][1], bx = route[i + 1][0] - route[i][0], by = route[i + 1][1] - route[i][1];
+    const cross = ax * by - ay * bx, ang = Math.abs(Math.atan2(cross, ax * bx + ay * by));
+    if (ang > .35) turns.push({ at: acc, right: cross > 0, sharp: ang > 1 });
   }
-  // a voice turn as maya; agent turns answer at once, then we wait for the result without dead air
-  async function voice(text, extra = {}) {
-    await say(text, "maya");
-    let r = await api("/api/voice/turn", {traveller: T, sid: SID, text, async_ok: true, ...extra});
-    if (r.pending_job) {
-      await say(r.say_now || r.say);
-      const t = line("Thinking…", "nudge", "thinking");
-      const t0 = Date.now();
-      while (true) {
-        await sleep(1000);
-        const j = await api(`/api/voice/job/${r.pending_job}`);
-        t.lastChild.textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)} s`;
-        if (j.done) { t.remove(); r = j; break; }
+  view = { walls: plan.walls.map(([a, b, open]) => [P(a), P(b), open]), rooms: plan.rooms.map(r => r.map(P)), route, segs, len, turns, k };
+}
+
+function at(d) {
+  const { route, segs } = view;
+  for (let i = 0; i < segs.length; i++) {
+    if (d <= segs[i]) { const f = segs[i] ? d / segs[i] : 0, a = route[i], b = route[i + 1]; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])]; }
+    d -= segs[i];
+  }
+  const a = route.at(-2), b = route.at(-1);
+  return [b[0], b[1], Math.atan2(b[1] - a[1], b[0] - a[0])];
+}
+
+function path(upto) {
+  const { route, segs } = view;
+  cx.beginPath(); cx.moveTo(route[0][0], route[0][1]);
+  let d = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (d + segs[i] <= upto) { cx.lineTo(route[i + 1][0], route[i + 1][1]); d += segs[i]; }
+    else { const p = at(upto); cx.lineTo(p[0], p[1]); break; }
+  }
+}
+
+function frame(now) {
+  if (!view) return requestAnimationFrame(frame);
+  const T = paused ? (frozenAt ?? DRAW + WALK) : ((now - t0) / 1000) % CYCLE;
+  cx.clearRect(0, 0, W, H);
+  cx.fillStyle = "rgba(77,124,255,.06)";
+  for (const r of view.rooms) { cx.beginPath(); r.forEach((p, i) => i ? cx.lineTo(p[0], p[1]) : cx.moveTo(p[0], p[1])); cx.closePath(); cx.fill(); }
+  cx.lineCap = "round";
+  for (const [a, b, open] of view.walls) {
+    cx.strokeStyle = open ? "rgba(220,228,245,.14)" : "rgba(220,228,245,.42)"; cx.lineWidth = open ? 1 : 1.4;
+    cx.setLineDash(open ? [3, 4] : []); cx.beginPath(); cx.moveTo(a[0], a[1]); cx.lineTo(b[0], b[1]); cx.stroke();
+  }
+  cx.setLineDash([]);
+  const drawn = view.len * easeOut(Math.min(1, T / DRAW));
+  const walked = T > DRAW ? view.len * easeInOut(Math.min(1, (T - DRAW) / WALK)) : 0;
+  // the route, glowing
+  cx.lineJoin = "round"; cx.shadowColor = "rgba(77,124,255,.9)"; cx.shadowBlur = 14;
+  cx.strokeStyle = "#4d7cff"; cx.lineWidth = 3.2; path(drawn); cx.stroke();
+  cx.shadowBlur = 0;
+  if (walked > 0) { cx.strokeStyle = "rgba(241,243,248,.55)"; cx.lineWidth = 3.2; path(walked); cx.stroke(); }
+  // the destination
+  const end = view.route.at(-1), arrived = T >= DRAW + WALK, q = ((now / 1000) % 1.6) / 1.6;
+  if (drawn >= view.len * .98) {
+    if (arrived && !paused) { cx.strokeStyle = `rgba(252,209,22,${.6 * (1 - q)})`; cx.lineWidth = 2; cx.beginPath(); cx.arc(end[0], end[1], 8 + 22 * q, 0, 7); cx.stroke(); }
+    cx.fillStyle = "#fcd116"; cx.beginPath(); cx.arc(end[0], end[1], 7, 0, 7); cx.fill();
+    cx.strokeStyle = "#0a1f5c"; cx.lineWidth = 2.5; cx.stroke();
+  }
+  // the traveller, and the belt's taps as they pass each turn
+  if (T > DRAW || paused) {
+    const [x, y, h] = at(walked);
+    for (const tn of view.turns) {
+      const since = walked - tn.at, life = view.len / WALK * .9;   // about 0.9 s of walking after the turn
+      if (since < 0 || since > life) continue;
+      const a = 1 - since / life, side = tn.right ? 1 : -1, nx = -Math.sin(h) * side, ny = Math.cos(h) * side;
+      for (let j = 0; j < (tn.sharp ? 2 : 1); j++) {
+        const r = 12 + j * 7 + (1 - a) * 10;
+        cx.strokeStyle = `rgba(252,209,22,${a * (j ? .5 : .9)})`; cx.lineWidth = 2.4;
+        cx.beginPath(); cx.arc(x, y, r, Math.atan2(ny, nx) - .6, Math.atan2(ny, nx) + .6); cx.stroke();
       }
     }
-    await say(r.say, "nudge", /caretaker/.test(r.say || "") ? "alert" : "");
-    return r;
+    if (!arrived && !paused) { cx.strokeStyle = `rgba(255,59,78,${.5 * (1 - q)})`; cx.lineWidth = 1.6; cx.beginPath(); cx.arc(x, y, 7 + 16 * q, 0, 7); cx.stroke(); }
+    cx.fillStyle = "#ff3b4e"; cx.beginPath(); cx.arc(x, y, 6.5, 0, 7); cx.fill();
+    cx.strokeStyle = "#fff"; cx.lineWidth = 2.2; cx.stroke();
   }
+  if (!paused) requestAnimationFrame(frame);
+}
 
-  // ---------- behind the scenes ----------
-  async function loadInfo() {
-    info = await api(`/api/demo/${SID}`);
-    const f = info.found, facts = [];
-    if (f.year_built) facts.push(["Built", `${f.year_built}${f.pre_ada ? ", no accessibility renovation on record (CoStar)" : ""}`]);
-    if (f.property_type) facts.push(["Building", `Class ${f.building_class || "?"} ${f.property_type.toLowerCase()}, ${f.floors || "?"} floors`]);
-    if (f.tenants && f.tenants.length) facts.push(["Tenants", f.tenants.join(", ")]);
-    if (f.entrance) facts.push(["Entrance", `${f.entrance.steps ? `about ${f.entrance.steps} steps up` : "level"}, ${f.entrance.ramp ? "ramp" : "no ramp"}, door ${f.entrance.door_width_m ? f.entrance.door_width_m.toFixed(1) + " m" : ""} wide${f.entrance.confirmed_from_imagery ? " (checked on Vexcel's oblique photo)" : ""}`]);
-    if (f.doorways && f.doorways.count) facts.push(["Doorways", `${f.doorways.count} found in the Matterport point cloud; narrowest ${f.doorways.narrowest_m} m`]);
-    if (info.start) facts.push(["Outside", `about ${Math.round(info.start.outdoor_m)} m on the sidewalk, no street to cross`]);
-    $("facts").innerHTML = "";
-    facts.forEach(([k, v]) => { const li = document.createElement("li"); li.innerHTML = `<b>${k}</b>`; li.append(v); $("facts").appendChild(li); });
-    if (f.facade_image) {
-      $("facadeBox").innerHTML = `<img class="facade" src="/api/demo/${SID}/facade.jpg" alt="Vexcel oblique aerial photo of the building's front: a semicircular set of steps under a curved canopy, facing Atlantic Boulevard"><p class="cap">The front steps, seen in Vexcel's oblique aerial photo. The scan's elevation data couldn't tell; the photo could.</p>`;
-    }
-    $("chips").innerHTML = "";
-    const rank = n => (f.tenants || []).includes(n) ? 0 : /entrance/i.test(n) ? 1 : /bathroom|kitchen|living/i.test(n) ? 2 : 3;
-    (f.places || []).slice().sort((a, b) => rank(a) - rank(b)).slice(0, 14).forEach(n => { const s = document.createElement("span"); s.className = "chip"; s.textContent = n; $("chips").appendChild(s); });
-  }
+const mbtn = document.getElementById("motion");
+function setMotion(off) {
+  paused = off;
+  mbtn.textContent = off ? "Play motion" : "Pause motion";
+  mbtn.setAttribute("aria-pressed", String(off));
+  if (off) frozenAt = DRAW + WALK; else t0 = performance.now();
+  requestAnimationFrame(frame);
+}
+mbtn.onclick = () => setMotion(!paused);
 
-  // ---------- the scripted visit: real api calls, deterministic reroute unless the live agent is ticked ----------
-  async function walkLeg(S, state) {
-    const w = await api(`/api/demo/${SID}/walk?session=${S}`);
-    for (const p of w.points) {
-      if (!running) return "stopped";
-      const r = await api("/api/outdoor/nav/update", {session: S, ...p});
-      for (const e of r.events) {
-        band(e, r.device);
-        if (e.type === "floor" || /stairs (up|down)/i.test(e.text || "")) state.floorChanged = true;
-        if (e.text && !["soon"].includes(e.type)) await say(e.text);
-      }
-      if (r.done) return "arrived";
-      if (r.phase === "indoor" && w.phase === "outdoor") return "inside";
-      if (r.phase === "indoor" && state.floorChanged && !state.locked &&
-          r.events.some(e => ["now", "door"].includes(e.type))) return "locked";
-      await sleep(420);
-    }
-    return "end";
-  }
+addEventListener("resize", () => { size(); if (paused) requestAnimationFrame(frame); });
+size();
+load().then(() => { setMotion(paused); });
 
-  async function run() {
-    if (running) return;
-    running = true; $("start").disabled = true; log.innerHTML = "";
-    try {
-      await api(`/api/demo/${SID}/reset`, {});
-      $("sam").src = $("sam").src;
-      if (!info) await loadInfo();
-      beat("Before she leaves");
-      await say("Isaac, what should I know about my appointment at DJF Insurance?", "maya");
-      const b = await api(`/api/briefing/${SID}?goal=${encodeURIComponent(info.goal)}&lat=${info.start.lat}&lon=${info.start.lon}`);
-      for (const s of b.sentences) await say(s);
-      beat("On the sidewalk");
-      await say("Take me to DJF Insurance.", "maya");
-      const s = await api("/api/outdoor/nav/start", {sid: SID, to: info.goal, profile: "blind", traveller: T,
-                                                    lat: info.start.lat, lon: info.start.lon});
-      for (const e of s.events) { band(e); if (e.text) await say(e.text); }
-      const S = s.session, state = {floorChanged: false, locked: false};
-      for (let leg = 0; leg < 8; leg++) {
-        const out = await walkLeg(S, state);
-        if (out === "inside") {
-          beat("Inside");
-          await voice("How far to DJF Insurance?", {session: S});
-        } else if (out === "locked") {
-          state.locked = true;
-          beat("Something is in the way");
-          const live = $("live").checked;
-          const r = await voice("This door is locked.", {session: S, agent: live});
-          if (r.pending) await voice("Yes.", {session: S});
-        } else if (out === "arrived") {
-          beat("Arrived");
-          await say(`This is DJF Insurance. Have a good appointment, Maya.`);
-          break;
-        } else if (out === "stopped") break;
-      }
-    } catch (e) {
-      await say("Something went wrong in the demo: " + e.message);
-    } finally {
-      running = false; $("start").disabled = false;
-    }
-  }
+// the plan tilts up and grows as you scroll past it
+const stage = document.querySelector(".stage");
+function onScroll() {
+  const p = Math.min(1, Math.max(0, scrollY / (innerHeight * .8)));
+  cv.style.setProperty("--tilt", `${50 - 34 * p}deg`);
+  cv.style.setProperty("--sc", `${1 + .12 * p}`);
+}
+if (!REDUCED) { addEventListener("scroll", onScroll, { passive: true }); onScroll(); }
 
-  $("start").onclick = run;
-  $("help").onclick = async () => { beat("Maya asks for help"); await voice("I need help.", {}); };
-  $("mute").onclick = () => { muted = !muted; $("mute").setAttribute("aria-pressed", String(muted)); $("mute").textContent = muted ? "Unmute voice" : "Mute voice"; if (muted) speechSynthesis.cancel(); };
-  $("sayForm").onsubmit = async e => { e.preventDefault(); const t = $("sayText").value.trim(); if (!t) return; $("sayText").value = ""; await voice(t, {}); };
-  loadInfo().catch(e => { $("facts").innerHTML = `<li>Couldn't load the building: ${e.message}</li>`; });
+// sections fade up as they arrive; the nav follows the section in view
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .15 });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+const links = [...document.querySelectorAll(".pills a")];
+const spy = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id));
+}), { rootMargin: "-45% 0px -50% 0px" });
+document.querySelectorAll("#home, #how, #inside, #agents, #care").forEach(s => spy.observe(s));
 </script>
 </body>
 </html>

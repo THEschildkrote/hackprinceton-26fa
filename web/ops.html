@@ -5,117 +5,122 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Isaac</title>
 <style>
-  /* the ios theme (ios/Shared/Format.swift). measured contrast: white on blue 9.9, navy on yellow 10.5,
-     white on red 5.6, navy on white 15.4, secondary on white 6.8. yellow is never text on light. */
+  /* the site's dark theme in the app's colours. on the near-black surface: ink 17.8:1, secondary 7.1:1;
+     yellow is fine as text on dark, and stays a fill under navy text elsewhere. */
   :root {
-    --red: #ce1126; --blue: #0038a8; --navy: #0a1f5c; --yellow: #fcd116;
-    --surface: #eef1f7; --card: rgba(255, 255, 255, .8); --room: #edf1f9;
-    --sec: #4f5b73; --ter: #6b7489; --line: rgba(10, 31, 92, .1); --off: rgba(10, 31, 92, .06);
+    --red: #ff4458; --blue: #4d7cff; --navy: #0a1f5c; --yellow: #fcd116; --ink: #f1f3f8;
+    --surface: #04060c; --card: rgba(14, 19, 31, .74); --room: #131c33;
+    --sec: #8e97ad; --ter: #5f6880; --line: rgba(255, 255, 255, .08); --off: rgba(255, 255, 255, .06);
     --ease: cubic-bezier(.22, 1, .36, 1); --inout: cubic-bezier(.65, 0, .35, 1);
-    --font: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
-  body { background: var(--surface); color: var(--navy); font: 14px/1.35 var(--font); font-variant-numeric: tabular-nums; min-width: 1280px; -webkit-font-smoothing: antialiased; }
+  body { background: var(--surface); color: var(--ink); font: 14px/1.35 var(--font); font-variant-numeric: tabular-nums; min-width: 1280px; -webkit-font-smoothing: antialiased; }
   button, select, input { font: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
   #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 
-  /* app bar */
-  .appbar { position: relative; z-index: 2; height: 52px; background: var(--blue); color: #fff; display: flex; align-items: center; gap: 16px; padding: 0 20px; box-shadow: 0 1px 0 rgba(10, 31, 92, .2); }
-  .appbar .title { font-size: 17px; font-weight: 600; }
-  .appbar .soft { color: rgba(255, 255, 255, .85); }
-  .appbar select { height: 32px; border: none; border-radius: 6px; background: #fff; color: var(--navy); padding: 0 8px; max-width: 280px; }
+  /* app bar, like the site's nav */
+  .appbar { position: relative; z-index: 2; height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 20px;
+            background: rgba(4, 6, 12, .72); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .appbar .title { font-size: 20px; font-weight: 500; letter-spacing: -.04em; margin-right: 6px; }
+  .appbar .title span { color: var(--yellow); }
+  .appbar .soft { color: var(--sec); }
+  .appbar select { height: 34px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255, 255, 255, .05); color: var(--ink); padding: 0 14px; max-width: 280px; outline: none; }
+  .appbar select option { background: #0b0f1a; color: var(--ink); }
   .appbar .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .appbar .check input { accent-color: var(--yellow); width: 16px; height: 16px; }
-  .appbar :focus-visible { outline-color: #fff; }
   .spacer { flex: 1; }
-  .barbtn { height: 32px; border: none; border-radius: 6px; padding: 0 12px; background: rgba(255, 255, 255, .16); color: #fff; font-weight: 600; cursor: pointer; transition: background .2s; }
-  .barbtn:hover { background: rgba(255, 255, 255, .26); }
-  .pill { display: inline-block; font-size: 12px; font-weight: 600; line-height: 16px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .barbtn { height: 34px; border: 1px solid var(--line); border-radius: 999px; padding: 0 16px; background: none; color: var(--ink); cursor: pointer; transition: background .3s; }
+  .barbtn:hover { background: rgba(255, 255, 255, .08); }
+  .barbtn.quiet { border-color: transparent; color: var(--sec); }
+  .barbtn.quiet:hover { color: var(--ink); }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; line-height: 16px; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
   .pill.replay { background: var(--yellow); color: var(--navy); }
-  .pill.live { color: #fff; border: 1px solid rgba(255, 255, 255, .55); padding: 3px 10px; animation: breathe 2.4s ease-in-out infinite; }
+  .pill.live { color: #cfe0ff; border: 1px solid rgba(77, 124, 255, .55); padding: 4px 12px; animation: breathe 2.4s ease-in-out infinite; }
   .pill.alert { background: var(--red); color: #fff; }
   .pill.walking { background: var(--blue); color: #fff; }
-  .pill.navy { background: var(--navy); color: #fff; }
-  .pill.idle { background: var(--surface); color: var(--sec); }
+  .pill.navy { background: rgba(255, 255, 255, .12); color: var(--ink); }
+  .pill.idle { background: var(--off); color: var(--sec); }
   .pill.wait { background: var(--yellow); color: var(--navy); }
-  @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .45); } 50% { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); } }
+  @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(77, 124, 255, .45); } 50% { box-shadow: 0 0 0 6px rgba(77, 124, 255, 0); } }
 
-  /* the grid of widgets, foundry style: titled, bordered, square-ish */
-  main { position: relative; z-index: 1; height: calc(100% - 52px); padding: 14px 16px 16px; display: grid; gap: 14px;
+  /* the grid of widgets */
+  main { position: relative; z-index: 1; height: calc(100% - 56px); padding: 14px 16px 16px; display: grid; gap: 14px;
          grid-template-columns: minmax(0, 1fr) 460px; grid-template-rows: auto minmax(0, 1fr) 216px; }
   #pipew { grid-column: 1; grid-row: 1; }
   #planw { grid-column: 1; grid-row: 2; }
   #agentsw { grid-column: 1; grid-row: 3; }
   #right { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 150px 150px; gap: 14px; flex: none; }
-  .w { background: var(--card); -webkit-backdrop-filter: blur(8px) saturate(150%); backdrop-filter: blur(8px) saturate(150%);
-       border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 1px 2px rgba(10, 31, 92, .05), 0 10px 28px -16px rgba(10, 31, 92, .22);
+  .w { background: var(--card); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+       border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 48px -28px rgba(0, 0, 0, .7);
        display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; overflow: hidden;
        animation: rise .8s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms); }
   .w.grow { flex: 1; }
   @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.985); } }
-  .wh { height: 36px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px;
-        border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .wh { height: 38px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px;
+        border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 500; white-space: nowrap; letter-spacing: -.01em; }
   .wh .meta, .wh .sub { font-weight: 400; font-size: 12px; color: var(--sec); }
   .wh .sub { margin-left: 8px; }
   .wb { flex: 1; min-height: 0; position: relative; }
   .none { padding: 16px; color: var(--sec); }
 
-  /* values that change slide up under a mask */
   .mask { overflow: hidden; }
   .sw { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: up .5s var(--ease); }
   @keyframes up { from { transform: translateY(100%); opacity: 0; } }
 
-  /* pipeline: a packet runs from stage to stage as the data moves */
+  /* pipeline */
   .pipe { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
   .stage { padding: 14px 16px 22px; min-width: 0; position: relative; height: 88px; }
   .stage + .stage { border-left: 1px solid var(--line); }
-  .stage::before { content: ""; position: absolute; left: 16px; right: 16px; top: 0; height: 2px; background: var(--blue); transform: scaleX(0); transform-origin: left; transition: transform .7s var(--ease), opacity .7s; opacity: 0; }
+  .stage::before { content: ""; position: absolute; left: 16px; right: 16px; top: 0; height: 2px; background: var(--blue); box-shadow: 0 0 12px rgba(77, 124, 255, .8);
+                   transform: scaleX(0); transform-origin: left; transition: transform .7s var(--ease), opacity .7s; opacity: 0; }
   .stage.hot::before { transform: scaleX(1); opacity: 1; transition: transform .25s var(--ease); }
   .stage .k { font-size: 12px; color: var(--sec); }
-  .stage .v { font-size: 16px; font-weight: 600; margin-top: 4px; min-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage .v { font-size: 16px; font-weight: 500; margin-top: 4px; min-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
   .stage .d { font-size: 12px; color: var(--sec); margin-top: 2px; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 8px; align-items: center; }
-  .flow { position: absolute; left: 16px; right: 16px; bottom: 10px; height: 1px; background: repeating-linear-gradient(90deg, rgba(0, 56, 168, .28) 0 6px, transparent 6px 14px); background-size: 14px 1px; animation: flow 1.2s linear infinite; }
+  .flow { position: absolute; left: 16px; right: 16px; bottom: 10px; height: 1px; background: repeating-linear-gradient(90deg, rgba(77, 124, 255, .45) 0 6px, transparent 6px 14px); background-size: 14px 1px; animation: flow 1.2s linear infinite; }
   @keyframes flow { to { background-position: 14px 0; } }
-  .packet { position: absolute; left: -10px; bottom: 8px; width: 20px; height: 5px; border-radius: 3px; background: var(--blue); box-shadow: 0 0 10px rgba(0, 56, 168, .55); pointer-events: none; }
-  .packet.y { background: var(--yellow); box-shadow: 0 0 10px rgba(252, 209, 22, .9); }
-  .sh { font-size: 12px; line-height: 16px; padding: 0 8px; border-radius: 4px; background: var(--off); color: var(--sec); transition: background .5s, color .5s, transform .5s var(--ease); }
+  .packet { position: absolute; left: -10px; bottom: 8px; width: 20px; height: 5px; border-radius: 3px; background: var(--blue); box-shadow: 0 0 12px rgba(77, 124, 255, .9); pointer-events: none; }
+  .packet.y { background: var(--yellow); box-shadow: 0 0 12px rgba(252, 209, 22, .9); }
+  .sh { font-size: 12px; line-height: 16px; padding: 0 8px; border-radius: 999px; background: var(--off); color: var(--sec); transition: background .5s, color .5s, transform .5s var(--ease); }
   .sh.on { background: var(--blue); color: #fff; transform: scale(1.12); transition: none; }
 
   /* floor plan */
-  .seg { display: flex; background: var(--off); border-radius: 6px; padding: 2px; font-weight: 400; }
-  .seg button { border: none; background: none; border-radius: 4px; padding: 2px 12px; font-size: 12px; color: var(--navy); cursor: pointer; transition: background .3s var(--ease); }
-  .seg button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(10, 31, 92, .15); }
-  .plan { background: rgba(255, 255, 255, .55); }
+  .seg { display: flex; background: var(--off); border-radius: 999px; padding: 2px; font-weight: 400; }
+  .seg button { border: none; background: none; border-radius: 999px; padding: 3px 12px; font-size: 12px; color: var(--sec); cursor: pointer; transition: background .3s var(--ease), color .3s; }
+  .seg button.on { background: rgba(255, 255, 255, .12); color: var(--ink); }
+  .plan { background: rgba(255, 255, 255, .015); }
   #plan { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #next { position: absolute; left: 14px; top: 14px; z-index: 2; max-width: min(480px, 60%); background: rgba(255, 255, 255, .94); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; box-shadow: 0 8px 24px -14px rgba(10, 31, 92, .4); }
+  #next { position: absolute; left: 14px; top: 14px; z-index: 2; max-width: min(480px, 60%); background: rgba(8, 11, 20, .9); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; backdrop-filter: blur(10px); }
   #next:empty { display: none; }
   #next .k { font-size: 12px; color: var(--sec); }
-  #next .t { font-size: 17px; font-weight: 600; }
-  #next .t span { font-weight: 400; color: var(--sec); margin-left: 8px; }
-  #legend { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; gap: 16px; font-size: 12px; color: var(--sec); background: rgba(255, 255, 255, .92); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
+  #next .t { font-size: 18px; font-weight: 400; letter-spacing: -.02em; }
+  #next .t span { color: var(--sec); margin-left: 8px; font-size: 15px; }
+  #legend { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; gap: 16px; font-size: 12px; color: var(--sec); background: rgba(8, 11, 20, .85); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; }
   #legend span { display: flex; align-items: center; gap: 8px; }
   #legend i { width: 16px; height: 4px; border-radius: 2px; }
   #legend b { width: 12px; height: 12px; border-radius: 50%; }
   #scale { position: absolute; right: 14px; bottom: 12px; z-index: 2; font-size: 12px; color: var(--sec); text-align: right; }
   #scale i { display: block; height: 4px; border: 1px solid var(--sec); border-top: none; margin: 4px 0 0 auto; }
   #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--sec); }
-  .facts { flex: none; display: flex; gap: 24px; padding: 0 14px; height: 32px; align-items: center; border-top: 1px solid var(--line); font-size: 12px; overflow: hidden; white-space: nowrap; }
+  .facts { flex: none; display: flex; gap: 24px; padding: 0 16px; height: 34px; align-items: center; border-top: 1px solid var(--line); font-size: 12px; overflow: hidden; white-space: nowrap; }
   .facts div { display: flex; gap: 6px; }
   .facts span:first-child { color: var(--sec); }
-  .facts span:last-child { font-weight: 600; }
+  .facts span:last-child { font-weight: 500; }
   .ants { animation: ants .9s linear infinite; }
   @keyframes ants { to { stroke-dashoffset: -12; } }
   .spin { transform-box: fill-box; transform-origin: center; animation: spin 9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* trip */
+  /* trip: thin numbers, like the site's headlines */
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); }
-  .kpis > div { padding: 10px 14px 12px; }
+  .kpis > div { padding: 10px 16px 12px; }
   .kpis > div + div { border-left: 1px solid var(--line); }
   .kpis .k { font-size: 12px; color: var(--sec); }
-  .num { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin-top: 2px; min-height: 34px; white-space: nowrap; }
+  .num { font-size: 30px; font-weight: 200; letter-spacing: -.04em; margin-top: 2px; min-height: 36px; white-space: nowrap; }
   .num small { font-size: 12px; font-weight: 400; color: var(--sec); margin-left: 3px; letter-spacing: 0; }
 
   /* charts */
@@ -125,27 +130,27 @@
   @keyframes pop { from { transform: scale(0); opacity: 0; } }
   .chart .ripple { transform-box: fill-box; transform-origin: center; animation: ripple 1.6s ease-out infinite; }
   @keyframes ripple { from { transform: scale(1); opacity: .55; } to { transform: scale(3.4); opacity: 0; } }
-  .mix { position: absolute; inset: 0; padding: 8px 14px; display: flex; flex-direction: column; justify-content: space-around; }
+  .mix { position: absolute; inset: 0; padding: 8px 16px; display: flex; flex-direction: column; justify-content: space-around; }
   .mr { display: grid; grid-template-columns: 58px 1fr 32px; gap: 8px; align-items: center; font-size: 12px; }
   .mr .ml { color: var(--sec); }
-  .mr .mb { height: 8px; background: var(--off); border-radius: 2px; overflow: hidden; }
-  .mr .mb i { display: block; height: 100%; width: 0; border-radius: 2px; transition: width .9s var(--ease); }
-  .mr .mc { text-align: right; font-weight: 600; }
+  .mr .mb { height: 6px; background: var(--off); border-radius: 999px; overflow: hidden; }
+  .mr .mb i { display: block; height: 100%; width: 0; border-radius: 999px; transition: width .9s var(--ease); }
+  .mr .mc { text-align: right; font-weight: 500; }
   .dev { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
-  .dev > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 14px; border-top: 1px solid var(--line); min-width: 0; }
+  .dev > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 16px; border-top: 1px solid var(--line); min-width: 0; }
   .dev > div:nth-child(-n+2) { border-top: none; }
   .dev > div:nth-child(odd) { border-right: 1px solid var(--line); }
   .dev span:first-child { font-size: 12px; color: var(--sec); }
-  .dev span:last-child { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dev span:last-child { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dev .off { color: var(--ter); font-weight: 400 !important; }
 
   /* lists */
   .list { position: absolute; inset: 0; overflow-y: auto; font-size: 12px; }
-  .ev { display: grid; grid-template-columns: 56px 64px 1fr; gap: 8px; padding: 0 14px; line-height: 28px; border-top: 1px solid var(--line); }
+  .ev { display: grid; grid-template-columns: 56px 64px 1fr; gap: 8px; padding: 0 16px; line-height: 28px; border-top: 1px solid var(--line); }
   .ev:first-child { border-top: none; }
   .ev > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .in { animation: slidein .55s var(--ease); }
-  @keyframes slidein { from { opacity: 0; transform: translateX(-10px); background: rgba(252, 209, 22, .35); } 40% { background: rgba(252, 209, 22, .2); } }
+  @keyframes slidein { from { opacity: 0; transform: translateX(-10px); background: rgba(252, 209, 22, .16); } 40% { background: rgba(252, 209, 22, .08); } }
   .tm { color: var(--ter); }
   .ev .k { color: var(--sec); }
 
@@ -153,13 +158,13 @@
   .agents { display: grid; grid-template-columns: 300px minmax(0, 1fr); }
   .agents .latw { position: relative; border-right: 1px solid var(--line); }
   .agents .lw { position: relative; }
-  .filters { display: flex; gap: 8px; align-items: center; font-weight: 400; }
-  .filters button { border: none; border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; background: var(--off); color: var(--sec); transition: background .25s, color .25s; }
+  .filters { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+  .filters button { border: none; border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; background: var(--off); color: var(--sec); transition: background .25s, color .25s; }
   .filters button.on { background: var(--blue); color: #fff; }
-  .row { display: grid; grid-template-columns: 64px 96px 80px 1fr 64px; gap: 8px; padding: 0 14px; line-height: 28px; border-top: 1px solid var(--line); position: relative; }
+  .row { display: grid; grid-template-columns: 64px 96px 80px 1fr 64px; gap: 8px; padding: 0 16px; line-height: 28px; border-top: 1px solid var(--line); position: relative; }
   .row:first-child { border-top: none; }
   .row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .ag { font-weight: 600; }
+  .row .ag { font-weight: 500; }
   .row.sub .ag { padding-left: 16px; font-weight: 400; }
   .row .k { color: var(--sec); }
   .row .k .pill { line-height: 16px; padding: 2px 8px; }
@@ -171,25 +176,27 @@
   .row .more { grid-column: 4 / span 2; white-space: pre-wrap; word-break: break-word; color: var(--sec); line-height: 1.5; padding: 0 0 8px; display: none; }
   .row.open .more { display: block; }
   .row.has { cursor: pointer; }
-  .row.has:hover { background: rgba(10, 31, 92, .03); }
+  .row.has:hover { background: rgba(255, 255, 255, .03); }
   .row.hide { display: none; }
 
   /* replay dialog */
-  dialog { border: none; border-radius: 10px; padding: 0; width: 400px; margin: auto; color: var(--navy); box-shadow: 0 18px 50px rgba(10, 31, 92, .3); }
+  dialog { border: 1px solid var(--line); border-radius: 20px; padding: 0; width: 400px; margin: auto; color: var(--ink); background: #0b0f1a; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
   dialog[open] { animation: rise .45s var(--ease); }
-  dialog::backdrop { background: rgba(10, 31, 92, .3); backdrop-filter: blur(2px); }
-  .dh { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 4px; font-size: 17px; font-weight: 600; }
-  .form { padding: 8px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .55); backdrop-filter: blur(3px); }
+  .dh { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 4px; font-size: 22px; font-weight: 300; letter-spacing: -.03em; }
+  .form { padding: 8px 18px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sec); }
-  .field select, .field input { height: 32px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--navy); padding: 0 8px; font-size: 15px; outline: none; }
+  .field select, .field input { height: 38px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .05); color: var(--ink); padding: 0 12px; font-size: 15px; outline: none; }
+  .field select option { background: #0b0f1a; }
   .field select:focus, .field input:focus { border-color: var(--blue); }
   .actions { grid-column: 1 / span 2; display: flex; gap: 8px; margin-top: 8px; }
-  .btn { height: 36px; padding: 0 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; background: var(--off); color: var(--blue); white-space: nowrap; }
-  .btn.primary { background: var(--yellow); color: var(--navy); flex: 1; }
-  .btn:disabled { opacity: .45; cursor: default; }
-  .btn.text { background: none; padding: 0 8px; height: 24px; font-size: 12px; }
-  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: rgba(10, 31, 92, .15); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+  .btn { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; font-weight: 500; background: none; color: var(--ink); white-space: nowrap; }
+  .btn.primary { background: #e9edf5; color: #11141b; border-color: transparent; flex: 1; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.text { border: none; padding: 0 8px; height: 24px; font-size: 12px; color: var(--sec); }
+  .btn.text:hover { color: var(--ink); }
+  button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .14); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -199,7 +206,7 @@
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
 <header class="appbar">
-  <span class="title">Isaac</span>
+  <a class="title" href="/" aria-label="Isaac, home">isaac<span>.</span></a>
   <select id="sess" aria-label="Session"></select>
   <label class="check soft"><input type="checkbox" id="follow" checked> Follow</label>
   <span class="spacer"></span>
@@ -207,6 +214,7 @@
   <span class="pill live" id="mode">Live</span>
   <span class="soft" id="conn">Connecting</span>
   <span class="soft" id="clock"></span>
+  <button class="barbtn quiet" id="signout" hidden>Sign out</button>
 </header>
 <main>
   <section class="w" id="pipew" style="--i:0">
@@ -226,9 +234,10 @@
     <div class="wb plan">
       <svg id="plan" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Floor plan"></svg>
       <div id="next"></div>
-      <div id="legend"><span><i style="background:var(--blue)"></i>Route</span><span><i style="background:#a9b4cc"></i>Walked</span>
-        <span><b style="background:var(--red);border:2px solid #fff;box-shadow:0 0 0 1px var(--line)"></b>Traveller</span>
-        <span><b style="background:var(--yellow);border:2px solid var(--navy)"></b>Destination</span></div>
+      <div id="legend"><span><i style="background:var(--blue)"></i>Route</span><span><i style="background:rgba(241,243,248,.45)"></i>Walked</span>
+        <span><b style="background:var(--red);border:2px solid #fff"></b>Traveller</span>
+        <span><b style="background:var(--yellow);border:2px solid var(--navy)"></b>Destination</span>
+        <span><b style="background:#0b0f1a;border:2px solid var(--red)"></b>Stall</span></div>
       <div id="scale"></div>
       <div id="empty">No phone connected</div>
     </div>
@@ -290,15 +299,19 @@
 const $ = id => document.getElementById(id);
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const C = { red: "#ce1126", blue: "#0038a8", navy: "#0a1f5c", yellow: "#fcd116", room: "#edf1f9", sec: "#4f5b73", ter: "#6b7489", walked: "#a9b4cc", grid: "rgba(10,31,92,.08)" };
+const C = { red: "#ff4458", blue: "#4d7cff", navy: "#0a1f5c", yellow: "#fcd116", room: "#131c33", sec: "#8e97ad", ter: "#5f6880",
+  walked: "rgba(241,243,248,.45)", grid: "rgba(255,255,255,.07)", ink: "#f1f3f8", soft: "#aab4cb", wall: "rgba(220,228,245,.62)", open: "rgba(220,228,245,.22)" };
 const S = {
   session: null, sid: null, graph: null, places: null, floors: [], floor: null, bounds: null, k: 0.05,
   cur: null, tgt: null, heading: null, trail: [], route: null, next: null, toNext: null, done: false, goal: null,
   sessions: [], started: {}, buildings: {}, follow: true, paused: false, hubState: null, devices: [], travellers: {}, band: null,
   filters: { model: true, tool: true, sub: true, hitl: true }, rows: {}, steps: [], stepTotal: 0, nodePlace: {}, walked: {},
-  stepsBy: {}, remBy: {}, evLog: [], lat: [], latSeen: new Set(), skew: null, quiet: false,
+  stepsBy: {}, remBy: {}, evLog: [], lat: [], latSeen: new Set(), skew: null, quiet: false, stalls: [],
 };
-const api = (p, o) => fetch(p, o).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t))));
+const api = (p, o) => fetch(p, o).then(r => {
+  if (r.status === 401) { location.replace(`/login.html?next=${encodeURIComponent("/ops.html")}`); return Promise.reject(new Error("signed out")); }
+  return r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t)));
+});
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const cap = s => { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); };
 const hms = ts => new Date(ts * 1000).toTimeString().slice(0, 8);
@@ -332,9 +345,9 @@ setInterval(() => $("clock").textContent = new Date().toTimeString().slice(0, 5)
   };
   size(); addEventListener("resize", size);
   const blobs = [
-    { c: "0,56,168", a: .14, r: .46, fx: .000105, fy: .00007, px: .22, py: .35 },
-    { c: "252,209,22", a: .2, r: .36, fx: .00008, fy: .000115, px: .78, py: .72 },
-    { c: "206,17,38", a: .07, r: .3, fx: .00012, fy: .00009, px: .58, py: .18 },
+    { c: "77,124,255", a: .11, r: .46, fx: .000105, fy: .00007, px: .22, py: .35 },
+    { c: "252,209,22", a: .06, r: .36, fx: .00008, fy: .000115, px: .78, py: .72 },
+    { c: "255,68,88", a: .05, r: .3, fx: .00012, fy: .00009, px: .58, py: .18 },
   ];
   const routes = [];
   function newRoute(t) {
@@ -367,7 +380,7 @@ setInterval(() => $("clock").textContent = new Date().toTimeString().slice(0, 5)
       cx.fillStyle = g; cx.fillRect(0, 0, W, H);
     }
     const s = 24, ox = (t * .004) % s, oy = (t * .0025) % s;
-    cx.fillStyle = "rgba(10,31,92,.08)";
+    cx.fillStyle = "rgba(255,255,255,.05)";
     for (let x = ox - s; x < W; x += s) for (let y = oy - s; y < H; y += s) cx.fillRect(x, y, 1.3, 1.3);
     if (!W) return;
     while (routes.length < 5) routes.push(newRoute(t + routes.length * 700));
@@ -376,7 +389,7 @@ setInterval(() => $("clock").textContent = new Date().toTimeString().slice(0, 5)
       if (e < 0) continue;
       if (e > r.draw + r.travel + 1400 || r.len < 1) { routes.splice(i, 1); continue; }
       const shown = r.len * easeOut(Math.min(1, e / r.draw)), fade = e > r.draw + r.travel ? 1 - (e - r.draw - r.travel) / 1400 : 1;
-      cx.strokeStyle = `rgba(0,56,168,${.3 * fade})`; cx.lineWidth = 1.6; cx.lineJoin = "round"; cx.lineCap = "round";
+      cx.strokeStyle = `rgba(77,124,255,${.35 * fade})`; cx.lineWidth = 1.6; cx.lineJoin = "round"; cx.lineCap = "round";
       cx.beginPath(); cx.moveTo(r.pts[0][0], r.pts[0][1]);
       let d = 0;
       for (let k = 0; k < r.segs.length; k++) {
@@ -391,8 +404,8 @@ setInterval(() => $("clock").textContent = new Date().toTimeString().slice(0, 5)
       }
       if (e > r.draw) {
         const p = Math.min(1, (e - r.draw) / r.travel), [x, y] = at(r, r.len * easeInOut(p)), q = (e % 1500) / 1500;
-        cx.fillStyle = `rgba(206,17,38,${.85 * fade})`; cx.beginPath(); cx.arc(x, y, 3.8, 0, 7); cx.fill();
-        cx.strokeStyle = `rgba(206,17,38,${.35 * fade * (1 - q)})`; cx.lineWidth = 1.5; cx.beginPath(); cx.arc(x, y, 4 + 12 * q, 0, 7); cx.stroke();
+        cx.fillStyle = `rgba(255,68,88,${.85 * fade})`; cx.beginPath(); cx.arc(x, y, 3.8, 0, 7); cx.fill();
+        cx.strokeStyle = `rgba(255,68,88,${.35 * fade * (1 - q)})`; cx.lineWidth = 1.5; cx.beginPath(); cx.arc(x, y, 4 + 12 * q, 0, 7); cx.stroke();
       }
     }
   }
@@ -475,7 +488,7 @@ function drawStatic() {
   const gw = el("g", { "stroke-linecap": "round" }, svg);
   for (const [a, c, kind] of fl?.walls || []) {
     const open = kind && kind !== "wall";
-    el("line", { x1: a[0], y1: -a[1], x2: c[0], y2: -c[1], stroke: open ? "rgba(60,60,67,.3)" : "rgba(10,31,92,.75)",
+    el("line", { x1: a[0], y1: -a[1], x2: c[0], y2: -c[1], stroke: open ? C.open : C.wall,
       "stroke-width": open ? 1 : 2, "stroke-dasharray": open ? "3 3" : "", "vector-effect": "non-scaling-stroke" }, gw);
   }
   const fs = 11 * k, gl = el("g", { "font-family": "-apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif", "font-size": fs, fill: C.sec }, svg), placed = [];
@@ -487,8 +500,8 @@ function drawStatic() {
     placed.push(bb);
     const t = el("text", { x: l.x, y: -l.y + fs * 0.35, "text-anchor": "middle" }, gl); t.textContent = l.name;
   }
-  for (const id of ["lroute", "ltrail", "lmark", "lme"]) el("g", { id }, svg);
-  drawRoute(); drawMe(); drawScale();
+  for (const id of ["lstall", "lroute", "ltrail", "lmark", "lme"]) el("g", { id }, svg);
+  drawStalls(); drawRoute(); drawMe(); drawScale();
 }
 
 function drawScale() {
@@ -520,15 +533,34 @@ function drawRoute() {
     const k = S.k, end = pts[pts.length - 1];
     if (end && end[2] === S.floor) {
       // the destination: a yellow sun with a navy ring, and a slow halo turning round it
-      el("circle", { cx: end[0], cy: -end[1], r: 15 * k, fill: "none", stroke: C.navy, "stroke-opacity": .45, "stroke-width": 1.5, "stroke-dasharray": "3 4", "vector-effect": "non-scaling-stroke", class: "spin" }, mk);
+      el("circle", { cx: end[0], cy: -end[1], r: 15 * k, fill: "none", stroke: C.ink, "stroke-opacity": .4, "stroke-width": 1.5, "stroke-dasharray": "3 4", "vector-effect": "non-scaling-stroke", class: "spin" }, mk);
       el("circle", { cx: end[0], cy: -end[1], r: 8 * k, fill: C.yellow, stroke: C.navy, "stroke-width": 2.5, "vector-effect": "non-scaling-stroke" }, mk);
       const lt = el("text", { x: end[0] + 20 * k, y: -end[1] + 4 * k, "font-family": "-apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif",
-        "font-size": 12 * k, "font-weight": 600, fill: C.navy, stroke: "#fff", "stroke-width": 3 * k, "paint-order": "stroke" }, mk);
+        "font-size": 12 * k, "font-weight": 600, fill: C.ink, stroke: "#04060c", "stroke-width": 3 * k, "paint-order": "stroke" }, mk);
       lt.textContent = cap(S.goal);
     }
   }
   t.innerHTML = "";
   poly(S.trail.filter(p => p[2] === S.floor), { stroke: C.walked, "stroke-width": 4 }, t);
+}
+
+// stretches where travellers stalled: a red band where it now costs extra to route, a ring where one person did
+function drawStalls() {
+  const gs = $("lstall");
+  if (!gs || !S.graph) return;
+  const key = JSON.stringify(S.stalls) + S.floor;
+  if (gs._key === key) return;
+  gs._key = key; gs.innerHTML = "";
+  const nodes = gs._nodes || (gs._nodes = Object.fromEntries(S.graph.nodes.map(n => [n.id, n])));
+  for (const s of S.stalls) {
+    if (s.floor !== S.floor) continue;
+    const [a, b] = s.edge.map(id => nodes[id]);
+    if (s.penalised && a && b)
+      el("line", { x1: a.x, y1: -a.y, x2: b.x, y2: -b.y, stroke: C.red, "stroke-opacity": .28, "stroke-width": 14, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" }, gs);
+    const ring = el("circle", { cx: s.x, cy: -s.y, r: 7 * S.k, fill: "#0b0f1a", stroke: C.red, "stroke-width": 2, "stroke-dasharray": s.penalised ? "" : "3 2", "vector-effect": "non-scaling-stroke" }, gs);
+    const t = el("title", {}, ring);
+    t.textContent = `${s.travellers} traveller${s.travellers === 1 ? "" : "s"} stalled here${s.obstacle ? ", something was in the way" : ""}; ${Math.ceil(s.expires_s / 60)} min left`;
+  }
 }
 
 function drawMe() {
@@ -744,7 +776,7 @@ function drawDist() {
   const phase = REDUCED ? 0 : -(performance.now() % 1600);
   svg.innerHTML = `<defs><linearGradient id="g-dist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.blue}" stop-opacity=".18"/><stop offset="1" stop-color="${C.blue}" stop-opacity="0"/></linearGradient></defs>
     ${gridY(P, w, [0, mid].filter((v, i, a) => a.indexOf(v) === i), Y, v => `${v}`)}
-    <path d="${area}" fill="url(#g-dist)"/><path d="${line}" fill="none" stroke="${C.navy}" stroke-width="1.75" stroke-linejoin="round"/>
+    <path d="${area}" fill="url(#g-dist)"/><path d="${line}" fill="none" stroke="${C.ink}" stroke-width="1.75" stroke-linejoin="round"/>
     ${S.done ? "" : `<circle cx="${f1(lx)}" cy="${f1(ly)}" r="4" fill="none" stroke="${C.red}" stroke-width="1.5" class="ripple" style="animation-delay:${phase}ms"/>`}
     <circle cx="${f1(lx)}" cy="${f1(ly)}" r="4" fill="${S.done ? C.yellow : C.red}" stroke="${S.done ? C.navy : "#fff"}" stroke-width="1.5"/>
     <text x="${P.l}" y="${h - 5}">${hm(t0 / 1000)}</text><text x="${w - P.r}" y="${h - 5}" text-anchor="end">${S.done ? hm(end / 1000) : "Now"}</text>`;
@@ -752,8 +784,8 @@ function drawDist() {
 }
 
 // what the system did in the last two minutes, by kind
-const MIX = [["step", "Steps", C.blue], ["position", "Position", C.blue], ["maneuver", "Route", C.navy],
-  ["voice", "Voice", C.navy], ["band", "Haptics", C.yellow], ["agent", "Agents", C.red]];
+const MIX = [["step", "Steps", C.blue], ["position", "Position", C.blue], ["maneuver", "Route", C.soft],
+  ["voice", "Voice", C.soft], ["band", "Haptics", C.yellow], ["agent", "Agents", C.red]];
 function drawMix() {
   const host = $("c-mix");
   if (!host._rows) {
@@ -771,7 +803,7 @@ function drawMix() {
 }
 
 // every model and tool call in the last ten minutes: when, and how long it took
-const LATC = { model: C.blue, tool: C.navy, sub: C.yellow, err: C.red };
+const LATC = { model: C.blue, tool: C.soft, sub: C.yellow, err: C.red };
 function drawLat() {
   const b = box("c-lat"); if (!b) return;
   const { svg, w, h } = b, now = nowS(), span = 600000, P = { l: 40, r: 12, t: 26, b: 20 }, iw = w - P.l - P.r, ih = h - P.t - P.b;
@@ -782,7 +814,7 @@ function drawLat() {
     const fresh = !S.latSeen.has(p.key); if (fresh) S.latSeen.add(p.key);
     return `<circle cx="${f1(X(p.t))}" cy="${f1(Y(p.ms))}" r="${p.kind === "sub" ? 5 : 4}" fill="${LATC[p.kind]}" fill-opacity="${p.kind === "sub" ? 1 : .8}" ${p.kind === "sub" ? `stroke="${C.navy}" stroke-width="1"` : ""}${fresh && !S.quiet ? ` class="pop"` : ""}><title>${esc(p.label)}, ${dur(p.ms)}</title></circle>`;
   }).join("");
-  svg.innerHTML = `<text x="14" y="17" style="font-size:12px;font-weight:600;fill:${C.navy}">Latency</text>
+  svg.innerHTML = `<text x="14" y="17" style="font-size:12px;font-weight:500;fill:${C.ink}">Latency</text>
     ${[["model", "Model"], ["tool", "Tool"], ["sub", "Subagent"]].reduceRight((acc, [k, l]) => {
       // swatch and navy label: yellow is never text on a light surface
       const x = acc.x - l.length * 6.2 - 14;
@@ -805,6 +837,7 @@ async function snapshot() {
   S.buildings = { ...S.buildings, ...(snap.buildings || {}) };
   put("model", esc(modelName(snap.model)));
   S.band = snap.band; S.devices = snap.devices || []; S.travellers = snap.travellers || {};
+  S.stallsBy = snap.stalls || {};
   S.sessions = snap.sessions || [];
   let want = S.session;
   if (S.follow) {
@@ -824,6 +857,8 @@ async function snapshot() {
   const s = S.sessions.find(x => x.session === want);
   if (s) await follow(s);
   else await waiting();
+  S.stalls = (S.stallsBy || {})[S.sid] || [];
+  drawStalls();
   renderDevices();
   const plan = !!s || !!S.graph;
   $("empty").style.display = plan ? "none" : "flex";
@@ -930,7 +965,8 @@ document.querySelectorAll("#filters button").forEach(b => b.onclick = () => {
 
 // --- event log ------------------------------------------------------------------------------------
 const KIND = { step: "Step", position: "Position", maneuver: "Route", reroute: "Reroute", voice: "Voice", band: "Haptics",
-  session: "Session", hub: "Status", agent: "Agent", exception: "Problem", replay: "Replay", device: "Device", calibrate: "Calibrate" };
+  session: "Session", hub: "Status", agent: "Agent", exception: "Problem", replay: "Replay", device: "Device", calibrate: "Calibrate",
+  stall: "Stall" };
 const kindOf = ev => ev.kind === "voice" ? (ev.who === "traveller" ? "Heard" : "Said") : KIND[ev.kind] || cap(ev.kind);
 function describe(ev) {
   switch (ev.kind) {
@@ -942,6 +978,8 @@ function describe(ev) {
     case "session": return `To ${cap(ev.goal)}, ${ev.route_m ?? "?"} m, ${ev.profile}${ev.by === "voice" ? ", by voice" : ""}`;
     case "device": return `${ev.role === "care" ? "Caretaker app" : "Phone"} ${ev.phase}${ev.name ? `, ${ev.name}` : ""}`;
     case "calibrate": return `Facing ${Math.round(ev.heading_deg)}°`;
+    case "stall": return ev.phase === "detected" ? `${{ stop: "Stopped", backup: "Backed up", shuffle: "Shuffled in place" }[ev.how] || "Stalled"} ${ev.where || ""}, asked`
+      : ev.phase === "clear" ? "Nothing in the way, carried on" : `Something in the way: “${ev.text || ""}”`;
     case "hub": return cap([ev.type, ev.state].filter(Boolean).join(", ").replace(/_/g, " "));
     case "agent": return `${agentName(ev.agent)}, ${ev.event.replace(/_/g, " ")}${ev.tool ? " " + ev.tool : ""}${ev.ms != null ? ", " + dur(ev.ms) : ""}`;
     case "exception": return `${cap(ev.phase)}${ev.text ? ", " + ev.text : ""}`;
@@ -1014,6 +1052,7 @@ function handle(ev) {
       hot("phone"); put("d-phone", `Facing ${Math.round(ev.heading_deg)}°`);
       break;
     case "device": snapshot(); break;
+    case "stall": if (mine) { hot("nav"); put("v-nav", ev.phase === "detected" ? "Is something in the way?" : ev.phase === "clear" ? "Carry on" : "Finding a way around"); put("d-nav", "Stall"); } snapshot(); break;
     case "band": if (ev.session && !mine) break;
       hot("band"); put("v-band", esc(cueName(ev.cue)));
       for (const [id, on] of [["shL", side(ev.cue) !== "Right"], ["shR", side(ev.cue) !== "Left"]]) {
@@ -1069,6 +1108,10 @@ $("r-exc").onclick = async () => {
   $("r-exc").disabled = false;
   snapshot();
 };
+
+// --- sign out ---------------------------------------------------------------------------------------
+fetch("/api/auth/status").then(r => r.json()).then(s => { $("signout").hidden = !s.required; }).catch(() => {});
+$("signout").onclick = () => fetch("/api/auth/logout", { method: "POST" }).finally(() => location.replace("/login.html"));
 
 // --- boot -------------------------------------------------------------------------------------------
 (async () => {

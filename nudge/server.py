@@ -6,8 +6,8 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,6 +22,52 @@ app = FastAPI(title="nudge debug")
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+# --- the dashboard's sign-in ----------------------------------------------------------------------------
+# set NUDGE_DASHBOARD_PASSWORD (python -m nudge.setkey NUDGE_DASHBOARD_PASSWORD) and the dashboard page and its
+# /api/ops data need a signed-in session; unset, they stay open as before. the apps' own api is never gated.
+import hashlib as _hashlib  # noqa: E402
+import hmac as _hmac  # noqa: E402
+import secrets as _secrets  # noqa: E402
+from urllib.parse import quote as _quote  # noqa: E402
+
+AUTH_COOKIE = "isaac_session"
+AUTH_TTL_S = 12 * 3600
+_AUTH_KEY = _secrets.token_bytes(32)   # per process: a restart signs everyone out
+
+
+def _dash_password():
+    from .mp import secret
+    return secret("NUDGE_DASHBOARD_PASSWORD", required=False) or None
+
+
+def _auth_token(now=None):
+    exp = int((time.time() if now is None else now) + AUTH_TTL_S)
+    sig = _hmac.new(_AUTH_KEY, str(exp).encode(), _hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _signed_in(request):
+    tok = request.cookies.get(AUTH_COOKIE) or ""
+    exp, _, sig = tok.partition(".")
+    if not exp.isdigit() or int(exp) < time.time():
+        return False
+    good = _hmac.new(_AUTH_KEY, exp.encode(), _hashlib.sha256).hexdigest()
+    return _hmac.compare_digest(sig, good)
+
+
+def _gated(path):
+    return path == "/ops.html" or path.startswith("/api/ops/")
+
+
+@app.middleware("http")
+async def _dashboard_gate(request, call_next):
+    if _gated(request.url.path) and _dash_password() and not _signed_in(request):
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"error": "sign in"}, status_code=401)
+        return RedirectResponse(f"/login.html?next={_quote(request.url.path)}", status_code=303)
+    return await call_next(request)
 _graphs, _sessions = {}, {}
 sessions = _sessions  # session id -> Navigator; the device router reads it via get_navigator
 _session_sid = {}     # session id -> building sid
@@ -418,6 +464,7 @@ def nav_start(req: StartReq):
         if not r["best"]:
             raise HTTPException(404, {"message": r["message"], "suggestions": r.get("suggestions")})
         goal, place = r["best"]["name"], places._summary(r["best"])
+    _stalls_apply(g, req.sid)
     nav = Navigator(g, goal, req.profile)
     sid = uuid.uuid4().hex[:10]
     _sessions[sid] = nav
@@ -503,10 +550,48 @@ class StepReq(BaseModel):
     floor_confirm: bool = False    # "i'm on the next floor" (otherwise stairs/elevator advance on their own)
 
 
+def _stalls_apply(g, sid):
+    try:
+        from . import stalls
+        stalls.apply(g, sid)
+    except Exception:
+        pass  # a penalty is a nicety; it must never stop a route
+
+
+def _stall_check(session, tr, steps, out):
+    """the traveller stopped, backed up or shuffled mid-route: ask, and remember it for everyone."""
+    tid = _session_traveller.get(session)
+    if not tid or tid == "replay" or session in _replayed:
+        return
+    try:
+        from . import stalls
+        st = stalls.detect(session, tr, steps)
+        if not st:
+            return
+        sid = _session_sid.get(session)
+        stalls.record(sid, st, tid)
+        out["say"] = list(out.get("say") or []) + [stalls.QUESTION]
+        out["ask"] = "stall"
+        _trace("stall", session=session, sid=sid, phase="detected", how=st["kind"], where=st["where"],
+               x=st["x"], y=st["y"], floor=st["floor"])
+        _voice.note_stall(tid, {**st, "session": session, "sid": sid})
+    except Exception:
+        pass
+
+
+def _stall_answer(tid, stall, outcome, text):
+    from . import stalls
+    stalls.resolve(stall.get("sid"), tid, outcome)
+    _trace("stall", session=stall.get("session"), sid=stall.get("sid"), phase=outcome, text=text,
+           where=stall.get("where"))
+
+
 @app.post("/api/nav/step")
 def nav_step(req: StepReq):
     nav, tr = _tracker(req.session)
+    _stalls_apply(nav.g, _session_sid.get(req.session))
     out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
+    _stall_check(req.session, tr, req.steps, out)
     ev = out["events"]
     _publish(req.session, nav, ev)
     _trace("step", session=req.session, steps=req.steps, heading_deg=req.heading_deg,
@@ -523,7 +608,7 @@ def nav_step(req: StepReq):
     return {"say": out["say"], "events": _events(ev), "state": _state(nav), "device": _device(nav),
             "position": out["position"], "distance_to_next_m": out["distance_to_next_m"],
             "bearing_to_next_deg": out["bearing_to_next_deg"], "done": out["done"],
-            "waiting_for": out["waiting_for"]}
+            "waiting_for": out["waiting_for"], "ask": out.get("ask")}
 
 
 class BandReq(BaseModel):
@@ -1404,7 +1489,7 @@ def _has_caretaker(tid):
 
 
 _voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker,
-                      on_turn=_voice_told)
+                      on_turn=_voice_told, on_stall_answer=_stall_answer)
 app.include_router(_voice)
 
 
@@ -1614,7 +1699,13 @@ def ops_snapshot(events: int = 200):
     buildings = {}
     for sid in {s["sid"] for s in sessions if s.get("sid")}:
         buildings[sid] = _ops_building(sid)
+    try:
+        from . import stalls
+        stall_map = {sid: stalls.active(sid) for sid in buildings}
+    except Exception:
+        stall_map = {}
     return {"sessions": sessions, "band": band, "travellers": travellers, "model": model, "devices": _presence(),
+            "stalls": stall_map,
             "buildings": buildings, "events": traces.recent(max(0, min(events, traces.RING))) if events else []}
 
 
@@ -1742,8 +1833,44 @@ def ops_replay_stop():
     return {"stopped": n}
 
 
+class LoginReq(BaseModel):
+    code: str = ""
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    return {"required": _dash_password() is not None, "signed_in": _signed_in(request)}
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginReq, request: Request):
+    pw = _dash_password()
+    if pw is None:
+        return {"ok": True, "required": False}
+    if not _hmac.compare_digest(req.code.encode(), pw.encode()):
+        time.sleep(0.5)   # slows guessing
+        raise HTTPException(401, "That code isn't right.")
+    resp = JSONResponse({"ok": True})
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    resp.set_cookie(AUTH_COOKIE, _auth_token(), max_age=AUTH_TTL_S, httponly=True, samesite="lax", secure=secure)
+    return resp
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(AUTH_COOKIE)
+    return resp
+
+
 @app.get("/")
 def index():
+    """the public site; the dashboard is behind sign-in at /ops.html."""
+    return FileResponse(ROOT / "web" / "index.html")
+
+
+@app.get("/dashboard")
+def dashboard():
     return RedirectResponse("/ops.html")
 
 

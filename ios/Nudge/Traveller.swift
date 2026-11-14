@@ -167,6 +167,7 @@ final class Traveller {
             if !piReachable { say("Back in touch.") }
             piReachable = true
             say(r.say ?? [])
+            if r.ask == "stall" { pendingApproval = true }   // so a plain yes or no reaches the pi
             distanceToNext = r.distance_to_next_m ?? r.state?.distance_to_next_m
             if r.done == true || r.state?.done == true {
                 phase = .arrived

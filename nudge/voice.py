@@ -46,6 +46,10 @@ PLACEQ = re.compile(r"^(?:please\s+)?(?:where (?:can|could|do|should) i (?:get|f
                     r"i'?m looking for)\s+(?P<place>.+?)(?:\s+(?:at|in)\s+(?P<bldg>.+?))?\s*\??$")
 LOST = re.compile(r"\b(i'?m lost|i am lost|lost|where do i go|which way|i don'?t know where)\b")
 FAR = {"how far", "how far is it", "how much further", "how far left", "how long", "how far to go", "are we there yet"}
+# answers to "is something in the way?" that mean nothing is
+CLEAR = NO | {"keep going", "nothing", "nothing there", "it's fine", "its fine", "all clear", "clear", "i'm fine",
+              "im fine", "i'm okay", "im okay", "carry on", "continue", "go on", "never mind", "nevermind", "no it's fine"}
+STALL_ANSWER_S = 60.0
 ORDINALS = {"first": 0, "one": 0, "1": 0, "second": 1, "two": 1, "2": 1, "third": 2, "three": 2, "3": 2,
             "fourth": 3, "four": 3, "4": 3, "last": -1}
 
@@ -140,11 +144,12 @@ class Conversation:
         self.trip = None         # {goal, sid, start} of the live trip
         self.briefed = False      # offered the pre-visit briefing already
         self.last_session = None  # the most recent trip, for problems reported after it ended or was dropped
+        self.stall = None         # the traveller stalled and was asked "is something in the way?"
 
 
 def make_router(get_navigator=None, register_session=None, graph_for=None, exception_factory=None,
                 explorer_factory=None, default_sid=None, agent_timeout=20.0, clock=time.monotonic,
-                has_caretaker=None, on_turn=None):
+                has_caretaker=None, on_turn=None, on_stall_answer=None):
     """get_navigator(session) and register_session(nav, sid) -> session tie voice trips to the server's sessions,
     so the band relay and the caretaker feed follow the same navigator. factories are injectable for tests.
     on_turn(traveller, heard, reply) sees every exchange (heard is None for a late agent answer)."""
@@ -532,6 +537,25 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
                 return reply(c, [c.last_say])
             nxt = nav.state().get("next")
             return reply(c, [nxt["text"] if nxt else "You have arrived."])
+        stall = c.stall if c.stall and clock() - c.stall["t"] < STALL_ANSWER_S else None
+        asks = t in WHERE or t in FAR or t in BRIEF or LOST.search(t) or re.match(r"^(how far|how much further|how long)", t)
+        if stall and not asks:
+            # the answer to "is something in the way?"
+            if t in YES:
+                return reply(c, ["What's in the way? Tell me, and I'll find a way around it."])
+            c.stall = None
+            outcome = "clear" if t in CLEAR else "obstacle"
+            if on_stall_answer:
+                try:
+                    on_stall_answer(c.tid, stall, outcome, req.text)
+                except Exception:
+                    pass
+            if outcome == "clear":
+                nxt = nav.state().get("next") if nav is not None else None
+                return reply(c, ["Okay, carry on."] + ([nxt["text"]] if nxt and nxt.get("text") else []))
+            if nav is not None and not nav.done:
+                return agent_reply(c, req, f'The traveller stopped {stall["where"]} and, asked whether something '
+                                           f'is in the way, said: "{req.text.strip()}"')
         if PROBLEM.search(t):
             if nav is None and c.last_session and get_navigator:
                 old = get_navigator(c.last_session)
@@ -584,18 +608,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         if m:
             return reply(c, start_trip(c, m["place"], m["bldg"]))
         if nav is not None and not nav.done:
-            jid = run_agent(c, req.text, use_agent=req.agent)
-            if req.async_ok:
-                lines = settle(jid) if not req.agent else None
-                if lines is not None:
-                    return reply(c, [ACK] + lines, say_now=ACK, pending_job=None)
-                return reply(c, [ACK], say_now=ACK, pending_job=jid)
-            # one-shot clients: wait for the agent, but never past the timeout
-            lines = settle(jid)
-            while lines is None:
-                time.sleep(0.2)
-                lines = settle(jid)
-            return reply(c, [ACK] + lines)
+            return agent_reply(c, req, req.text)
         # no building yet: maybe they just said the address
         if not c.sid:
             sid = resolve_building(t)
@@ -610,6 +623,30 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             if c.nav is not None or c.choice:
                 return reply(c, lines)
         return reply(c, ["I'm not sure what you mean.", HELP_TEXT])
+
+    def agent_reply(c, req, text):
+        """hand `text` to the exception agent: an acknowledgement at once for clients that poll, else wait."""
+        jid = run_agent(c, text, use_agent=req.agent)
+        if req.async_ok:
+            lines = settle(jid) if not req.agent else None
+            if lines is not None:
+                return reply(c, [ACK] + lines, say_now=ACK, pending_job=None)
+            return reply(c, [ACK], say_now=ACK, pending_job=jid)
+        # one-shot clients: wait for the agent, but never past the timeout
+        lines = settle(jid)
+        while lines is None:
+            time.sleep(0.2)
+            lines = settle(jid)
+        return reply(c, [ACK] + lines)
+
+    def note_stall(tid, info):
+        """the tracker saw this traveller stall and Isaac asked; their next words are the answer."""
+        c = convo(tid)
+        s = info.get("session")
+        if s and s != c.session and get_navigator and get_navigator(s) is not None:
+            c.session, c.nav, c.pending, c.choice, c.agents = s, get_navigator(s), None, None, {}
+            c.last_session = s
+        c.stall = {**info, "t": clock()}
 
     @router.post("/position")
     def position(req: Position):
@@ -655,6 +692,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         return {"tools": elevenlabs_tool_defs(root), "notes": ELEVENLABS_NOTES}
 
     router.conversations = convos  # handy for tests and the caretaker feed
+    router.note_stall = note_stall
     router.jobs = jobs
     return router
 
