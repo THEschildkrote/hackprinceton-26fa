@@ -18,6 +18,8 @@ export interface GraphNode { id: string; label: string; x: number; y: number; z:
 export interface Graph { sid: string; floors: { id: string; label: string }[]; nodes: GraphNode[]; warnings: string[] }
 export interface Pending { name: string; args: Record<string, unknown>; description?: string }
 export interface ExceptionReply extends Partial<NavReply> { mode: "agent" | "fallback"; reason?: string; say: string[]; pending: Pending | null }
+export interface Building { sid: string; address: string; city: string; name?: string; rooms?: number; floors?: number; has_costar?: boolean }
+export interface Place { id: string; name: string; kind: string; unnamed?: boolean; serves?: string[]; floor?: string }
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -51,6 +53,8 @@ export class Api {
 
   profiles() { return this.req<Record<string, unknown>>("GET", "/api/profiles"); }
   graph(sid: string) { return this.req<Graph>("GET", `/api/graph/${encodeURIComponent(sid)}`); }
+  buildings(q = "") { return this.req<{ results: Building[]; demo: string }>("GET", `/api/buildings?q=${encodeURIComponent(q)}&limit=12`); }
+  places(sid: string) { return this.req<{ places: Place[] }>("GET", `/api/places/${encodeURIComponent(sid)}`, undefined, 30000); }
 
   start(b: { sid: string; to: string; profile: string; x: number; y: number; floor: string; heading?: number | null }) {
     return this.req<StartReply>("POST", "/api/nav/start", b);
@@ -78,7 +82,8 @@ export class Api {
   }
   // caretaker pairing (nudge/hub.py); returns the code the traveller reads to their caretaker
   registerTraveller(traveller: string, name?: string | null) {
-    return this.req<{ code?: string }>("POST", "/api/traveller/register", { traveller, name: name ?? null });
+    return this.req<{ code?: string; traveller_id?: string }>("POST", "/api/traveller/register",
+      { traveller_id: traveller, name: name ?? null });
   }
 
   // haptic band relay (nudge/device_api.py)
@@ -95,6 +100,31 @@ export function entryNode(g: Graph): GraphNode | null {
   if (!pool.length) return g.nodes[0] ?? null;
   const cx = pool.reduce((s, n) => s + n.x, 0) / pool.length, cy = pool.reduce((s, n) => s + n.y, 0) / pool.length;
   return pool.reduce((best, n) => (Math.hypot(n.x - cx, n.y - cy) < Math.hypot(best.x - cx, best.y - cy) ? n : best));
+}
+
+// destination names from the place catalog: useful rooms first, corridors and closets last, no "Other"
+const FIRST = ["bath", "restroom", "toilet", "kitchen", "living", "dining", "entr", "lobby", "reception", "office",
+  "conference", "meeting", "bedroom", "laundry", "elevator", "stair"];
+const LAST = ["hall", "corridor", "closet", "storage"];
+const HIDE = ["other", "void", "unknown"];
+export function placeNames(places: Place[]): string[] {
+  const rank = (n: string) => {
+    const l = n.split(",")[0].toLowerCase();  // "Hallway 1, by the kitchen" is a hallway
+    const i = FIRST.findIndex((w) => l.includes(w));
+    if (i >= 0) return i;
+    return LAST.some((w) => l.includes(w)) ? 100 : 50;
+  };
+  const names = places
+    .filter((p) => (p.kind === "room" || p.kind === "feature") && !p.unnamed
+      && !HIDE.includes(p.name.split(",")[0].trim().toLowerCase()))
+    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "room" ? -1 : 1) || rank(a.name) - rank(b.name) || a.name.localeCompare(b.name))
+    .map((p) => p.name);
+  return [...new Set(names)];
+}
+
+export function buildingLabel(b: Building | null | undefined): string {
+  if (!b) return "";
+  return b.city ? `${b.address}, ${b.city}` : b.address;
 }
 
 export function destinations(g: Graph): string[] {

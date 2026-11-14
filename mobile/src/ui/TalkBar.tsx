@@ -8,6 +8,8 @@ import { say, stopSpeaking } from "../lib/voice";
 import type { Settings } from "../state";
 import { Big, C, Field, P } from "./kit";
 
+const FALLBACK_ID = `t-${Math.random().toString(36).slice(2, 10)}`;
+
 export function TalkBar({ settings, sid, session, here, onReply, prompt }: {
   settings: Settings;
   sid?: string | null;
@@ -25,12 +27,13 @@ export function TalkBar({ settings, sid, session, here, onReply, prompt }: {
 
   async function send(text: string) {
     text = text.trim();
-    if (!text || !settings.traveller) return;
+    if (!text) return;
+    const traveller = settings.traveller || FALLBACK_ID;  // never drop a request for want of an id
     setBusy(true);
     try {
       const pos = here?.() ?? null;
       const r = await new Api(settings.server).voiceTurn({
-        traveller: settings.traveller, text, sid: sid ?? null, session: session ?? null, ...(pos ?? {}),
+        traveller, text, sid: sid ?? null, session: session ?? null, ...(pos ?? {}),
       });
       setLast(r.say);
       say(r.say, settings.rate);
@@ -68,8 +71,12 @@ export function TalkBar({ settings, sid, session, here, onReply, prompt }: {
         <P dim>Voice input needs the Nudge app build. In Expo Go, type below or use a quick phrase.</P>
       )}
       <Field label="Say it by typing" value={typed} onChangeText={setTyped} returnKeyType="send"
-        placeholder="take me to the kitchen" accessibilityHint="Type what you would say, then press send"
+        placeholder="take me to the bathroom" accessibilityHint="Type what you would say, then press send"
         onSubmitEditing={() => { send(typed); setTyped(""); }} />
+      {typed.trim() !== "" && (
+        <Big label={busy ? "Thinking…" : "Send"} onPress={() => { send(typed); setTyped(""); }} disabled={busy}
+          hint="Sends what you typed to Nudge" />
+      )}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {QUICK_PHRASES.map((p) => (
           <View key={p} style={{ minWidth: "47%", flexGrow: 1 }}>

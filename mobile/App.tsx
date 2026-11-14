@@ -27,20 +27,26 @@ function Pane({ visible, children }: { visible: boolean; children: React.ReactNo
 export default function App() {
   const [tab, setTab] = useState<Tab>("Where to");
   const [settings, setSettingsState] = useState<Settings>(DEFAULTS);
+  const [ready, setReady] = useState(false);  // screens wait for saved settings, so they never save defaults over them
   const [trip, setTrip] = useState<Trip | null>(null);
 
   const setSettings = (s: Settings) => { setSettingsState(s); saveSettings(s); };
   // a stable traveller id, and a caretaker pairing code from the server when it offers one
   useEffect(() => {
     loadSettings().then(async (s) => {
-      let next = s.traveller ? s : { ...s, traveller: newTravellerId() };
+      const next = s.traveller ? s : { ...s, traveller: newTravellerId() };
+      setSettings(next);
+      setReady(true);  // show the app right away; pairing finishes in the background
       try {
         const r = await new Api(next.server, 5000).registerTraveller(next.traveller);
-        if (r.code) next = { ...next, caretakerCode: r.code };
+        const code = r.code;
+        // merge only the code, so a building picked meanwhile isn't overwritten
+        if (code) setSettingsState((prev) => { const n = { ...prev, caretakerCode: code }; saveSettings(n); return n; });
       } catch { /* server without pairing, or offline: keep going */ }
-      setSettings(next);
     });
   }, []);
+
+  if (!ready) return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>

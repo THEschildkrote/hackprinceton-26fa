@@ -156,13 +156,11 @@ def kickoff(sid, focus=None, goal=None):
         ids = ",".join(focus)
         return (f"QUICK SURVEY FIRST for building {sid}: a visitor is about to walk to {goal or 'their destination'} "
                 f"and this building has no dossier. Follow /agent/AGENTS.md, section 'Route-scoped quick survey'. "
-                f"Survey only these panos first (within 3 m of the planned route): {ids}. "
-                f"First delegate place-indexer for just the rooms these panos are in plus the goal, so the goal "
-                f"and the rooms on the way have names and descriptions. "
-                f"Delegate hazard-scout per floor with exactly these pano ids (it passes them as panos= to "
-                f"overhang_candidates and glass_suspects), merge into /dossier/annotations.json and validate_annotations "
-                f"right away so the router can use it. Then landmark-writer for the turn points among them that "
-                f"audit_routes lists. Write a short /dossier/briefing.md. After that, continue with the full survey.")
+                f"Route panos (within 3 m of the planned route): {ids}. "
+                f"In one turn, delegate place-indexer (only the rooms these panos are in, plus the goal) AND "
+                f"hazard-scout per floor with exactly these pano ids, in parallel. Then merge_dossier, audit_routes, "
+                f"landmark-writer for the turn points among these panos, merge_dossier, a short /dossier/briefing.md, "
+                f"finalize_dossier. After that, continue with the full survey.")
     return (f"Build the accessibility dossier for building {sid}. Follow /agent/AGENTS.md. "
             f"Start with building_overview('{sid}'), building_models('{sid}') and /memories/lessons.md, plan with "
             f"write_todos. Define the places first (place-indexer per floor -> /dossier/places/<floor_id>.json, then "

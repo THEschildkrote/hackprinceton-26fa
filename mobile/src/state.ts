@@ -1,13 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import type { Api, NavState } from "./lib/api";
+import type { Api, Building, NavState } from "./lib/api";
 
 export interface Settings {
   server: string;
   rate: number;        // speech rate, 1 = normal
   haptics: boolean;
-  recent: string[];    // building sids
+  recent: Building[];  // last buildings, newest first (shown by address)
   traveller: string;   // stable id for voice turns and caretaker pairing
   caretakerCode: string | null;  // code the caretaker texts to follow this traveller
 }
@@ -25,15 +25,21 @@ function defaultServer() {
 }
 export const DEFAULT_SERVER = defaultServer();
 
-export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: ["synthetic"],
+// the demo building: real matterport scan, vexcel outdoors, costar record
+export const DEMO_BUILDING: Building = { sid: "MgGNVWsyXtH", address: "1255 S Atlantic Blvd", city: "Los Angeles" };
+
+export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: [DEMO_BUILDING],
   traveller: "", caretakerCode: null };
 
-const KEY = "nudge.settings.v1";
+const KEY = "nudge.settings.v2";  // v2: recent holds buildings, not raw ids
 
 export async function loadSettings(): Promise<Settings> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS;
+    if (!raw) return DEFAULTS;
+    const s = { ...DEFAULTS, ...JSON.parse(raw) } as Settings;
+    const recent = (s.recent ?? []).filter((b) => b && typeof b === "object" && b.sid);
+    return { ...s, recent: recent.length ? recent : [DEMO_BUILDING] };
   } catch {
     return DEFAULTS;
   }

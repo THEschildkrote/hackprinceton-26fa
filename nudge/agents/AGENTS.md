@@ -36,13 +36,14 @@ You run ahead of the walk, never inside it. Be slow and thorough; your output is
 ## Route-scoped quick survey
 
 When the kickoff says QUICK SURVEY FIRST, a visitor is about to walk this building for the first time and needs safety coverage in minutes, not a full survey. Then:
-1. `place-indexer` for only the rooms on the route plus the goal, so the destination and the rooms you pass through have names and descriptions. Validate with `validate_places(sid)`.
-2. Plan with `write_todos`: hazards on the route, merge + validate, landmarks at the route's turn points, short briefing, then the full survey.
-3. `hazard-scout` per floor, passing the listed pano ids; it calls `overhang_candidates(sid, floor, panos=...)` and `glass_suspects(sid, floor, panos=...)` so only candidates within 3 m of the route come back.
-4. Call `merge_dossier(sid)` **before** anything else, so the router starts avoiding what was found.
-5. `audit_routes(sid, profile="blind")`; `landmark-writer` only for the turn points that are in the listed panos.
-6. A short `/dossier/briefing.md` (under 120 words) for this route, then `finalize_dossier(sid)` so the quick dossier is complete and valid even if the full survey never finishes.
-7. Then carry on with the normal workflow for the rest of the building.
+1. In ONE turn, delegate in parallel (two `task()` calls together):
+   - `place-indexer` for only the rooms on the route plus the goal (at most 2 looks per room), so the destination and the rooms you pass through have names;
+   - `hazard-scout` per floor with the listed pano ids; it passes them as `panos=` to `overhang_candidates` and `glass_suspects` so only candidates within 3 m of the route come back.
+   Hazards don't depend on places, so don't wait for one before starting the other.
+2. As soon as hazard-scout returns, call `merge_dossier(sid)`, so the router starts avoiding what was found.
+3. `audit_routes(sid, profile="blind")`; `landmark-writer` only for the turn points that are in the listed panos; `merge_dossier(sid)` again.
+4. A short `/dossier/briefing.md` (under 120 words) for this route, then `finalize_dossier(sid)` so the quick dossier is complete and valid even if the full survey never finishes.
+5. Then carry on with the normal workflow for the rest of the building.
 
 ## Rules
 

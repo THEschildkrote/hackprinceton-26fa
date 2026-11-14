@@ -19,6 +19,8 @@ from .navigator import Navigator
 HELP_TEXT = ("Tell me where you want to go, like: take me to the kitchen. "
              "You can also ask where am I, what's next, or how far. Say I need help to alert your caretaker.")
 
+BUILDING = re.compile(r"^(?:i'?m|i am|we'?re|we are)\s+(?:at|in)\s+(?P<b>.+)$|"
+                      r"^(?:the building is|building is|set (?:the )?building(?: to)?)\s+(?P<b2>.+)$")
 TRIP = re.compile(r"^(?:please\s+)?(?:take me to|bring me to|guide me to|get me to|navigate to|go to|directions to|"
                   r"how (?:do|can) i (?:get|go) to|i (?:want|need|would like|'d like) to go to|i want to get to|"
                   r"where is|where's|find)\s+(?P<place>.+?)(?:\s+(?:at|in)\s+(?P<bldg>.+))?$")
@@ -194,12 +196,16 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         return c.here
 
     def resolve_building(text):
-        try:
-            from .photon_bot import find_building
-            return find_building(text)[0]
-        except Exception:
-            t = text.strip().lower()
-            return "synthetic" if t in ("synthetic", "demo", "the demo building") else None
+        """a street address, building name or city words -> sid, via the same search the app uses."""
+        from . import buildings
+        t = text.strip().strip(".").lower()
+        if t in buildings.HIDDEN:
+            return t
+        toks = re.findall(r"[a-z0-9]+", t)
+        if not toks or (len(toks) < 2 and not any(ch.isdigit() for ch in t)):
+            return None  # "the kitchen" is not a building
+        hits = buildings.search(t, 1)
+        return hits[0]["sid"] if hits else None
 
     def start_trip(c, place_query, bldg=None):
         if bldg:
@@ -209,7 +215,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             if sid != c.sid:
                 c.sid, c.here = sid, None
         if not c.sid:
-            return ["Which building are you in? Say, take me to the kitchen at, and the building's address."]
+            return ["Which building are you in? Say the street address."]
         try:
             g = graph_for(c.sid)
         except Exception as ex:
@@ -366,11 +372,27 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             if st.get("distance_to_next_m") is not None and st.get("next"):
                 lines.append(f"Next step in {meters(st['distance_to_next_m'])}.")
             return reply(c, lines)
+        b = BUILDING.match(t)
+        if b:
+            sid = resolve_building(b["b"] or b["b2"])
+            if sid:
+                from .buildings import label
+                if sid != c.sid:
+                    c.sid, c.here = sid, None
+                return reply(c, [f"Okay, {label(sid)}. Where would you like to go?"])
         m = TRIP.match(t)
         if m:
             return reply(c, start_trip(c, m["place"], m["bldg"]))
         if nav is not None and not nav.done:
             return reply(c, agent_turn(c, req.text))
+        # no building yet: maybe they just said the address
+        if not c.sid:
+            sid = resolve_building(t)
+            if sid:
+                from .buildings import label
+                c.sid, c.here = sid, None
+                return reply(c, [f"Okay, {label(sid)}. Where would you like to go?"])
+            return reply(c, ["Which building are you in? Say the street address."])
         # no trip yet: maybe they just named a place
         if c.sid:
             lines = start_trip(c, t)

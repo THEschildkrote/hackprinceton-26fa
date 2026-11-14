@@ -41,7 +41,8 @@ SERVES_BY_LABEL = [
 INTENTS = {
     "water": ["water", "drink", "thirsty", "fountain", "sink", "tap", "refill"],
     "restroom": ["restroom", "bathroom", "toilet", "wc", "washroom", "loo", "lavatory", "men's room",
-                 "ladies room", "accessible toilet"],
+                 "ladies room", "accessible toilet", "ladies", "men's", "mens", "women's", "womens", "gents",
+                 "powder room", "half bath"],
     "exit": ["exit", "way out", "leave", "get out", "outside", "entrance", "front door", "main door"],
     "help_desk": ["help", "reception", "front desk", "information", "info desk", "staff", "someone to ask",
                   "security desk", "concierge"],
@@ -131,7 +132,8 @@ def seed_from_graph(g, sid=None, costar=None, site=None):
         best = None
         for other, oc in centres.items():
             lab = g.rooms[other].get("label")
-            if other == rid or not lab or lab == "Void" or len(labels.get(lab, [])) != 1:
+            # only landmarks a visitor would recognise: skip generic labels like "Other"
+            if other == rid or not lab or lab in ("Void", "Other", "Unknown") or len(labels.get(lab, [])) != 1:
                 continue
             if g.rooms[other]["floor"] != g.rooms[rid]["floor"]:
                 continue
@@ -161,9 +163,10 @@ def seed_from_graph(g, sid=None, costar=None, site=None):
             if len(same_floor) == 1:
                 name = f"{lab}, {_floor_label(g, fid)}"
             else:
+                # number per floor and say the floor; "by the <neighbour>" was mostly "by the entrance" on real scans
                 k = same_floor.index(rid) + 1
-                near = near_label(rid)
-                name = f"{lab} {k}" + (f", by the {near}" if near else "")
+                multi = len({g.rooms[x]["floor"] for x in labels[lab]}) > 1
+                name = f"{lab} {k}, {_floor_label(g, fid)}" if multi else f"{lab} {k}"
             conf = 0.7
         places.append({
             "id": f"room:{rid}", "name": name, "kind": "room", "aliases": aliases, "serves": _serves(lab),
@@ -473,6 +476,37 @@ def _container(place, others):
                  and o.get("kind") == "room"), None)
 
 
+NEED_WORDS = {"restroom": "bathroom", "water": "place to get water", "exit": "exit", "help_desk": "help desk",
+              "food": "place to get food", "seating": "place to sit", "elevator": "elevator", "stairs": "staircase"}
+
+
+def base_name(name):
+    """'Bathroom 2, by the entrance' -> 'Bathroom'; 'Elevator, Floor 1' -> 'Elevator'."""
+    b = str(name).split(",")[0].strip()
+    return re.sub(r"\s+\d+$", "", b).strip() or b
+
+
+def closest_rooms(cat, q, n=4):
+    """up to n room names, deduped by base name, most similar to q first. no features, no unnamed spaces."""
+    rooms = [p for p in cat["places"] if p.get("kind") == "room" and not p.get("unnamed") and goal_nodes(p)
+             and base_name(p["name"]).lower() not in ("other", "void", "unknown")]
+    by_base = {}
+    for p in rooms:
+        by_base.setdefault(base_name(p["name"]), p)
+    names = list(by_base)
+    ql = str(q).lower()
+    names.sort(key=lambda b: (-difflib.SequenceMatcher(None, ql, b.lower()).ratio(), b))
+    return names[:n]
+
+
+def no_match_text(q, its, suggestions):
+    need = next((NEED_WORDS[i] for i in its if i in NEED_WORDS), None)
+    head = f"I don't have a {need} on record in this building." if need else f"There's no {q} on record here."
+    if suggestions:
+        return f"{head} Closest matches: {', '.join(suggestions)}."
+    return head
+
+
 def resolve(src, query, here=None, profile="blind", catalog=None):
     """src: a sid or a WalkGraph. here: (x, y, floor) to rank by route length. returns a dict, never raises."""
     from .instruct import meters
@@ -501,10 +535,8 @@ def resolve(src, query, here=None, profile="blind", catalog=None):
         {**_summary(c["place"]), "score": c["score"], "why": c["why"], "route_m": c["route_m"]} for c in cands[:8]],
         "best": None, "ambiguous": False, "question": None}
     if not cands:
-        named = sorted({p["name"] for p in cat["places"] if p["kind"] in ("room", "feature", "tenant", "entrance")
-                        and not p.get("unnamed")})
-        out["suggestions"] = named[:15]
-        out["message"] = f"I don't know a place called {nq or query}. Places I know: {', '.join(named[:12])}."
+        out["suggestions"] = closest_rooms(cat, nq or query)
+        out["message"] = no_match_text(nq or query, its, out["suggestions"])
         return out
     top = cands[0]["score"]
     tier = [c for c in cands if c["score"] >= top - 5]
@@ -531,9 +563,10 @@ def resolve(src, query, here=None, profile="blind", catalog=None):
             if c["route_m"] is not None:
                 where += f", {meters(c['route_m'])}"
             opts.append(where)
-        kind = (nq or "place")
-        out["question"] = (f"There are {len(distinct)} places that match {kind}: " + "; ".join(opts) +
-                           ". Which one?")
+        need = next((NEED_WORDS[i] for i in its if i in NEED_WORDS), None)
+        kind = need or (nq or "place")
+        out["question"] = (f"There are {len(distinct)} {kind}s: " if need else
+                           f"There are {len(distinct)} places that match {kind}: ") + "; ".join(opts) + ". Which one?"
         out["options"] = [_summary(c["place"]) for c in distinct[:4]]
         return out
     best = cands[0] if cands[0]["place"] in [c["place"] for c in distinct] else distinct[0]

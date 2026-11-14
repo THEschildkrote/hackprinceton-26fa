@@ -931,6 +931,13 @@ def traveller_help(tid: str, req: HelpReq):
     return hub.status(tid)
 
 
+@app.get("/api/buildings")
+def buildings_search(q: str = "", limit: int = 12):
+    """find a building by address, name or city; no query gives the featured list (demo building first)."""
+    from . import buildings
+    return {"results": buildings.search(q, max(1, min(limit, 50))), "demo": buildings.DEMO_SID}
+
+
 # haptic band relay (web/companion.html, mobile app)
 from .device_api import make_router  # noqa: E402
 
