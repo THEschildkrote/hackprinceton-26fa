@@ -322,3 +322,9 @@ def apply_annotations(g, ann):
             if project((h["x"], h["y"]), na.xy, nb.xy)[2] <= h.get("radius", 0.6):
                 e.tags.add("hazard")
                 e.hazards.append(h)
+        # edges the geometry candidate was found on, even if a bit farther than radius
+        for a, b in h.get("on_edges") or (h.get("evidence") or {}).get("on_edges") or []:
+            e = g.edge(a, b) if a in g.adj else None
+            if e and h not in e.hazards:
+                e.tags.add("hazard")
+                e.hazards.append(h)
