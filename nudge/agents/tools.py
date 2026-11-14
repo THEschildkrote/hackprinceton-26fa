@@ -54,10 +54,35 @@ def _graph_cached(sid, ann_key):
     return walkgraph.build(_model(sid), ann)
 
 
+GENERIC_ROOMS = {None, "", "Other", "Void", "Unknown"}
+
+
+def _agent_names(sid):
+    """pano id -> the name the agents gave its room/zone (places.json plus per-floor fragments)."""
+    d = dossier_dir(sid)
+    files = [d / "places.json", *sorted((d / "places").glob("*.json"))] if (d / "places").exists() else [d / "places.json"]
+    names = {}
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for p in data.get("places") or []:
+            if p.get("kind") in ("room", "zone") and p.get("name"):
+                for pid in p.get("panos") or []:
+                    names[pid] = p["name"]
+    return names
+
+
 def graph(sid, annotated=True):
     ann = read_annotations(sid)[0] if annotated else None
     g = _graph_cached(sid, json.dumps(ann, sort_keys=True) if ann else "")
     g.sid = sid  # lets the place catalog find this scan's /dossier/places.json
+    # matterport often labels rooms "Other"; speak the names the agents gave them instead
+    for pid, name in _agent_names(sid).items():
+        n = g.nodes.get(pid)
+        if n is not None and n.room_label in GENERIC_ROOMS:
+            n.room_label = name
     return g
 
 

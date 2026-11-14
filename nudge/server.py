@@ -75,9 +75,10 @@ class StartReq(BaseModel):
     sid: str
     to: str
     profile: str = "blind"
-    x: float
-    y: float
-    floor: str
+    x: float | None = None   # leave out x/y/floor and give `start` instead (phone walks have no coordinates)
+    y: float | None = None
+    floor: str | None = None
+    start: str | None = None  # "entrance" (default when no x/y), a place name, or a pano id
     heading: float | None = None
     building: bool = False  # route across every joined scan of this building
     traveller: str | None = None  # who is walking (caretakers follow them); defaults to the session id
@@ -221,6 +222,15 @@ def nav_start(req: StartReq):
             raise HTTPException(502, f"could not join the scans of {req.sid}: {ex}")
     else:
         g = graph_for(req.sid)
+    site = None
+    if req.x is None or req.y is None or req.floor is None or req.start:
+        from .pdr import resolve_start, site_for
+        site = site_for(req.sid)
+        try:
+            n0 = resolve_start(g, req.sid, req.start, site)
+        except ValueError as ex:
+            raise HTTPException(404, str(ex))
+        req.x, req.y, req.floor = n0.x, n0.y, n0.floor
     goal, place = req.to, None
     from .router import resolve_goal
     if not resolve_goal(g, goal, catalog=False):
@@ -243,8 +253,14 @@ def nav_start(req: StartReq):
     hub.attach_session(tid, sid, req.sid, goal, req.profile)
     _publish(sid, nav, [dict(e, goal=goal) for e in ev])
     _band_sync(sid, nav, req.heading, start=True)
+    from .pdr import Tracker
+    if site is None and not req.building:
+        from .pdr import site_for
+        site = site_for(req.sid)
+    tr = _trackers[sid] = Tracker(nav, geo=site.geo if site else None)
     return {"session": sid, "traveller": tid, "events": _events(ev), "state": _state(nav), "device": _device(nav),
-            "place": place}
+            "place": place, "start": {"x": req.x, "y": req.y, "floor": req.floor},
+            "start_heading_deg": tr.start_compass()}
 
 
 @app.post("/api/nav/update")
@@ -263,6 +279,58 @@ def nav_update(req: UpdateReq):
         why = next(e.get("why") for e in ev if e.get("type") == "unmapped")
         out["explore_hint"] = f"Traveller is off the map (why: {why})."
     return out
+
+
+# live walking from the phone: steps + compass, kept on the walk graph (nudge/pdr.py)
+
+_trackers = {}  # session -> pdr.Tracker
+
+
+def _tracker(session):
+    nav = _nav(session)
+    tr = _trackers.get(session)
+    if tr is None or tr.nav is not nav:
+        from .pdr import Tracker
+        tr = _trackers[session] = Tracker(nav)
+    return nav, tr
+
+
+class CalibrateReq(BaseModel):
+    session: str
+    heading_deg: float   # compass heading while facing the way the first instruction says
+
+
+@app.post("/api/nav/calibrate")
+def nav_calibrate(req: CalibrateReq):
+    nav, tr = _tracker(req.session)
+    out = tr.calibrate(req.heading_deg)
+    _band_sync(req.session, nav, tr.to_model(req.heading_deg))
+    return out
+
+
+class StepReq(BaseModel):
+    session: str
+    steps: int = 0                 # new steps since the last call; 0 = heading only
+    heading_deg: float | None = None  # compass, 0 = north, clockwise
+    step_m: float | None = None
+    floor_confirm: bool = False    # "i'm on the next floor" (otherwise stairs/elevator advance on their own)
+
+
+@app.post("/api/nav/step")
+def nav_step(req: StepReq):
+    nav, tr = _tracker(req.session)
+    out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
+    ev = out["events"]
+    _publish(req.session, nav, ev)
+    _band_sync(req.session, nav, out["heading_model"])
+    tid = _session_traveller.get(req.session)
+    if tid:
+        from . import hub
+        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+    return {"say": out["say"], "events": _events(ev), "state": _state(nav), "device": _device(nav),
+            "position": out["position"], "distance_to_next_m": out["distance_to_next_m"],
+            "bearing_to_next_deg": out["bearing_to_next_deg"], "done": out["done"],
+            "waiting_for": out["waiting_for"]}
 
 
 class BandReq(BaseModel):
