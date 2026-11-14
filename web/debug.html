@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nudge Route Debugger</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #d9d9d3;
+    --wall: #2a2a28; --door: #0f8b8d; --edge: #b5b5ad; --uncertain: #e08a1e; --hazard: #d23c3c;
+    --vertical: #7b4bc4; --route: #2f6fde; --start: #1f9d55; --goal: #d23c3c; --walker: #111;
+    --room: #e9e6dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --panel: #1f1f1d; --ink: #ecece6; --muted: #9a9a92; --line: #33332f;
+      --wall: #e6e6df; --edge: #55554f; --room: #2a2925; --walker: #fff;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecece6; --muted: #9a9a92; --line: #33332f;
+    --wall: #e6e6df; --edge: #55554f; --room: #2a2925; --walker: #fff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  label { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; }
+  input, select, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                          border-radius: 6px; padding: 4px 8px; }
+  input[type=text] { width: 120px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--route); color: #fff; border-color: var(--route); }
+  button.on { background: var(--ink); color: var(--bg); }
+  main { display: grid; grid-template-columns: 1fr 360px; gap: 0; height: calc(100vh - 52px); }
+  #mapwrap { position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; display: block; touch-action: none; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px 16px; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  #status { font-size: 13px; color: var(--muted); min-height: 1.4em; }
+  #status.err { color: var(--hazard); }
+  ol#mans { padding-left: 20px; margin: 0; }
+  ol#mans li { margin: 4px 0; }
+  ol#mans li.cur { font-weight: 600; color: var(--route); }
+  #log { font-size: 13px; }
+  #log div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 9px; margin-right: 6px;
+           background: var(--line); color: var(--ink); }
+  .badge.reroute, .badge.no_route { background: var(--uncertain); color: #fff; }
+  .badge.hazard { background: var(--hazard); color: #fff; }
+  .badge.arrive { background: var(--start); color: #fff; }
+  .badge.now { background: var(--route); color: #fff; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin-right: 4px; }
+  .warn { color: var(--uncertain); font-size: 12px; }
+  .meta { font-size: 12px; color: var(--muted); }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+    input[type=text] { width: 100px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nudge route debugger</h1>
+  <label>model <input id="sid" type="text" value="synthetic"></label>
+  <button id="load">Load</button>
+  <label>floor <select id="floor"></select></label>
+  <label>profile <select id="profile"><option>blind</option><option>wheelchair</option><option>default</option></select></label>
+  <label>goal <select id="goalRoom"><option value="">(shift-click node)</option></select></label>
+  <button id="route" class="primary">Route</button>
+  <button id="sim">Simulate walk</button>
+  <button id="drag">Drag the dot</button>
+  <button id="block">Block next edge</button>
+  <label><input id="mute" type="checkbox"> mute</label>
+  <label>speed <input id="speed" type="range" min="1" max="10" value="4"></label>
+</header>
+<main>
+  <div id="mapwrap"><svg id="map"></svg></div>
+  <aside>
+    <div id="status">Click a node to set the start, shift-click (or pick a room) for the goal.</div>
+    <div class="meta" id="pick"></div>
+    <div class="legend" style="margin-top:8px">
+      <span><i style="background:var(--wall)"></i>wall</span>
+      <span><i style="background:var(--door)"></i>door/opening</span>
+      <span><i style="background:var(--edge)"></i>link</span>
+      <span><i style="background:var(--door);height:2px"></i>door link</span>
+      <span><i style="background:var(--uncertain)"></i>uncertain</span>
+      <span><i style="background:var(--hazard)"></i>hazard</span>
+      <span><i style="background:var(--vertical)"></i>floor link</span>
+      <span><i style="background:var(--route);height:5px"></i>route</span>
+    </div>
+    <div id="warnings"></div>
+    <h2>Route</h2>
+    <div class="meta" id="routeMeta">none</div>
+    <ol id="mans"></ol>
+    <h2>Events</h2>
+    <div id="log"></div>
+  </aside>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const S = {
+  g: null, floor: null, start: null, goal: null, route: null, mans: [],
+  session: null, state: null, walker: null, path: [], pi: 0, timer: null, drag: false, dragging: false,
+  lastSend: 0,
+};
+
+function status(msg, err) { const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify(body) } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+
+// ---------- loading ----------
+async function load() {
+  stopSim();
+  const sid = $("sid").value.trim();
+  status("loading " + sid + "...");
+  try {
+    S.g = await api(`/api/graph/${encodeURIComponent(sid)}?profile=${$("profile").value}`);
+  } catch (e) { status(e.message, true); return; }
+  S.nodes = Object.fromEntries(S.g.nodes.map(n => [n.id, n]));
+  S.start = S.goal = S.route = S.session = S.state = S.walker = null; S.mans = [];
+  const fsel = $("floor"); fsel.innerHTML = "";
+  for (const f of S.g.floors) fsel.add(new Option(f.label, f.id));
+  S.floor = S.g.floors[0]?.id || (S.g.nodes[0] && S.g.nodes[0].floor);
+  const labels = [...new Set(S.g.nodes.map(n => n.room_label).filter(l => l && l !== "Void"))].sort();
+  const gsel = $("goalRoom"); gsel.innerHTML = '<option value="">(shift-click node)</option>';
+  for (const l of labels) gsel.add(new Option(l, l));
+  $("warnings").innerHTML = (S.g.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("");
+  $("log").innerHTML = ""; renderMans();
+  computeBounds();
+  status(`${S.g.nodes.length} panos, ${S.g.edges.length} links, ${S.g.floors.length} floor(s)`);
+  draw();
+}
+
+function computeBounds() {
+  const xs = [], ys = [];
+  for (const f of S.g.floors) for (const [a, b] of f.walls) { xs.push(a[0], b[0]); ys.push(a[1], b[1]); }
+  for (const n of S.g.nodes) { xs.push(n.x); ys.push(n.y); }
+  const pad = 1.5;
+  S.b = { x0: Math.min(...xs) - pad, x1: Math.max(...xs) + pad, y0: Math.min(...ys) - pad, y1: Math.max(...ys) + pad };
+}
+
+// ---------- drawing ----------
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function draw() {
+  const svg = $("map"); svg.innerHTML = "";
+  if (!S.g) return;
+  const { x0, x1, y0, y1 } = S.b, w = x1 - x0, h = y1 - y0;
+  svg.setAttribute("viewBox", `${x0} ${-y1} ${w} ${h}`);
+  const k = Math.max(w, h) / 60; // size unit so labels scale with the model
+  S.k = k;
+  const fl = S.floor;
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v);
+
+  // rooms
+  for (const [rid, r] of Object.entries(S.g.rooms || {})) {
+    if (r.floor !== fl || !r.poly || r.poly.length < 3) continue;
+    el("polygon", { points: r.poly.map(p => `${p[0]},${-p[1]}`).join(" "), fill: css("--room"),
+                    stroke: "none", opacity: r.label === "Void" ? 0.3 : 0.9 }, svg);
+    if (r.label && r.label !== "Void") {
+      const cx = r.poly.reduce((s, p) => s + p[0], 0) / r.poly.length;
+      const cy = r.poly.reduce((s, p) => s + p[1], 0) / r.poly.length;
+      const t = el("text", { x: cx, y: -cy, "font-size": 1.1 * k, fill: css("--muted"), "text-anchor": "middle",
+                             "font-weight": 600, opacity: 0.8 }, svg);
+      t.textContent = r.label;
+    }
+  }
+  // walls
+  const f = S.g.floors.find(f => f.id === fl);
+  for (const [a, b, t] of (f ? f.walls : [])) {
+    const pass = ["opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage"].includes(t);
+    el("line", { x1: a[0], y1: -a[1], x2: b[0], y2: -b[1], stroke: pass ? css("--door") : css("--wall"),
+                 "stroke-width": pass ? 0.12 : 0.16, "stroke-dasharray": pass ? `${0.25} ${0.15}` : "",
+                 "stroke-linecap": "round" }, svg);
+  }
+  // links
+  for (const e of S.g.edges) {
+    const a = S.nodes[e.a], b = S.nodes[e.b];
+    if (!a || !b) continue;
+    const tags = new Set(e.tags);
+    if (tags.has("vertical")) {
+      const here = a.floor === fl ? a : b.floor === fl ? b : null;
+      if (!here) continue;
+      const s = 0.45;
+      el("rect", { x: here.x - s, y: -here.y - s, width: 2 * s, height: 2 * s, fill: "none",
+                   stroke: css("--vertical"), "stroke-width": 0.1,
+                   transform: `rotate(45 ${here.x} ${-here.y})` }, svg);
+      continue;
+    }
+    if (a.floor !== fl) continue;
+    let color = css("--edge"), dash = "", sw = 0.05;
+    if (tags.has("door")) { color = css("--door"); sw = 0.06; }
+    if (tags.has("uncertain")) { color = css("--uncertain"); dash = "0.3 0.2"; sw = 0.08; }
+    if (tags.has("hazard")) { color = css("--hazard"); sw = 0.1; }
+    el("line", { x1: a.x, y1: -a.y, x2: b.x, y2: -b.y, stroke: color, "stroke-width": sw,
+                 "stroke-dasharray": dash, opacity: e.avoided ? 0.25 : 1 }, svg);
+  }
+  // route on this floor
+  const pts = S.state?.route?.points || S.route?.points;
+  if (pts) {
+    let seg = [];
+    const flush = () => { if (seg.length > 1) el("polyline", { points: seg.join(" "), fill: "none",
+      stroke: css("--route"), "stroke-width": 0.22, "stroke-linejoin": "round", "stroke-linecap": "round",
+      opacity: 0.85 }, svg); seg = []; };
+    for (const p of pts) { if (p[2] === fl) seg.push(`${p[0]},${-p[1]}`); else flush(); }
+    flush();
+  }
+  // hazards
+  for (const e of S.g.edges) for (const hz of e.hazards || []) {
+    if (hz.floor && hz.floor !== fl) continue;
+    el("circle", { cx: hz.x, cy: -hz.y, r: hz.radius || 0.6, fill: css("--hazard"), opacity: 0.15 }, svg);
+  }
+  // nodes
+  for (const n of S.g.nodes) {
+    if (n.floor !== fl) continue;
+    const isS = n.id === S.start, isG = n.id === S.goal;
+    const c = el("circle", { cx: n.x, cy: -n.y, r: isS || isG ? 0.32 : 0.2,
+                             fill: isS ? css("--start") : isG ? css("--goal") : css("--panel"),
+                             stroke: css("--ink"), "stroke-width": 0.05, style: "cursor:pointer" }, svg);
+    c.addEventListener("click", ev => pickNode(n, ev.shiftKey));
+    const t = el("text", { x: n.x + 0.3, y: -n.y - 0.3, "font-size": 0.7 * k, fill: css("--ink"),
+                           "pointer-events": "none" }, svg);
+    t.textContent = n.label;
+    const title = el("title", {}, c);
+    title.textContent = `${n.label} (${n.id})\n${n.room_label || "no room"}\ntags: ${(n.tags || []).join(", ")}`;
+  }
+  // walker
+  if (S.walker && S.walker.floor === fl) {
+    el("circle", { cx: S.walker.x, cy: -S.walker.y, r: 0.45, fill: css("--walker"), opacity: 0.9 }, svg);
+    if (S.walker.h != null) {
+      const L = 0.9;
+      el("line", { x1: S.walker.x, y1: -S.walker.y, x2: S.walker.x + L * Math.cos(S.walker.h),
+                   y2: -(S.walker.y + L * Math.sin(S.walker.h)), stroke: css("--walker"), "stroke-width": 0.12 }, svg);
+    }
+  }
+}
+
+function pickNode(n, shift) {
+  if (S.dragging) return;
+  if (shift) { S.goal = n.id; $("goalRoom").value = ""; } else S.start = n.id;
+  updatePick(); draw();
+}
+function goalValue() { return $("goalRoom").value || S.goal; }
+function updatePick() {
+  const s = S.start ? S.nodes[S.start].label : "?";
+  const g = $("goalRoom").value || (S.goal ? S.nodes[S.goal].label : "?");
+  $("pick").textContent = `start ${s} → goal ${g}`;
+}
+
+function renderMans() {
+  const ms = S.state?.maneuvers || S.mans || [];
+  const nxt = S.state?.next;
+  $("mans").innerHTML = ms.filter(m => m.text).map(m => {
+    const cur = nxt && nxt.along === m.along && nxt.text === m.text;
+    return `<li class="${cur ? "cur" : ""}"><span class="badge">${esc(m.type)}${m.side ? " " + esc(m.side) : ""}</span>${esc(m.text)}</li>`;
+  }).join("");
+  const r = S.state?.route || S.route;
+  $("routeMeta").textContent = r
+    ? `${r.profile}: ${r.length} m, cost ${r.cost}, ${r.nodes.length} panos` +
+      (S.state ? ` · progress ${S.state.progress} m · remaining ${S.state.remaining} m · reroutes ${S.state.reroutes}` : "")
+    : "none";
+}
+
+// ---------- events ----------
+function handleEvents(evs) {
+  for (const e of evs || []) {
+    const d = document.createElement("div");
+    d.innerHTML = `<span class="badge ${esc(e.type)}">${esc(e.type)}</span>${esc(e.text || "")}` +
+                  (e.vibrate ? ` <span class="meta">[${e.vibrate.join(",")}]</span>` : "");
+    $("log").prepend(d);
+    if (!$("mute").checked && e.text && "speechSynthesis" in window) {
+      if (["now", "reroute", "hazard", "arrive", "no_route"].includes(e.type)) speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(e.text));
+    }
+    if (e.vibrate && navigator.vibrate) navigator.vibrate(e.vibrate);
+  }
+}
+
+// ---------- route only ----------
+async function doRoute() {
+  stopSim();
+  if (!S.start || !goalValue()) { status("pick a start and a goal first", true); return; }
+  try {
+    const j = await api("/api/route", { sid: S.g.sid, from: S.start, to: goalValue(), profile: $("profile").value });
+    S.route = j.route; S.mans = j.maneuvers; S.state = null; S.session = null;
+    status(`route: ${j.route.length} m`);
+  } catch (e) { S.route = null; S.mans = []; status(e.message, true); }
+  renderMans(); draw();
+}
+
+// ---------- simulated walk ----------
+function pathFrom(cur, pts) {
+  // walk from where we are to the route's nodes, then along them
+  const out = [cur];
+  for (const p of pts) out.push({ x: p[0], y: p[1], floor: p[2] });
+  return densify(out, 0.5);
+}
+function densify(pts, step) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (a.floor !== b.floor) { out.push({ ...b }); continue; }
+    const L = Math.hypot(b.x - a.x, b.y - a.y), n = Math.max(1, Math.ceil(L / step));
+    for (let j = 1; j <= n; j++) out.push({ x: a.x + (b.x - a.x) * j / n, y: a.y + (b.y - a.y) * j / n, floor: a.floor });
+  }
+  return out;
+}
+
+async function startSim() {
+  if (!S.start || !goalValue()) { status("pick a start and a goal first", true); return; }
+  stopSim();
+  const n = S.nodes[S.start];
+  S.walker = { x: n.x, y: n.y, floor: n.floor, h: null };
+  $("log").innerHTML = "";
+  try {
+    const j = await api("/api/nav/start", { sid: S.g.sid, to: goalValue(), profile: $("profile").value,
+                                            x: n.x, y: n.y, floor: n.floor });
+    S.session = j.session; S.state = j.state; S.route = null;
+    handleEvents(j.events);
+    if (!j.state.route) { renderMans(); draw(); return; }
+    S.path = pathFrom(S.walker, j.state.route.points); S.pi = 0;
+  } catch (e) { status(e.message, true); return; }
+  S.lastRouteKey = routeKey();
+  $("sim").classList.add("on"); $("sim").textContent = "Stop";
+  status("walking...");
+  renderMans(); draw(); tick();
+}
+function routeKey() { return S.state?.route ? S.state.route.nodes.join(",") + "|" + S.state.reroutes : ""; }
+
+function stopSim() {
+  clearTimeout(S.timer); S.timer = null;
+  $("sim").classList.remove("on"); $("sim").textContent = "Simulate walk";
+}
+
+async function sendUpdate() {
+  const w = S.walker;
+  const j = await api("/api/nav/update", { session: S.session, x: w.x, y: w.y, floor: w.floor, heading: w.h });
+  S.state = j.state; handleEvents(j.events);
+  const key = routeKey();
+  if (key !== S.lastRouteKey) {  // rerouted: follow the new route from here
+    S.lastRouteKey = key;
+    if (j.state.route) { S.path = pathFrom({ ...w }, j.state.route.points); S.pi = 0; }
+  }
+  renderMans();
+  return j;
+}
+
+async function tick() {
+  if (!S.session) return;
+  if (S.state?.done) { stopSim(); status("arrived"); return; }
+  if (S.pi >= S.path.length - 1) { stopSim(); status("end of path"); return; }
+  const a = S.path[S.pi], b = S.path[++S.pi];
+  if (a.floor === b.floor && (b.x !== a.x || b.y !== a.y)) S.walker.h = Math.atan2(b.y - a.y, b.x - a.x);
+  Object.assign(S.walker, { x: b.x, y: b.y, floor: b.floor });
+  if (S.walker.floor !== S.floor) { S.floor = S.walker.floor; $("floor").value = S.floor; }
+  try { await sendUpdate(); } catch (e) { status(e.message, true); stopSim(); return; }
+  draw();
+  if (S.state?.done) { stopSim(); status("arrived"); return; }
+  const ms = 520 - 48 * +$("speed").value;
+  S.timer = setTimeout(tick, ms);
+}
+
+// ---------- drag the walker ----------
+function svgPoint(ev) {
+  const svg = $("map"), p = svg.createSVGPoint();
+  p.x = ev.clientX; p.y = ev.clientY;
+  const q = p.matrixTransform(svg.getScreenCTM().inverse());
+  return { x: q.x, y: -q.y };
+}
+$("map").addEventListener("pointerdown", ev => {
+  if (!S.drag || !S.session || !S.walker) return;
+  S.dragging = true; S.wasRunning = !!S.timer; stopSim();
+  $("map").setPointerCapture(ev.pointerId);
+  moveWalker(ev, true);
+});
+$("map").addEventListener("pointermove", ev => { if (S.dragging) moveWalker(ev, false); });
+$("map").addEventListener("pointerup", async ev => {
+  if (!S.dragging) return;
+  S.dragging = false;
+  await moveWalker(ev, true);
+  // send a second fix so a sustained miss trips the reroute
+  try { await sendUpdate(); } catch (e) { status(e.message, true); }
+  resyncPath();
+  draw();
+  if (S.wasRunning && !S.state?.done) { $("sim").classList.add("on"); $("sim").textContent = "Stop"; tick(); }
+});
+async function moveWalker(ev, force) {
+  const p = svgPoint(ev);
+  const ph = S.walker.x !== p.x || S.walker.y !== p.y ? Math.atan2(p.y - S.walker.y, p.x - S.walker.x) : S.walker.h;
+  Object.assign(S.walker, { x: p.x, y: p.y, floor: S.floor, h: ph });
+  draw();
+  const now = performance.now();
+  if (!force && now - S.lastSend < 150) return;
+  S.lastSend = now;
+  try { await sendUpdate(); draw(); } catch (e) { status(e.message, true); }
+}
+function resyncPath() {
+  // after a drag without reroute, rejoin the current route at the nearest point ahead
+  if (!S.state?.route) return;
+  const pts = S.state.route.points, w = S.walker;
+  let bi = 0, bd = Infinity;
+  pts.forEach((p, i) => { if (p[2] === w.floor) { const d = Math.hypot(p[0] - w.x, p[1] - w.y); if (d < bd) { bd = d; bi = i; } } });
+  S.path = pathFrom({ ...w }, pts.slice(bi)); S.pi = 0;
+}
+
+// ---------- block ----------
+async function blockNext() {
+  if (!S.session || !S.state?.next_edge) { status("start a simulated walk first", true); return; }
+  const [a, b] = S.state.next_edge, w = S.walker;
+  try {
+    const j = await api("/api/nav/block", { session: S.session, x: w.x, y: w.y, floor: w.floor, a, b, heading: w.h });
+    S.state = j.state; handleEvents(j.events);
+    S.lastRouteKey = routeKey();
+    if (j.state.route) { S.path = pathFrom({ ...w }, j.state.route.points); S.pi = 0; }
+    status(`blocked ${S.nodes[a]?.label}–${S.nodes[b]?.label}`);
+  } catch (e) { status(e.message, true); }
+  renderMans(); draw();
+}
+
+// ---------- wiring ----------
+$("load").onclick = load;
+$("floor").onchange = () => { S.floor = $("floor").value; draw(); };
+$("profile").onchange = () => { if (S.g) api(`/api/graph/${encodeURIComponent(S.g.sid)}?profile=${$("profile").value}`)
+  .then(g => { S.g.edges = g.edges; draw(); }); };
+$("goalRoom").onchange = () => { if ($("goalRoom").value) S.goal = null; updatePick(); draw(); };
+$("route").onclick = doRoute;
+$("sim").onclick = () => { if (S.timer) { stopSim(); status("paused"); } else startSim(); };
+$("drag").onclick = () => { S.drag = !S.drag; $("drag").classList.toggle("on", S.drag); };
+$("block").onclick = blockNext;
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+load();
+</script>
+</body>
+</html>

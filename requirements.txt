@@ -1,0 +1,7 @@
+requests
+numpy
+pillow
+fastapi
+uvicorn
+deepagents
+langchain-anthropic

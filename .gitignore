@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+cache/
+mp_out/
+costar_kit/
+*.zip
