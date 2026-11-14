@@ -65,6 +65,16 @@ def _j(x):
     return json.dumps(x, indent=1, default=str)
 
 
+def check_floor(sid, floor):
+    """a floor id from another scan (or a guess) must fail loudly, not return an empty list."""
+    if not floor:
+        return
+    floors = [f["id"] for f in graph(sid, annotated=False).floors]
+    if floor not in floors:
+        raise ValueError(f"unknown floor {floor!r} for sid {sid!r}; this scan's floors are {floors}. "
+                         f"Floors of other scans belong to their own dossier runs.")
+
+
 def _img_blocks(jpeg, meta):
     import base64
     return [{"type": "text", "text": _j(meta)},
@@ -157,6 +167,7 @@ def list_panos(sid: str, floor: str = "", room: str = "") -> str:
         floor: Optional floor id filter.
         room: Optional room label filter (case-insensitive substring).
     """
+    check_floor(sid, floor)
     g = graph(sid, annotated=False)
     out = []
     for n in g.nodes.values():
@@ -215,6 +226,7 @@ def overhang_candidates(sid: str, floor: str, panos: str = "") -> str:
         panos: Optional comma-separated pano ids; only candidates within 3 m of them (route-scoped survey).
     """
     from .. import perceive
+    check_floor(sid, floor)
     return _j(_focus(sid, perceive.overhang_candidates(sid, floor), panos))
 
 
@@ -228,6 +240,7 @@ def glass_suspects(sid: str, floor: str, panos: str = "") -> str:
         panos: Optional comma-separated pano ids; only suspects within 3 m of them (route-scoped survey).
     """
     from .. import perceive
+    check_floor(sid, floor)
     return _j(_focus(sid, perceive.glass_suspects(sid, floor), panos))
 
 
@@ -512,6 +525,7 @@ def place_seed(sid: str, floor: str = "") -> str:
         floor: Optional floor id filter.
     """
     from .. import places
+    check_floor(sid, floor)
     g = graph(sid)
     cat = places.seed_from_graph(g, sid, costar=places._costar(sid))
     out = []

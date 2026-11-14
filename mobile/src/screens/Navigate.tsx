@@ -7,6 +7,7 @@ import { SimWalk, type Pose } from "../lib/sim";
 import { feel, say, stopSpeaking } from "../lib/voice";
 import type { Settings, Trip } from "../state";
 import { Big, C, Choice, Field, H, P } from "../ui/kit";
+import { TalkBar } from "../ui/TalkBar";
 
 const SOURCES = ["simulated walk", "steps + compass", "manual"] as const;
 type Source = (typeof SOURCES)[number];
@@ -167,6 +168,11 @@ export function Navigate({ trip, settings, onEnd }: { trip: Trip; settings: Sett
           <Text style={{ color: C.dim, fontSize: 18 }}>{fmtMetres(nav.remaining)} to go{nav.reroutes ? ` · rerouted ${nav.reroutes}×` : ""}</Text>
         </View>
       </View>
+
+      <TalkBar settings={settings} sid={trip.sid} session={trip.session}
+        prompt="Ask anything: what's next, how far, or tell me what's wrong."
+        here={() => ({ x: pose.current.x, y: pose.current.y, floor: pose.current.floor })}
+        onReply={(r) => { if (r.state?.next?.text) setInstr(r.state.next.text); }} />
 
       {nav.done ? (
         <Big kind="primary" label="Arrived. Done" onPress={end} />

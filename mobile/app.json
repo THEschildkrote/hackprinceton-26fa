@@ -37,6 +37,13 @@
           "neverForLocation": true,
           "bluetoothAlwaysPermission": "Nudge connects to your haptic band to guide you with vibrations."
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Nudge listens when you hold Talk, so you can ask for directions by voice.",
+          "speechRecognitionPermission": "Nudge turns what you say into directions requests."
+        }
       ]
     ],
     "backgroundColor": "#0b0d10"

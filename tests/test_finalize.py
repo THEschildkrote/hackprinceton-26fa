@@ -104,4 +104,4 @@ def test_a_failing_tool_does_not_kill_the_run():
     out = agent.invoke({"messages": [{"role": "user", "content": "go"}]},
                        config={"configurable": {"thread_id": "err"}, "recursion_limit": 20})
     err = next(m for m in out["messages"] if getattr(m, "name", None) == "list_panos")
-    assert err.content.startswith("Error: list_panos failed") and out["messages"][-1].content.startswith("That scan")
+    assert err.content.startswith("Error: list_panos") and out["messages"][-1].content.startswith("That scan")

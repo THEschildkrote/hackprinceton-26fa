@@ -4,6 +4,8 @@ import { Api, ApiError, destinations, entryNode, type Graph } from "../lib/api";
 import { feel, say } from "../lib/voice";
 import type { Settings, Trip } from "../state";
 import { Big, C, Choice, Field, H, P } from "../ui/kit";
+import { TalkBar } from "../ui/TalkBar";
+import { tripFromReply, type VoiceReply } from "../lib/talk";
 
 const PROFILES = ["blind", "wheelchair", "default"] as const;
 type Profile = (typeof PROFILES)[number];
@@ -58,10 +60,24 @@ export function WhereTo({ settings, setSettings, onStarted }: {
     } finally { setBusy(false); }
   }
 
+  // a trip started by voice: pick up its full state and switch to the navigate screen
+  async function voiceStarted(r: VoiceReply) {
+    const t = tripFromReply(r);
+    if (!t) return;
+    try {
+      const full = await api.update({ session: t.session, x: t.start.x, y: t.start.y, floor: t.start.floor });
+      onStarted({ api, sid: t.sid, goal: t.goal, profile, session: t.session, state: full.state, start: t.start });
+    } catch {
+      report("I started your trip, but couldn't open the navigation screen.");
+    }
+  }
+
   const places = graph ? destinations(graph) : [];
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }} style={{ backgroundColor: C.bg }}>
       <H>Where to?</H>
+      <TalkBar settings={settings} sid={sid} onReply={voiceStarted}
+        prompt="Say where you want to go, like: take me to the kitchen. Or pick below." />
       <Field label="Building" value={sid} onChangeText={setSid} placeholder="synthetic or a Matterport id"
         returnKeyType="go" onSubmitEditing={() => load()} accessibilityHint="Type a building id, then load it" />
       <Big label={busy && !graph ? "Loading…" : "Load building"} onPress={() => load()} disabled={busy}

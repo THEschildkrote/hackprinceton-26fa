@@ -8,6 +8,8 @@ import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { WhereTo } from "./src/screens/WhereTo";
 import { DEFAULTS, loadSettings, saveSettings, type Settings, type Trip } from "./src/state";
 import { C } from "./src/ui/kit";
+import { Api } from "./src/lib/api";
+import { newTravellerId } from "./src/lib/talk";
 
 const TABS = ["Where to", "Navigate", "Band", "Settings"] as const;
 type Tab = (typeof TABS)[number];
@@ -27,8 +29,18 @@ export default function App() {
   const [settings, setSettingsState] = useState<Settings>(DEFAULTS);
   const [trip, setTrip] = useState<Trip | null>(null);
 
-  useEffect(() => { loadSettings().then(setSettingsState); }, []);
   const setSettings = (s: Settings) => { setSettingsState(s); saveSettings(s); };
+  // a stable traveller id, and a caretaker pairing code from the server when it offers one
+  useEffect(() => {
+    loadSettings().then(async (s) => {
+      let next = s.traveller ? s : { ...s, traveller: newTravellerId() };
+      try {
+        const r = await new Api(next.server, 5000).registerTraveller(next.traveller);
+        if (r.code) next = { ...next, caretakerCode: r.code };
+      } catch { /* server without pairing, or offline: keep going */ }
+      setSettings(next);
+    });
+  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>

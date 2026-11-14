@@ -270,7 +270,9 @@ def step_calibrate(ctx):
     elif shift == 0:
         msg += f". FACE1_YAW_DEG={cal['face1_yaw_deg']} looks right"
     else:
-        msg += f". views look rotated: try FACE1_YAW_DEG = {(cal['face1_yaw_deg'] + shift) % 360:.0f} and re-run"
+        # the image heuristic was wrong on the first real building (it said 270; 0 was right), so only hint
+        msg += (f". image heuristic hints a {shift}° offset, but it is unreliable on real panos: check by eye that "
+                f"the yaw-0 view faces the longest expected wall distance before changing FACE1_YAW_DEG")
     return "pass", msg, data
 
 

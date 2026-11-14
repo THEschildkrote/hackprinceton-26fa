@@ -31,7 +31,7 @@ You run ahead of the walk, never inside it. Be slow and thorough; your output is
 
 ## Buildings that are several scans
 
-If `building_models(sid)` reports more than one scan, add a todo and delegate `building-cartographer` once, early (after round 1). It confirms which elevator, stairs or entrance in one scan is the same place in another and writes `/dossier/portals.json`. Run `validate_portals(sid)` after it returns. Survey hazards and landmarks per scan as usual: each scan has its own dossier and its own floor ids. Never align scans or write coordinates between them; portals are the only link.
+**Your scope is this `sid` only.** Delegate place-indexer, hazard-scout and landmark-writer only for the floors `building_overview(sid)` lists. Your `/dossier/` is this scan's folder, so other scans' floors would land in the wrong place; they get their own dossier runs. If `building_models(sid)` reports more than one scan, add a todo and delegate `building-cartographer` once, early (after round 1). It confirms which elevator, stairs or entrance in one scan is the same place in another and writes `/dossier/portals.json`. Run `validate_portals(sid)` after it returns. Survey hazards and landmarks per scan as usual: each scan has its own dossier and its own floor ids. Never align scans or write coordinates between them; portals are the only link.
 
 ## Route-scoped quick survey
 

@@ -24,6 +24,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 _graphs, _sessions = {}, {}
 sessions = _sessions  # session id -> Navigator; the device router reads it via get_navigator
 _session_sid = {}     # session id -> building sid
+_session_traveller = {}  # session id -> traveller id (hub: caretakers, voice)
 
 
 def get_navigator(session_id):
@@ -78,6 +79,7 @@ class StartReq(BaseModel):
     floor: str
     heading: float | None = None
     building: bool = False  # route across every joined scan of this building
+    traveller: str | None = None  # who is walking (caretakers follow them); defaults to the session id
 
 
 class UpdateReq(BaseModel):
@@ -162,6 +164,34 @@ def _nav(session):
     return s
 
 
+def _floor_label(g, fid):
+    f = next((f for f in g.floors if f["id"] == fid), None)
+    return f["label"] if f else fid
+
+
+def _publish(session, nav, evs, **extra):
+    """hand a batch of navigator events to the hub, with where the traveller is now."""
+    tid = _session_traveller.get(session)
+    if not tid or not evs:
+        return
+    from . import hub
+    ctx = dict(extra)
+    try:
+        if nav.pos:
+            x, y, fl = nav.pos[:3]
+            ctx.setdefault("floor", _floor_label(nav.g, fl))
+            from .places import where_am_i
+            w = where_am_i(nav.g, x, y, fl)
+            if w.get("place"):
+                ctx.setdefault("place", w["place"]["name"] if isinstance(w["place"], dict) else w["place"])
+        if nav.route:
+            ctx.setdefault("remaining_m", round(max(0.0, nav.route.length - nav.progress), 1))
+    except Exception:
+        pass  # status context is best effort
+    for e in evs:
+        hub.publish(tid, {**ctx, **{k: v for k, v in e.items() if k != "vibrate"}})
+
+
 @app.post("/api/nav/start")
 def nav_start(req: StartReq):
     if req.building:
@@ -187,13 +217,25 @@ def nav_start(req: StartReq):
     _sessions[sid] = nav
     _session_sid[sid] = req.sid
     ev = nav.start(req.x, req.y, req.floor, req.heading, sid=req.sid if req.building else None)
-    return {"session": sid, "events": _events(ev), "state": _state(nav), "device": _device(nav), "place": place}
+    from . import hub
+    tid = req.traveller or sid
+    _session_traveller[sid] = tid
+    hub.register_traveller(tid)
+    hub.attach_session(tid, sid, req.sid, goal, req.profile)
+    _publish(sid, nav, [dict(e, goal=goal) for e in ev])
+    return {"session": sid, "traveller": tid, "events": _events(ev), "state": _state(nav), "device": _device(nav),
+            "place": place}
 
 
 @app.post("/api/nav/update")
 def nav_update(req: UpdateReq):
     nav = _nav(req.session)
     ev = nav.update(req.x, req.y, req.floor, req.heading, sid=req.sid)
+    _publish(req.session, nav, ev)
+    tid = _session_traveller.get(req.session)
+    if tid:
+        from . import hub
+        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
     out = {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
     if any(e.get("type") == "unmapped" for e in ev):
         # off the map: the client can hand this to the explorer agent (POST /api/nav/explore)
@@ -206,6 +248,7 @@ def nav_update(req: UpdateReq):
 def nav_block(req: BlockReq):
     nav = _nav(req.session)
     ev = nav.block(req.x, req.y, req.floor, req.a, req.b, req.heading, sid=req.sid)
+    _publish(req.session, nav, ev)
     return {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
 
@@ -558,6 +601,7 @@ class DecideReq(BaseModel):
 
 
 _exc = {}  # session -> {"agent", "thread"}
+_reported = {}  # session -> last problem the traveller reported (for caretaker messages)
 
 
 def _here(nav):
@@ -608,6 +652,8 @@ def nav_exception(req: ExceptionReq):
     nav = _nav(req.session)
     if not nav.route:
         raise HTTPException(409, "no active route")
+    _reported[req.session] = req.text
+    _publish(req.session, nav, [{"type": "reported", "text": req.text}])
     from .agents import llm
     if llm.has_credentials(llm.spec()):
         try:
@@ -620,11 +666,13 @@ def nav_exception(req: ExceptionReq):
         except Exception as ex:
             _exc.pop(req.session, None)
             ev, say = _fallback_block(nav, req.text)
+            _publish(req.session, nav, ev, reason=req.text)
             return {"mode": "fallback", "reason": f"model call failed ({type(ex).__name__}: {str(ex)[:120]})",
                     "say": say, "pending": None, "events": _events(ev), "state": _state(nav), "device": _device(nav)}
         return {"mode": "agent", "reason": f"exception agent on {llm.spec()}", "say": r.get("say") or [],
                 "pending": r.get("pending"), "events": [], "state": _state(nav), "device": _device(nav)}
     ev, say = _fallback_block(nav, req.text)
+    _publish(req.session, nav, ev, reason=req.text)
     return {"mode": "fallback", "reason": "no model credentials", "say": say, "pending": None,
             "events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
@@ -638,6 +686,9 @@ def nav_exception_decide(req: DecideReq):
     from .agents.exception import approve
     decision = "approve" if req.decision.lower().startswith(("a", "y")) else "reject"
     r = approve(ctx["agent"], ctx["thread"], decision)
+    if decision == "approve":
+        _publish(req.session, nav, [{"type": "reroute_approved", "text": " ".join(r.get("say") or []),
+                                     "reason": _reported.get(req.session)}])
     return {"mode": "agent", "say": r.get("say") or [], "pending": r.get("pending"), "state": _state(nav),
             "device": _device(nav)}
 
@@ -668,6 +719,7 @@ def nav_explore(req: ExploreReq):
         _explorers[req.session] = (create_explorer_agent(nav, nav.g, sid=_session_sid.get(req.session)), new_thread())
     agent, thread = _explorers[req.session]
     r = handle_event(agent, thread, req.text)
+    _publish(req.session, nav, [{"type": "exploring", "text": " ".join(r.get("say") or [])}])
     return {**r, "state": _state(nav), "device": _device(nav)}
 
 
@@ -679,6 +731,9 @@ def nav_explore_decide(req: ExploreDecideReq):
     from .agents.exception import approve
     agent, thread = _explorers[req.session]
     r = approve(agent, thread, req.decision)
+    if req.decision.lower().startswith(("a", "y")):
+        _publish(req.session, nav, [{"type": "reroute_approved", "text": " ".join(r.get("say") or []),
+                                     "reason": "off the map"}])
     return {**r, "state": _state(nav), "device": _device(nav)}
 
 
@@ -756,6 +811,7 @@ class OutdoorStartReq(BaseModel):
     sid: str
     to: str
     profile: str = "blind"
+    traveller: str | None = None
     lat: float
     lon: float
     compass_deg: float | None = None
@@ -777,7 +833,14 @@ def outdoor_nav_start(req: OutdoorStartReq):
     d = DoorToDoorNavigator(_site(req.sid), req.to, req.profile)
     session = uuid.uuid4().hex[:10]
     _d2d[session] = d
-    return {"session": session, "phase": d.phase, "events": _events(d.start(req.lat, req.lon, req.compass_deg))}
+    ev = d.start(req.lat, req.lon, req.compass_deg)
+    from . import hub
+    tid = getattr(req, "traveller", None) or session
+    _session_traveller[session] = tid
+    hub.register_traveller(tid)
+    hub.attach_session(tid, session, req.sid, req.to, req.profile)
+    _publish(session, d.outside, [dict(e, goal=req.to, phase="outdoor") for e in ev])
+    return {"session": session, "traveller": tid, "phase": d.phase, "events": _events(ev)}
 
 
 @app.post("/api/outdoor/nav/update")
@@ -787,6 +850,7 @@ def outdoor_nav_update(req: OutdoorUpdateReq):
         raise HTTPException(404, "unknown session")
     ev = d.update(req.lat, req.lon, req.x, req.y, req.floor, req.compass_deg)
     nav = d.inside if d.phase == "indoor" else d.outside
+    _publish(req.session, nav, ev, phase=d.phase)
     if d.phase == "indoor":
         _sessions[req.session] = d.inside  # the band relay follows the indoor leg too
     return {"phase": d.phase, "events": _events(ev), "done": d.done, "device": _device(nav)}
@@ -823,10 +887,67 @@ def places_where(sid: str, x: float, y: float, floor: str):
     return places.where_am_i(graph_for(sid), x, y, floor)
 
 
+# travellers and caretakers: the hub behind voice, imessage caretakers and the mobile app
+
+class RegisterReq(BaseModel):
+    name: str | None = None
+    traveller_id: str | None = None
+
+
+class HelpReq(BaseModel):
+    text: str = "I need help."
+
+
+@app.post("/api/traveller/register")
+def traveller_register(req: RegisterReq):
+    from . import hub
+    tid = req.traveller_id or uuid.uuid4().hex[:8]
+    code = hub.register_traveller(tid, req.name)
+    return {"traveller_id": tid, "code": code}
+
+
+@app.get("/api/traveller/{tid}/status")
+def traveller_status(tid: str):
+    from . import hub
+    st = hub.status(tid)
+    if st is None:
+        raise HTTPException(404, "unknown traveller")
+    return st
+
+
+@app.post("/api/traveller/{tid}/help")
+def traveller_help(tid: str, req: HelpReq):
+    """the traveller pressed "I need help" or said it by voice: caretakers hear about it right away."""
+    from . import hub
+    st = hub.status(tid)
+    if st is None:
+        raise HTTPException(404, "unknown traveller")
+    nav = _sessions.get(st.get("session") or "")
+    ev = {"type": "help", "text": req.text}
+    if nav is not None and st.get("session"):
+        _publish(st["session"], nav, [ev])
+    else:
+        hub.publish(tid, ev)
+    return hub.status(tid)
+
+
 # haptic band relay (web/companion.html, mobile app)
 from .device_api import make_router  # noqa: E402
 
 app.include_router(make_router(get_navigator))
+
+# traveller voice: one conversational turn endpoint for the web voice page, the app and a phone agent
+from .voice import make_router as voice_router  # noqa: E402
+
+
+def _register_voice_session(nav, sid):
+    s = uuid.uuid4().hex[:10]
+    _sessions[s] = nav
+    _session_sid[s] = sid
+    return s
+
+
+app.include_router(voice_router(get_navigator, register_session=_register_voice_session))
 
 
 @app.get("/")

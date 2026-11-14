@@ -8,6 +8,8 @@ export interface Settings {
   rate: number;        // speech rate, 1 = normal
   haptics: boolean;
   recent: string[];    // building sids
+  traveller: string;   // stable id for voice turns and caretaker pairing
+  caretakerCode: string | null;  // code the caretaker texts to follow this traveller
 }
 
 // web: same origin as the page (served next to the api or behind a proxy), or localhost:8765 from the expo dev
@@ -23,7 +25,8 @@ function defaultServer() {
 }
 export const DEFAULT_SERVER = defaultServer();
 
-export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: ["synthetic"] };
+export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: ["synthetic"],
+  traveller: "", caretakerCode: null };
 
 const KEY = "nudge.settings.v1";
 

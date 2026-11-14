@@ -288,6 +288,9 @@ def read_agent(sid):
             continue
         items = data if isinstance(data, list) else (data or {}).get("places") or []
         for it in items:
+            if isinstance(it, dict) and isinstance(it.get("rooms"), list):
+                # agents often write place ids ("room:r0") where raw room ids ("r0") belong
+                it = {**it, "rooms": [r[5:] if isinstance(r, str) and r.startswith("room:") else r for r in it["rooms"]]}
             if not isinstance(it, dict) or not it.get("id"):
                 if isinstance(it, dict):
                     merged.setdefault(f"__noid{len(order)}", it)

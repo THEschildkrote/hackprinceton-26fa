@@ -43,6 +43,22 @@ export function SettingsScreen({ settings, setSettings }: { settings: Settings; 
           onValueChange={(v) => setSettings({ ...settings, haptics: v })} />
       </View>
 
+      <H>Caretaker</H>
+      <View accessible accessibilityLabel={settings.caretakerCode
+        ? `Caretaker code ${settings.caretakerCode.split("").join(" ")}. Your caretaker texts this code to the Nudge iMessage number to follow your trips.`
+        : "No caretaker code yet. Connect to the Nudge server to get one."}>
+        <P>{settings.caretakerCode
+          ? `Code: ${settings.caretakerCode}. Your caretaker texts this code to the Nudge iMessage number to get updates about your trips.`
+          : "No code yet. Connect to the Nudge server to get one."}</P>
+      </View>
+      <Big label="Get a caretaker code" hint="Asks the server for a pairing code" onPress={async () => {
+        try {
+          const r = await new Api(settings.server, 5000).registerTraveller(settings.traveller);
+          if (r.code) { setSettings({ ...settings, caretakerCode: r.code }); say(`Your code is ${r.code.split("").join(" ")}`, settings.rate); }
+          else say("The server didn't return a code.", settings.rate);
+        } catch { say("I couldn't reach the server.", settings.rate); }
+      }} />
+
       <H>Units</H>
       <P>Meters. Every distance is in meters.</P>
     </ScrollView>

@@ -1,5 +1,6 @@
 // typed client for nudge/server.py and nudge/device_api.py. all distances are metres.
 import type { Point } from "./sim";
+import type { VoiceReply } from "./talk";
 
 export interface NavEvent { type: string; text?: string; cue?: string | null; vibrate?: number[] | null }
 export interface Maneuver { type: string; text: string; along: number; distance: number; side?: string | null; turn_deg?: number; cue?: string }
@@ -66,6 +67,18 @@ export class Api {
   }
   decide(session: string, decision: "approve" | "reject") {
     return this.req<ExceptionReply>("POST", "/api/nav/exception/decide", { session, decision }, 90000);
+  }
+
+  // voice turns (nudge/voice.py); agent-backed answers can take a while on free models
+  voiceTurn(b: { traveller: string; text: string; sid?: string | null; session?: string | null; x?: number; y?: number; floor?: string; profile?: string }) {
+    return this.req<VoiceReply>("POST", "/api/voice/turn", b, 90000);
+  }
+  voicePosition(b: { traveller: string; x: number; y: number; floor: string; heading?: number | null }) {
+    return this.req<VoiceReply & { events?: NavEvent[] }>("POST", "/api/voice/position", b);
+  }
+  // caretaker pairing (nudge/hub.py); returns the code the traveller reads to their caretaker
+  registerTraveller(traveller: string, name?: string | null) {
+    return this.req<{ code?: string }>("POST", "/api/traveller/register", { traveller, name: name ?? null });
   }
 
   // haptic band relay (nudge/device_api.py)

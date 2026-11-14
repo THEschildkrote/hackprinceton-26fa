@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nudge Voice</title>
+<style>
+  :root { --bg:#0b0d10; --fg:#f4f6f8; --muted:#a9b2bc; --accent:#ffd23f; --talk:#1f6feb; --live:#e5534b; --panel:#161b22; --line:#30363d; }
+  :root[data-theme="light"] { --bg:#ffffff; --fg:#0b0d10; --muted:#4a525c; --accent:#7a5c00; --talk:#0b57d0; --live:#b42318; --panel:#f3f5f7; --line:#d0d7de; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font: 18px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 100vh; }
+  h1 { font-size: 22px; margin: 0; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  #talk { width: 100%; min-height: 42vh; border: 0; border-radius: 24px; background: var(--talk); color: #fff;
+          font-size: 34px; font-weight: 700; cursor: pointer; touch-action: none; user-select: none; }
+  #talk.listening { background: var(--live); }
+  #talk:focus-visible, button:focus-visible, input:focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
+  #reply { font-size: 26px; font-weight: 600; min-height: 3.2em; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 16px; padding: 14px; }
+  form { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; min-width: 0; font-size: 20px; padding: 14px; border-radius: 12px; border: 2px solid var(--line);
+                     background: var(--panel); color: var(--fg); }
+  button { font-size: 18px; min-height: 56px; padding: 0 18px; border-radius: 12px; border: 2px solid var(--line);
+           background: var(--panel); color: var(--fg); cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--accent); }
+  .muted { color: var(--muted); font-size: 15px; }
+  #log { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow: auto; }
+  #log li { padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 16px; }
+  #log li.me { border-color: var(--talk); }
+  .code { font: 700 22px ui-monospace, monospace; letter-spacing: 3px; color: var(--accent); }
+  .sr { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content:space-between">
+    <h1>Nudge</h1>
+    <div class="row">
+      <label class="muted" for="sid">Building</label>
+      <input id="sid" type="text" value="synthetic" style="width:9em;flex:none;padding:8px;font-size:16px" aria-label="Building id">
+    </div>
+  </div>
+
+  <button id="talk" aria-describedby="talkhint">Hold to talk</button>
+  <p id="talkhint" class="muted">Hold the button, or hold the space bar, and speak. Release to send.</p>
+
+  <div id="reply" role="status" aria-live="assertive" aria-atomic="true">Say where you want to go, like: take me to the kitchen.</div>
+
+  <form id="typed" aria-label="Type instead of speaking">
+    <input id="text" type="text" autocomplete="off" placeholder="Or type here, then press Enter" aria-label="Type what you would say">
+    <button type="submit">Send</button>
+  </form>
+
+  <div class="row" role="group" aria-label="Quick phrases">
+    <button data-say="where am I">Where am I</button>
+    <button data-say="what's next">Repeat</button>
+    <button data-say="how far">How far</button>
+    <button data-say="I need help">I need help</button>
+  </div>
+
+  <div class="row">
+    <button id="walk" aria-pressed="false">Simulate walking</button>
+    <button id="mute" aria-pressed="false">Mute voice</button>
+    <span class="muted">Caretaker code: <span id="code" class="code">…</span></span>
+  </div>
+
+  <ul id="log" aria-label="Conversation"></ul>
+  <p class="muted" id="support"></p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let traveller = store.get("nudge.traveller");
+if (!traveller) { traveller = "web-" + Math.random().toString(36).slice(2, 10); store.set("nudge.traveller", traveller); }
+
+// vibration patterns, same shapes as nudge/instruct.CUES
+const CUES = { left: [120, 80, 120], right: [120, 80, 120, 80, 120], bear_left: [60, 60, 120],
+  bear_right: [60, 60, 120, 60, 120], uturn: [400, 100, 400], floor: [200, 100, 200, 100, 200],
+  arrive: [60, 60, 60, 60, 300], hazard: [30, 30, 30, 30, 30, 30, 30, 30, 30], off_route: [500],
+  unmapped: [600, 300, 600], straight: [60] };
+let muted = false, userActed = false, path = null, walking = false, walkTimer = null;
+
+function vibrate(cue) {
+  if (!userActed || !navigator.vibrate || !cue || !CUES[cue]) return;
+  try { navigator.vibrate(CUES[cue]); } catch {}
+}
+function speak(text) {
+  if (muted || !text || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.rate = 1.0; speechSynthesis.speak(u);
+}
+function log(text, me) {
+  const li = document.createElement("li"); li.textContent = (me ? "You: " : "Nudge: ") + text;
+  if (me) li.className = "me"; $("log").prepend(li);
+}
+function show(say) { if (!say) return; $("reply").textContent = say; log(say, false); speak(say); }
+
+async function send(text) {
+  text = (text || "").trim(); if (!text) return;
+  log(text, true);
+  $("reply").textContent = "…";
+  try {
+    const r = await fetch("/api/voice/turn", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ traveller, text, sid: $("sid").value.trim() || null }) });
+    const j = await r.json();
+    if (!r.ok) { show("Sorry, something went wrong: " + (j.detail || r.status)); return; }
+    show(j.say);
+    if (j.state && j.state.path) path = j.state.path;
+    if (j.state && j.state.next && j.state.next.cue) vibrate(j.state.next.cue);
+  } catch (e) { show("I can't reach the Nudge server."); }
+}
+
+// hold to talk
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, heard = "", listening = false;
+if (SR) {
+  rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true;
+  rec.onresult = (e) => { heard = Array.from(e.results).map(r => r[0].transcript).join(" "); $("reply").textContent = heard; };
+  rec.onerror = (e) => { if (e.error !== "aborted" && e.error !== "no-speech") show("Speech input error: " + e.error + ". You can type instead."); };
+  rec.onend = () => { if (listening) return; const t = heard; heard = ""; if (t) send(t); };
+} else {
+  $("support").textContent = "Speech input isn't available in this browser. Use the text box, or Chrome on Android or desktop.";
+}
+function startTalk() {
+  userActed = true;
+  if (!rec || listening) { if (!rec) $("text").focus(); return; }
+  listening = true; heard = ""; speechSynthesis && speechSynthesis.cancel();
+  $("talk").classList.add("listening"); $("talk").textContent = "Listening… release to send";
+  try { rec.start(); } catch {}
+}
+function stopTalk() {
+  if (!rec || !listening) return;
+  listening = false; $("talk").classList.remove("listening"); $("talk").textContent = "Hold to talk";
+  try { rec.stop(); } catch {}
+}
+const talk = $("talk");
+talk.addEventListener("pointerdown", (e) => { e.preventDefault(); startTalk(); });
+talk.addEventListener("pointerup", stopTalk);
+talk.addEventListener("pointerleave", stopTalk);
+talk.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); startTalk(); } });
+talk.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); stopTalk(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key === " " && !e.repeat && document.activeElement && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) { e.preventDefault(); startTalk(); }
+});
+document.addEventListener("keyup", (e) => {
+  if (e.key === " " && document.activeElement && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) { e.preventDefault(); stopTalk(); }
+});
+
+$("typed").addEventListener("submit", (e) => { e.preventDefault(); userActed = true; send($("text").value); $("text").value = ""; });
+document.querySelectorAll("[data-say]").forEach(b => b.addEventListener("click", () => { userActed = true; send(b.dataset.say); }));
+$("mute").addEventListener("click", () => { muted = !muted; $("mute").setAttribute("aria-pressed", String(muted));
+  $("mute").textContent = muted ? "Unmute voice" : "Mute voice"; if (muted && window.speechSynthesis) speechSynthesis.cancel(); });
+
+// simulated walk: step along the route path, report positions, speak what the navigator says
+function* stepsAlong(pts, step) {
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [ax, ay, af] = pts[i], [bx, by, bf] = pts[i + 1];
+    if (af !== bf) { yield [bx, by, bf]; continue; }
+    const L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(L / step));
+    for (let k = 1; k <= n; k++) yield [ax + (bx - ax) * k / n, ay + (by - ay) * k / n, af, Math.atan2(by - ay, bx - ax)];
+  }
+}
+async function walkTick(gen) {
+  if (!walking) return;
+  const s = gen.next();
+  if (s.done) { setWalking(false); return; }
+  const [x, y, floor, heading] = s.value;
+  try {
+    const r = await fetch("/api/voice/position", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ traveller, x, y, floor, heading: heading ?? null }) });
+    const j = await r.json();
+    (j.events || []).forEach(ev => vibrate(ev.cue));
+    if (j.say) show(j.say);
+    if (j.state && j.state.done) { setWalking(false); return; }
+  } catch {}
+  walkTimer = setTimeout(() => walkTick(gen), 450);
+}
+function setWalking(on) {
+  walking = on; $("walk").setAttribute("aria-pressed", String(on)); $("walk").textContent = on ? "Stop walking" : "Simulate walking";
+  if (!on && walkTimer) clearTimeout(walkTimer);
+}
+$("walk").addEventListener("click", () => {
+  userActed = true;
+  if (walking) { setWalking(false); return; }
+  if (!path || path.length < 2) { show("Start a trip first. Say, take me to the kitchen."); return; }
+  setWalking(true); walkTick(stepsAlong(path, 0.6));
+});
+
+// pairing code for the caretaker, if the server offers it
+(async () => {
+  try {
+    const r = await fetch("/api/traveller/register", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ traveller, name: null }) });
+    if (r.ok) { const j = await r.json(); $("code").textContent = j.code || "—"; } else { $("code").textContent = "—"; }
+  } catch { $("code").textContent = "—"; }
+})();
+talk.focus();
+</script>
+</body>
+</html>

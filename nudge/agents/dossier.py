@@ -66,7 +66,12 @@ def backend(sid):
     })
 
 
-READ_ONLY_AGENT = [FilesystemPermission(operations=["write"], paths=["/agent/**"], mode="deny")]
+READ_ONLY_AGENT = [
+    FilesystemPermission(operations=["write"], paths=["/agent/**"], mode="deny"),
+    # /agent is for AGENTS.md, prompts and skills; the python next to them is not the agent's business
+    FilesystemPermission(operations=["read"], paths=["/agent/*.py", "/agent/**/*.py", "/agent/__pycache__/**",
+                                                      "/agent/**/*.pyc"], mode="deny"),
+]
 
 
 def _fragment_name(content):
@@ -91,10 +96,22 @@ def tool_errors_as_messages(request, handler):
         return handler(request)
     except (Exception, SystemExit) as ex:  # noqa: BLE001  (mp.secret exits when a key is missing)
         tc = request.tool_call
-        return ToolMessage(content=f"Error: {tc.get('name')} failed: {type(ex).__name__}: {str(ex)[:300]}. "
-                                   f"Check the arguments (exact sid, floor and pano ids) and try once more, "
-                                   f"or skip this step and note it.",
-                           tool_call_id=tc.get("id", ""), name=tc.get("name"), status="error")
+        return ToolMessage(content=_error_advice(tc.get("name"), ex), tool_call_id=tc.get("id", ""),
+                           name=tc.get("name"), status="error")
+
+
+def _error_advice(name, ex):
+    """tell the model whether retrying can help. free models otherwise retry the same failing call forever."""
+    msg = f"{type(ex).__name__}: {str(ex)[:240]}"
+    low = msg.lower()
+    if any(k in low for k in ("is not set", "key rejected", "401", "403", "api_key", "not configured", "kit not")):
+        return (f"Error: {name} is unavailable here ({msg}). This data source has no access in this environment. "
+                f"Do not call {name} again in this run; work from what the other tools give you and note the gap.")
+    if any(k in low for k in ("no pano", "not a pano", "unknown floor", "not in this scan", "no such")):
+        return (f"Error: {name} failed: {msg}. Use only ids from building_overview / list_panos / place_seed for "
+                f"THIS sid. Fix the id and try once; if it fails again, skip it.")
+    return (f"Error: {name} failed: {msg}. Check the arguments (exact sid, floor and pano ids) and try once more, "
+            f"or skip this step and note it.")
 
 
 @wrap_tool_call

@@ -1,11 +1,15 @@
-"""nudge over imessage, through photon (beta platform, api.photon.codes).
+"""nudge over imessage, through photon (beta platform, api.photon.codes), for the CARETAKER.
 
-a blind visitor already lives in imessage with voiceover, so that's the interface:
-  "take me to suite 400 at 1255 S Atlantic Blvd"  -> briefing from the dossier + first instruction
-  "the elevator is out"                            -> exception agent proposes a reroute
-  "yes" / "no"                                     -> approve or reject it (deep agents hitl)
+the traveller talks to nudge by voice; the person who worries about them follows along by text:
+  "follow 123456"        -> pair with a traveller (the 6-digit code from their app)
+  "where are they?"      -> place, floor, metres to go, eta, from the hub, no model call
+  "notify all"           -> also room-by-room updates (default: important only)
+pushed without asking: trip started, floor changes, arrived, off the map, help, stuck, approved reroutes.
 
-run: python -m nudge.photon_bot
+"travel mode" switches this handle to the old traveller commands (testing): "take me to X at Y".
+
+run: python -m nudge.photon_bot            (also serves the api on :8765, so the hub is shared)
+     python -m nudge.photon_bot --no-api   (bot only; caretaker pushes then need the api in this process)
 env (.env): PHOTON_API_KEY, PHOTON_PROJECT_ID, optional PHOTON_ALLOWED_SENDERS (comma list of handles)
 """
 import csv
@@ -17,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from . import hub
 from .agents.tools import dossier_dir, graph, key_places
 from .instruct import meters
 from .mp import ROOT, secret
@@ -238,24 +243,317 @@ class PhotonChannel:
             pass  # typing is cosmetic
 
     def reply(self, msg, text, n=0):
+        self._send(msg["space"], msg["agent"], text, f"nudge:{msg['id']}:{n}", parent=msg["id"])
+
+    def push(self, space_id, agent_id, text, key):
+        """a message nobody asked for, into a space the caretaker opened by texting first."""
+        self._send(space_id, agent_id, text, f"nudge-push:{key}")
+
+    def _send(self, space, agent, text, key, parent=None):
         from photon_api.generated.models import SendMessageRequest, SendTextContent
         from photon_api.rpc_generated import SendMessageHeader, SendMessageInput, SendMessagePath
+        body = {"spaceId": space, "senderId": agent, "content": SendTextContent(type="text", format="plain", text=text)}
+        if parent:
+            body["parentMessageId"] = parent
         self.photon.projects.send_message(SendMessageInput(
             path=SendMessagePath(id=self.project),
-            headers=SendMessageHeader.model_validate({"idempotency-key": f"nudge:{msg['id']}:{n}"}),
-            body=SendMessageRequest(spaceId=msg["space"], senderId=msg["agent"], parentMessageId=msg["id"],
-                                    content=SendTextContent(type="text", format="plain", text=text))))
+            headers=SendMessageHeader.model_validate({"idempotency-key": key[:200]}),
+            body=SendMessageRequest(**body)))
 
 
-def serve(brain=None, poll_s=2.0):
+# ---------- caretaker side ----------
+
+PRONOUNS = {"they": ("they", "them", "their", "are"), "she": ("she", "her", "her", "is"),
+            "he": ("he", "him", "his", "is")}
+FOLLOW = re.compile(r"^(?:follow|pair|link|connect)\s*(?:with|to)?\s*([\d\s-]{6,})$", re.I)
+WHERE = re.compile(r"^(?:where(?:'s| is| are)\b|status\b|eta\b|how far|how long|is (?:everything|all|she|he|they)\b"
+                   r"|are (?:they|you)\b|last update|how(?:'s| is| are) (?:she|he|they|it going)|any news|update)", re.I)
+URGENT = {"help", "unmapped", "stuck"}
+CARETAKER_HELP = ("I'm Nudge. I keep you posted while someone you care for walks with Nudge's voice guide. "
+                  "Text follow plus the 6-digit code from their app to start. Then ask: where are they? eta? "
+                  "is everything ok? Text notify all for room-by-room updates, notify important to go back. "
+                  "You can set pronouns with: pronouns she, he or they.")
+
+
+def _ago(ts, now_ts):
+    if not ts:
+        return "no updates yet"
+    s = max(0, now_ts - ts)
+    if s < 45:
+        return "just now"
+    m = round(s / 60)
+    return f"{m} minute{'s' * (m != 1)} ago" if m < 90 else f"about {round(m / 60)} hours ago"
+
+
+class Voice:
+    """names and pronouns for one caretaker's messages."""
+
+    def __init__(self, name, pronoun="they"):
+        self.name = name
+        self.p = PRONOUNS.get(pronoun or "they", PRONOUNS["they"])
+
+    @property
+    def Who(self):
+        return self.name or "Your traveller"
+
+    @property
+    def who(self):
+        return self.name or "your traveller"
+
+    @property
+    def them(self):
+        return self.p[1]
+
+    @property
+    def they(self):
+        return self.p[0]
+
+    @property
+    def is_(self):
+        return self.p[3]
+
+
+def _where(st):
+    bits = []
+    if st.get("place"):
+        bits.append(f"in the {st['place'].lower()}" if not st["place"].lower().startswith("the ") else f"in {st['place']}")
+    if st.get("floor"):
+        bits.append(f"on {st['floor']}")
+    return " ".join(bits)
+
+
+def status_text(st, v, now_ts=None):
+    """plain-language status for a caretaker; metres, never feet."""
+    now_ts = now_ts or hub.now()
+    if st is None:
+        return "I don't have anything for that traveller yet."
+    where = _where(st)
+    ago = _ago(st.get("last_update_ts"), now_ts)
+    goal = st.get("goal")
+    state = st["state"]
+    if state == "walking" or state in ("off_route", "rerouting"):
+        rem = st.get("remaining_m")
+        left = f", about {meters(rem)} to go" + (f" (about {st['eta_min']} min)" if st.get("eta_min") else "") if rem is not None else ""
+        extra = " Nudge just rerouted them." if state != "walking" else ""
+        return f"{v.Who} is walking to the {goal}" + (f", now {where}" if where else "") + f"{left}. Last update {ago}.{extra}"
+    if state == "arrived":
+        if (st.get("place") or "").lower() == (goal or "").lower():
+            where = f"on {st['floor']}" if st.get("floor") else ""
+        return f"{v.Who} arrived at the {goal}" + (f", {where}" if where else "") + f". Last update {ago}."
+    if state == "unmapped":
+        return f"{v.Who} is outside the mapped area" + (f", last known {where}" if where else "") + \
+            f". Nudge is guiding {v.them} back. Last update {ago}."
+    if state == "help":
+        return f"{v.Who} asked for help" + (f" {where}" if where else "") + f". Last update {ago}."
+    return f"{v.Who} isn't on a trip right now" + (f"; last known {where}" if where else "") + f". Last update {ago}."
+
+
+@dataclass
+class CaretakerBrain:
+    """caretaker texts in, replies out. travel_brain handles "travel mode" (the old traveller commands)."""
+    travel_brain: object = None
+    travel_mode: set = field(default_factory=set)
+    pronouns: dict = field(default_factory=dict)
+
+    def voice(self, handle):
+        c = hub.caretaker(handle) or {}
+        st = hub.status(c["traveller"]) if c.get("traveller") else None
+        return Voice((st or {}).get("name"), c.get("pronoun") or self.pronouns.get(handle, "they"))
+
+    def handle(self, handle, text):
+        t = text.strip()
+        low = t.lower().rstrip(".!? ")
+        if low == "travel mode":
+            self.travel_mode.add(handle)
+            return ["Travel mode on: text like a traveller, e.g. take me to the kitchen at synthetic. "
+                    "Text caretaker mode to switch back."]
+        if low == "caretaker mode":
+            self.travel_mode.discard(handle)
+            return ["Caretaker mode on."]
+        if handle in self.travel_mode and self.travel_brain is not None:
+            return self.travel_brain.handle(handle, t)
+        if low in ("help", "hi", "hello", "start", "?", "menu"):
+            return [CARETAKER_HELP]
+        m = FOLLOW.match(low)
+        if m:
+            tid = hub.pair(handle, m.group(1))
+            if not tid:
+                return ["That code didn't match anyone. It's the 6-digit code in the traveller's Nudge app."]
+            v = self.voice(handle)
+            return [f"You're now following {v.who}. I'll text you when {v.they} start a trip, change floors, "
+                    f"arrive, or need help. Ask where are they? any time."]
+        if low.startswith("pronoun"):
+            word = low.split()[-1]
+            if word in PRONOUNS:
+                c = hub.caretaker(handle) or {}
+                self.pronouns[handle] = word
+                if c:
+                    with hub._lock:
+                        hub._load()["caretakers"][handle]["pronoun"] = word
+                        hub._save()
+                return [f"Okay, I'll say {word}."]
+            return ["Say pronouns she, pronouns he, or pronouns they."]
+        if low in ("notify all", "notify everything", "verbose"):
+            hub.set_verbosity(handle, "all")
+            return ["Okay: I'll also send room-by-room updates and hazard warnings."]
+        if low in ("notify important", "quiet", "less"):
+            hub.set_verbosity(handle, "important")
+            return ["Okay: only starts, floor changes, arrivals and anything that needs attention."]
+        c = hub.caretaker(handle) or {}
+        if not c.get("traveller"):
+            return ["You're not following anyone yet. Text follow plus the 6-digit code from the traveller's app."]
+        st = hub.status(c["traveller"])
+        v = self.voice(handle)
+        if re.search(r"\b(ok|okay|alright|all right|fine|safe)\b", low):
+            good = st and st["state"] in ("walking", "arrived", "idle")
+            return [("Yes. " if good else "Not quite. ") + status_text(st, v)]
+        if re.search(r"\beta\b|how long|how far", low):
+            if st and st["state"] == "arrived":
+                return [f"{v.Who} already arrived at the {st['goal']}."]
+            if st and st.get("remaining_m") is not None:
+                return [f"About {st.get('eta_min') or 1} min to the {st['goal']} ({meters(st['remaining_m'])} left)."]
+            return [status_text(st, v)]
+        if "last update" in low and st and st["recent"]:
+            e = st["recent"][-1]
+            return [f"{_ago(e.get('ts'), hub.now()).capitalize()}: {e.get('text') or e.get('type')}"]
+        return [status_text(st, v)]
+
+
+class Notifier:
+    """turns hub events into a few calm imessages per trip. send(handle, space, agent, text, key)."""
+    GAP_S = 20         # min seconds between non-urgent messages to one caretaker
+    PER_TRIP = 8       # cap on non-urgent messages per trip
+    DEDUPE_S = 120
+
+    def __init__(self, send, sync=False):
+        self.send, self.sync = send, sync
+        self.last = {}      # handle -> ts of last non-urgent message
+        self.count = {}     # (handle, session) -> non-urgent messages this trip
+        self.recent = {}    # (handle, text) -> ts
+        self.offroute = {}  # traveller -> [ts of off-route reroutes]
+        self.flagged = {}   # traveller -> set of one-shot alerts sent this trip
+        self.q = None
+        if not sync:
+            import queue
+            self.q = queue.Queue()
+            threading.Thread(target=self._worker, daemon=True).start()
+        self.unsub = hub.subscribe(self.on_event)
+
+    def _worker(self):
+        while True:
+            args = self.q.get()
+            try:
+                self.send(*args)
+            except Exception as ex:
+                print(f"push failed: {ex}", file=sys.stderr)
+
+    def message(self, tid, e, verbosity, v):
+        """the text for this event, or None. (urgent, text)"""
+        typ, st = e.get("type"), hub.status(tid) or {}
+        where = _where({**st, "place": e.get("place") or st.get("place"), "floor": e.get("floor") or st.get("floor")})
+        flags = self.flagged.setdefault(tid, set())
+        if typ == "route" and e.get("goal"):
+            flags.clear()
+            self.offroute[tid] = []
+            rem = e.get("remaining_m") or st.get("remaining_m")
+            eta = st.get("eta_min")
+            dist = f": about {meters(rem)}" + (f", roughly {eta} min" if eta else "") if rem else ""
+            return False, f"{v.Who} started walking to the {e['goal']}{dist}."
+        if typ == "arrive":
+            return False, f"{v.Who} arrived at the {st.get('goal') or 'destination'}."
+        if typ == "help":
+            quote = (e.get("text") or "").strip()
+            return True, f"{v.Who} asked for help" + (f" {where}" if where else "") + (f': "{quote}"' if quote else ".")
+        if typ == "stuck":
+            return True, f"{v.Who} hasn't moved for a few minutes" + (f" {where}" if where else "") + \
+                ". You may want to check in."
+        if typ == "unmapped":
+            if "unmapped" in flags:
+                return None
+            flags.add("unmapped")
+            back = f"Nudge is guiding {v.them} back." if e.get("can_return") else f"Nudge asked {v.them} to stop and wait."
+            return True, f"Heads up: {v.who} walked outside the mapped area" + (f" near {where[3:] if where.startswith('in ') else where}" if where else "") + f". {back}"
+        if typ == "remapped":
+            flags.discard("unmapped")
+            return False, f"{v.Who} is back on the map and walking again."
+        if typ == "reroute_approved":
+            reason = (e.get("reason") or "").strip().rstrip(".")
+            return False, (f"{v.Who} reported: {reason.lower()}. {v.they.capitalize()} approved a new route." if reason
+                           else f"{v.Who} approved a new route.")
+        if typ == "reroute":
+            if e.get("reason"):  # a problem they reported, handled without the agent
+                return False, f"{v.Who} reported: {e['reason'].strip().rstrip('.').lower()}. Nudge rerouted around it."
+            if "off the route" in (e.get("text") or "").lower():
+                ts = e.get("ts") or hub.now()
+                hits = [t for t in self.offroute.get(tid, []) if ts - t < 120] + [ts]
+                self.offroute[tid] = hits
+                if len(hits) >= 3 and "offroute" not in flags:
+                    flags.add("offroute")
+                    return False, f"{v.Who} has drifted off route a few times" + (f" {where}" if where else "") + \
+                        ". Nudge keeps rerouting."
+            return None
+        if e.get("floor_changed") and e.get("floor"):
+            return False, f"{v.Who} is now on {e['floor']}."
+        if verbosity == "all":
+            if typ == "room" and e.get("text"):
+                return False, f"{v.Who}: {e['text']}"
+            if typ == "hazard" and e.get("text"):
+                return False, f"{v.Who} passed a warning: {e['text']}"
+            if typ == "reported" and e.get("text"):
+                return False, f"{v.Who} reported: {e['text']}"
+        return None
+
+    def on_event(self, tid, e):
+        st = hub.status(tid) or {}
+        for handle in hub.caretakers(tid):
+            c = hub.caretaker(handle) or {}
+            if not c.get("space"):
+                continue  # they haven't texted us yet, so the shared line can't reach them
+            v = Voice(st.get("name"), c.get("pronoun"))
+            r = self.message(tid, e, c.get("verbosity", "important"), v)
+            if not r:
+                continue
+            urgent, text = r
+            ts = e.get("ts") or hub.now()
+            if ts - self.recent.get((handle, text), -1e9) < self.DEDUPE_S:
+                continue
+            trip = (handle, st.get("session"))
+            if not urgent:
+                if ts - self.last.get(handle, -1e9) < self.GAP_S and e.get("type") not in ("arrive", "route"):
+                    continue
+                if self.count.get(trip, 0) >= self.PER_TRIP:
+                    continue
+                self.last[handle] = ts
+                self.count[trip] = self.count.get(trip, 0) + 1
+            self.recent[(handle, text)] = ts
+            args = (handle, c["space"], c.get("agent"), text, f"{tid}:{int(ts * 1000)}:{abs(hash(text)) % 10**8}")
+            if self.sync:
+                self.send(*args)
+            else:
+                self.q.put(args)
+
+
+def _serve_api(port):
+    import uvicorn
+    from .server import app
+    cfg = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
+    threading.Thread(target=uvicorn.Server(cfg).run, daemon=True).start()
+    print(f"api on http://0.0.0.0:{port} (shared hub with the caretaker bot)")
+
+
+def serve(brain=None, poll_s=2.0, api_port=8765):
     from photon_api import ApiError
     ch = PhotonChannel()
-    brain = brain or default_brain()
-    print(f"nudge on imessage for project {ch.project[:12]}...; waiting for messages")
+    if api_port:
+        _serve_api(api_port)
+    brain = brain or CaretakerBrain(travel_brain=default_brain())
+    Notifier(lambda handle, space, agent, text, key: ch.push(space, agent, text, key))
+    print(f"nudge caretaker bot on imessage for project {ch.project[:12]}...; waiting for messages")
     while True:
         try:
             for msg in ch.poll():
                 print(f"<- {msg['from']}: {msg['text']}")
+                hub.set_space(msg["from"], msg["space"], msg["agent"])  # where to push updates later
                 ch.typing(msg, True)
                 try:
                     replies = brain.handle(msg["from"], msg["text"])
@@ -287,4 +585,4 @@ def default_brain():
 
 
 if __name__ == "__main__":
-    serve()
+    serve(api_port=None if "--no-api" in sys.argv else 8765)

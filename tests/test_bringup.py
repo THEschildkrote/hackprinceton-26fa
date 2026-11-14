@@ -135,6 +135,41 @@ def test_aes_detection():
     assert costar.is_aes(Info())
 
 
+def test_real_shaped_kit_join_enums_tenants(tmp_path, monkeypatch):
+    # same layout as the real kit: join csv, data/data/*.jsonl, data/schemas/enums.json
+    com, _ = index_rows()
+    pid = 4242
+    prop = {"id": pid, "numStoriesAboveGrade": 3, "buildingClass": 1, "propertyType": 5, "coStarBuildingType": 1,
+            "constructionEvents": [{"eventType": 2, "year": 1980}, {"eventType": 4, "year": 2005}],
+            "parking": [{"parkingType": 1, "totalSpaces": 20}], "amenities": [314],
+            "structural": {"elevators": [{"elevatorType": 1, "numElevators": 2, "elevatorState": 1}]},
+            "floors": [{"propertyFloorId": 7, "floorName": 1}],
+            "primaryAddress": {"latitude": 34.0, "longitude": -118.0, "streetNumber": 1, "streetName": "Main", "city": "LA"}}
+    occ = [{"id": 1, "propertyId": pid, "tenantLocationId": 9, "toDate": None,
+            "spaces": [{"suite": "200", "propertyFloorId": 7, "squareFeetOccupied": 1000}]},
+           {"id": 2, "propertyId": pid, "tenantLocationId": 9, "toDate": "2010-01-01"}]
+    comp = {"id": 9, "name": "Clinic LA", "profile": {"companyName": "Clinic", "industryType": 0}}
+    enums = {"BuildingClass": {"1": "A"}, "PropertyType": {"5": "Office"}, "ParkingType": {"1": "Surface"},
+             "ConstructionEventType": {"2": "ConstructionComplete", "4": "RenovationFinished"},
+             "ElevatorType": {"1": "Passenger"}, "FloorName": {"1": "FirstFloor"}, "IndustryType": {"0": "Unknown"}}
+    jl = lambda rows: "\n".join(json.dumps(r) for r in rows).encode() + b"\n"
+    z = tmp_path / "kit.zip"
+    write_encrypted_zip(z, {
+        "commercial-properties.csv": f"PropertyId,MatterportModelId,Address\n{pid},{com['sid']},1 Main\n".encode(),
+        "data/commercial-property.jsonl": jl([prop]), "data/location-occupancy.jsonl": jl(occ),
+        "data/company-detail.jsonl": jl([comp]), "schemas/enums.json": json.dumps(enums).encode(),
+        "index.md": b"# kit\n"}, "pw")
+    monkeypatch.setattr(costar, "KIT_DIR", tmp_path / "kc")
+    monkeypatch.setattr(costar, "secret", lambda n, required=True: {"COSTAR_KIT_ZIP": str(z), "COSTAR_ZIP_PASSWORD": "pw"}.get(n))
+    r = costar.lookup(com["sid"])
+    assert r["key"] == str(pid) and r["file"] == "commercial-property.jsonl"  # the join csv wins over models_index
+    f = costar.accessibility_facts(r["record"])["facts"]
+    assert f["year_built"] == 1980 and f["year_renovated"] == 2005 and f["pre_ada"] is False  # renovated after 1993
+    assert f["building_class"] == "A" and f["parking"]["total"] == 20 and f["passenger_elevators"] == 2
+    assert f["tenants"] == [{"name": "Clinic", "industry": "Unknown", "suite": "200", "floor": "FirstFloor",
+                             "sqft": 1000, "since": None}]
+
+
 def test_facts_tolerate_odd_records():
     f = costar.accessibility_facts({"x": None, "ADA_Compliant": "Yes", "Year Built": "1999-01-01"})
     assert f["facts"]["accessibility"] == "Yes" and f["facts"]["pre_ada"] is False
