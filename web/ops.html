@@ -692,6 +692,14 @@ function handle(ev) {
   }
 }
 let lastId = 0;
+// the stream is fastest, but a tunnel can hold it back; this poll fills in, and ids keep either from repeating
+async function poll() {
+  let r;
+  try { r = await api(`/api/ops/events?since=${lastId}`); } catch { return; }
+  if (r.last < lastId) { lastId = 0; return; }   // the server restarted
+  for (const ev of r.events || []) { if (ev.id <= lastId) continue; lastId = ev.id; handle(ev); }
+}
+setInterval(poll, 1000);
 function connect() {
   const es = new EventSource(`/api/ops/stream${lastId ? `?since=${lastId}` : ""}`);
   es.onopen = () => { const c = $("conn"); c.textContent = "Connected"; c.className = "soft"; };

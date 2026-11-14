@@ -149,6 +149,14 @@ def test_phone_and_caretaker_presence_and_voice_turns():
     assert [e["who"] for e in said] == ["traveller", "nudge"] and said[0]["text"] == "where am i"
 
 
+def test_events_poll_for_clients_behind_a_tunnel():
+    a = traces.publish("step", session="s1", steps=1)
+    b = traces.publish("band", cue="left")
+    r = c.get("/api/ops/events", params={"since": a["id"]}).json()
+    assert [e["id"] for e in r["events"]] == [b["id"]] and r["last"] == b["id"]
+    assert c.get("/api/ops/events", params={"since": b["id"]}).json()["events"] == []
+
+
 def test_replay_drives_the_real_endpoints(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ROOT", tmp_path)
     r = c.post("/api/ops/replay", json={"sid": "synthetic", "start": "Lobby", "to": "Conference Room",

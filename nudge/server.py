@@ -1418,6 +1418,11 @@ def caretaker_messages(tid: str, after: int = 0):
     return {"messages": msgs, "next": after + len(msgs)}
 
 
+# exactly text/event-stream: starlette would add "; charset=utf-8", and a cloudflare tunnel only streams
+# the bare type through, holding everything else back until the response ends
+_SSE = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
 @app.get("/api/traveller/{tid}/events")
 async def caretaker_events(tid: str, after: int = 0):
     """the same messages as server-sent events, live."""
@@ -1439,8 +1444,7 @@ async def caretaker_events(tid: str, after: int = 0):
                 n += 1
                 yield f"id: {n}\ndata: {_json.dumps(m)}\n\n"
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(stream(), headers=_SSE)
 
 
 # --- ops dashboard (web/ops.html): live traces, a snapshot, and a rehearsal replay ------------------
@@ -1481,8 +1485,17 @@ async def ops_stream(since: int = 0):
         finally:
             unsubscribe()
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(stream(), headers=_SSE)
+
+
+@app.get("/api/ops/events")
+def ops_events(since: int = 0):
+    """the same feed for clients behind a proxy that holds the stream back (a cloudflare tunnel does):
+    poll with the last id seen. `last` going below `since` means the server restarted."""
+    from . import traces
+    evs = traces.recent(n=traces.RING, since=since)
+    newest = traces.recent(n=1)
+    return {"events": evs, "last": newest[-1]["id"] if newest else 0}
 
 
 def _session_view(session, nav):
