@@ -1504,6 +1504,9 @@ def _register_voice_session(nav, sid):
     _trace("session", session=s, sid=sid, goal=nav.goal, profile=nav.profile, by="voice",
            route_m=round(nav.route.length, 1) if nav.route else None)
     _trace_nav(s, nav)
+    # "take me to the kitchen" hands the route to the belt like any other walk. off the request's own
+    # thread: the reply is about to be spoken, and a belt that is out of range takes seconds to say nothing
+    threading.Thread(target=_belt_start, args=(s, nav), daemon=True, name="nudge-belt-voice").start()
     return s
 
 

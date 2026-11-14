@@ -305,3 +305,17 @@ def test_next_floor_is_passed_on_and_the_floor_follows_the_belt(fake):
     assert c.get("/api/belt").json()["belt"]["floor"] == floors[1]
     assert not c.post("/api/belt/floor").json()["ok"]                            # there is no third floor
     assert "no further floor" in c.get("/api/belt").json()["error"]
+
+
+def test_a_walk_asked_for_by_voice_goes_to_the_belt_too(fake):
+    r = c.post("/api/voice/turn", json={"traveller": "belt-voice", "sid": "synthetic", "agent": False,
+                                        "text": "take me to the conference room"})
+    assert r.status_code == 200 and r.json()["session"], r.text
+    sid = r.json()["session"]
+    wait(lambda: any(p == "/route" for p, _ in fake.posts()))                    # sent off the request's thread
+    path, body = next((p, b) for p, b in fake.posts() if p == "/route")
+    nav = server.get_navigator(sid)
+    assert body == {"route": {"points": nav.route.to_dict(nav.g)["points"]}}
+    wait(lambda: c.get("/api/belt").json()["session"] == sid)
+    assert fake.state == "IDLE"                                                  # nothing moves until they are lined up
+    assert c.post("/api/belt/begin", json={"session": sid}).json()["ok"] and fake.state == "NAVIGATING"

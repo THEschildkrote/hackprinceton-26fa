@@ -70,6 +70,10 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
   `POST /api/belt/floor`, or Next floor in the belt's own viewer. The belt then puts the wearer on the
   first point of the next floor's stretch and guides again, and the floor it reports, which is the floor
   our navigator is told, is the new one.
+- **A walk asked for by voice.** "Take me to the kitchen" (`/api/voice/turn`, from the voice page, the app
+  or a phone agent) hands its route to the belt like a walk started with `/api/nav/start`. The wearer
+  still has to be lined up before it guides: on the route's first point, facing the second, then
+  `POST /api/belt/begin` with the session, or Calibrate and Start in the belt's viewer.
 - **The dashboard.** While a walk is followed, the belt's phone and pods show on `ops.html` the way a
   phone and a collar do: its steps come through as `step` traces (pace, the phone tile), its taps as `band`
   traces in the collar's cue words (a single tap is `steer_left`, a double tap `left`, a tap back after
