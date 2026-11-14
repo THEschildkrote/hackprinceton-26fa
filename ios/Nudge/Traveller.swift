@@ -119,6 +119,7 @@ final class Traveller {
         guard let h = heading else {
             say("I can't find a direction. Keep the phone upright on your back.")
             phase = .waiting
+            status = "No direction yet. Waiting for a trip."  // otherwise "Calibrating." stays on screen
             return
         }
         do {
