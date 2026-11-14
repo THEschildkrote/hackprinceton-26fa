@@ -25,7 +25,7 @@ VERTICAL_XY = 5.0
 BRIDGE = 4.0        # bridge disconnected pieces across one wall, flagged uncertain
 DOOR_APPROACH = 0.5  # cross a doorway square-on: a point this far before and after its middle
 CLEAR_M = 0.35       # keep the walking line this far off blocking walls
-DOOR_ADA_M = 0.815   # 32 in clear width (ada 404.2.3); narrower is a hard stop for wheelchairs
+DOOR_ADA_M = 0.70    # hard stop for wheelchairs (most manual chairs are 0.63-0.69 m); ada asks 0.815 m clear
 DOOR_NARROW_M = 0.9  # narrower than this gets called out as a narrow doorway
 
 
@@ -456,9 +456,34 @@ def load_doorways(sid):
     if not p or not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+    data["floors"] = apply_review(sid, data.get("floors") or {})
+    return data
+
+
+def apply_review(sid, floors):
+    """drop doorways a visual review marked not_a_door (cache/doorways/<sid>.review.json):
+    a railing over a stair void or a recessed panel can look like an empty run in the cloud."""
+    p = DOORWAYS / f"{sid}.review.json" if sid else None
+    if not p or not p.exists():
+        return floors
+    try:
+        rev = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return floors
+    drops = [(r["floor"], r["mid"]) for r in rev.get("doors", []) if r.get("verdict") == "not_a_door"]
+    out = {}
+    for fid, ds in floors.items():
+        keep = []
+        for d in ds:
+            mid = ((d["a"][0] + d["b"][0]) / 2, (d["a"][1] + d["b"][1]) / 2)
+            if any(f == fid and dist(mid, m) < 0.3 for f, m in drops):
+                continue
+            keep.append(d)
+        out[fid] = keep
+    return out
 
 
 def split_walls(walls, doors):
@@ -550,9 +575,23 @@ def _line_cross(p, q, u, v):
     return (p[0] + t * d1x, p[1] + t * d1y)
 
 
-def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9)):
+def _grow_run(hc, cthr, k, direction, nb, max_bins):
+    """walk out from a run edge until a jamb (points crossing the wall's centre plane). a door leaf
+    standing in the slab looks solid but sits off the centre plane, so it gets absorbed into the run.
+    returns the new edge bin, or None when no jamb is found within reach (then leave the run alone)."""
+    for steps in range(max_bins + 1):
+        if not 0 <= k < nb:
+            return None
+        if hc[k] >= cthr:
+            return k
+        k += direction
+    return None
+
+
+def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9), core=0.03, reach=0.3):
     """{floor_id: [doorway...]} from the point cloud: along each wall edge, a run of empty slices
-    between jambs in the band a person walks through. pts is (n, 3) in the model frame."""
+    between jambs in the band a person walks through. pts is (n, 3) in the model frame.
+    widths are clear widths, jamb face to jamb face (what ada 404.2.3 measures)."""
     import numpy as np
     out = {}
     for f in g.floors:
@@ -573,10 +612,15 @@ def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9)):
             lo, hi = np.minimum(p, q) - 0.3, np.maximum(p, q) + 0.3
             box = sel[(sel[:, 0] > lo[0]) & (sel[:, 0] < hi[0]) & (sel[:, 1] > lo[1]) & (sel[:, 1] < hi[1])]
             rel = box - P
-            t, s = rel @ u, rel @ nrm
-            t = t[np.abs(s) < half]
+            t_all, s_all = rel @ u, rel @ nrm
+            t = t_all[np.abs(s_all) < half]
             nb = max(1, int(round(L / step)))
             h, _ = np.histogram(t, bins=nb, range=(0, L))
+            # jambs cross the wall's centre plane; wall faces and door leaves mostly don't
+            hc, _ = np.histogram(t_all[np.abs(s_all) < core], bins=nb, range=(0, L))
+            core_solid = hc[hc > 0]
+            cthr = max(2, 0.25 * float(np.median(core_solid))) if len(core_solid) else 2
+            max_bins = int(round(reach / (L / nb)))
             solid = h[h > 0]
             # a doorway is near-empty (scan noise leaves ~10% of wall density); walls stay dense
             thr = max(3, 0.25 * float(np.median(solid))) if len(solid) else 3
@@ -589,6 +633,14 @@ def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9)):
                 j = i
                 while j < nb and free[j]:
                     j += 1
+                run_end = j
+                # a leaf standing in the opening: grow the run out to the real jambs
+                lo = _grow_run(hc, cthr, i - 1, -1, nb, max_bins) if i > 0 else None
+                hi = _grow_run(hc, cthr, j, 1, nb, max_bins) if j < nb else None
+                if lo is not None:
+                    i = lo + 1
+                if hi is not None:
+                    j = hi
                 w = (j - i) * L / nb
                 at_end = i == 0 or j == nb
                 # a free run at the very end of an edge is usually a corner, unless it is most of the edge
@@ -598,7 +650,7 @@ def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9)):
                                   "b": [round(float(b[0]), 3), round(float(b[1]), 3)],
                                   "width": round(w, 3), "kind": "door" if w <= OPEN_PLAN_M else "open_plan",
                                   "exterior": _is_exterior(g, f["id"], p, q), "source": "cloud"})
-                i = j
+                i = max(j, run_end)
         out[f["id"]] = found
     return out
 
@@ -621,7 +673,7 @@ def compute_doorways(sid, model=None, pts=None, save=True):
     g = build(model, use_doorways=False)
     pts = perceive.cloud(sid) if pts is None else pts
     levels = perceive.floor_levels(g, pts)
-    floors = cloud_doorways(g, pts, levels)
+    floors = apply_review(sid, cloud_doorways(g, pts, levels))
     res = {"sid": sid, "floors": floors,
            "stats": {fid: {"doors": sum(1 for d in ds if d["kind"] == "door"),
                            "open_plan": sum(1 for d in ds if d["kind"] == "open_plan"),

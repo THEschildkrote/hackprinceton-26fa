@@ -6,6 +6,7 @@ by looking at vexcel obliques, but it only ever picks among candidates; coordina
 """
 import json
 import math
+import re
 from dataclasses import dataclass, field
 
 from langchain_core.tools import tool
@@ -26,6 +27,11 @@ SOURCE_ORDER = {"outer_door": 0, "entry_room": 1, "near_outline": 2}
 ENTRY_WORDS = ("entr", "lobby", "vestibule", "foyer", "reception")
 SNAP_M = 15.0
 NEAR_WALL_M = 2.0
+CAMERA_H = 1.5          # matterport tripod height: floor level is pano z minus this
+RAISED_SEP_M = 1.0      # an entry floor this far above the scan's lowest floor is a raised main floor
+RAISED_FRACTION = 0.33  # ...whose porch rise is about a third of the floor-to-floor height (see _step_info)
+RISER_M = 0.17          # a typical step riser
+STEP_MIN_RISE_M = 0.25  # less than this outside-to-floor difference is not called a step
 
 
 @dataclass
@@ -37,11 +43,31 @@ class Site:
     portals: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
 
-    def best_portal(self):
+    def best_portal(self, profile="blind"):
         if not self.portals:
             raise NoRoute("no entrance connects the street to this scan")
-        confirmed = [p for p in self.portals if p["confirmed"] and p.get("accessible", True)]
-        return (confirmed or self.portals)[0]
+        usable = self.portals
+        if profile == "wheelchair":
+            usable = [p for p in self.portals if not blocks_wheelchair(p)]
+            if not usable:
+                raise NoRoute(no_step_free_message(self.portals))
+        confirmed = [p for p in usable if p["confirmed"] and p.get("accessible", True)]
+        return (confirmed or usable)[0]
+
+
+def blocks_wheelchair(p):
+    """confirmed steps with no ramp (or marked inaccessible) rule an entrance out for a wheelchair."""
+    if p.get("accessible") is False:
+        return True
+    return bool(p.get("confirmed")) and p.get("step") is True and not p.get("ramp")
+
+
+def no_step_free_message(portals):
+    p = portals[0]
+    steps = f"about {p['risers']} steps" if p.get("risers") else "steps"
+    if len(portals) == 1:
+        return f"The only known entrance has {steps} and no ramp; ask for the accessible entrance or call ahead."
+    return f"None of the {len(portals)} known entrances is step-free; ask for the accessible entrance or call ahead."
 
 
 _SITES = {}
@@ -132,8 +158,8 @@ def _entrance_candidates(gi, geo, og, sid, snap_m):
                          for f, poly in entry_polys)
         rec = {"outdoor_node": out_id, "sid": sid, "pano_id": pano, "kind": "entrance",
                "door_model": [round(door_xy[0], 3), round(door_xy[1], 3)],
-               "width_m": round(width, 2) if width else None, "step": _step(og, fp_pt, out_id),
-               "confirmed": False, "evidence": {}, "room": n.room_label, "source": source,
+               "width_m": round(width, 2) if width else None, **_step_info(og, fp_pt, out_id, gi, floor),
+               "ramp": None, "confirmed": False, "evidence": {}, "room": n.room_label, "source": source,
                "floor": floor, "onto_entry_room": onto_entry,
                "door_enu": [round(fp_pt[0], 2), round(fp_pt[1], 2)],
                "door_lonlat": list(og.enu.to_lonlat(*fp_pt)) if getattr(og, "enu", None) else None,
@@ -209,11 +235,15 @@ ROAD_COST = {"trunk": 0, "primary": 0, "secondary": 0, "tertiary": 5, "residenti
 def _street_dist(og, geo, xy):
     e, n = geo.model_to_enu(*xy)
     best = float("inf")
-    for edge in og.edges():
-        cost = ROAD_COST.get((edge.info or {}).get("highway"))
-        if cost is None:
+    # og.roads keeps every street centreline, including the ones now walked on inferred sidewalks
+    roads = getattr(og, "roads", None)
+    if roads:
+        lines = [(ROAD_COST.get(r["highway"]), r["pts"]) for r in roads]
+    else:
+        lines = [(ROAD_COST.get((edge.info or {}).get("highway")), og.edge_points(edge.a, edge.b)) for edge in og.edges()]
+    for cost, pts in lines:
+        if cost is None or len(pts) < 2:
             continue
-        pts = og.edge_points(edge.a, edge.b)
         d = min(project((e, n), a, b)[2] for a, b in zip(pts, pts[1:]))
         best = min(best, d + cost)
     return best
@@ -260,6 +290,46 @@ def resolve_flip(site):
     return True
 
 
+def floor_levels(gi):
+    """floor level of each scan floor in the model frame (metres): the point-cloud estimate when the cloud is
+    already cached, else the median pano height minus the tripod height."""
+    levels = {}
+    sid = getattr(gi, "sid", None)
+    try:
+        from . import perceive
+        if sid and not sid.startswith("synthetic") and (perceive.CACHE / "clouds" / f"{sid}_s{perceive.CLOUD_STRIDE}.npy").exists():
+            levels = {f: lv[0] for f, lv in perceive.floor_levels(gi, perceive.cloud(sid)).items()}
+    except Exception:
+        levels = {}
+    for f in gi.floors:
+        if f["id"] not in levels:
+            zs = sorted(n.z for n in gi.nodes.values() if n.floor == f["id"])
+            if zs:
+                levels[f["id"]] = zs[len(zs) // 2] - CAMERA_H
+    return levels
+
+
+def _step_info(og, door_enu, out_id, gi=None, floor=None):
+    """{step, rise_m, risers, step_basis} for the door.
+
+    the scan's absolute height is unknown, so the dtm alone can't see a raised porch (it measures the ground
+    at the door, not the floor). when the entry floor sits well above the scan's lowest floor (a raised main
+    floor over a lower storey), the lower storey is usually partly below grade: we estimate the porch rise as
+    RAISED_FRACTION of the floor-to-floor height (2.7 m apart -> about 0.9 m, 5 risers). that is an estimate,
+    good to about +-0.5 m; the site-surveyor's facade check replaces it with what it saw."""
+    if gi is not None and floor is not None:
+        levels = floor_levels(gi)
+        if floor in levels and len(levels) > 1:
+            sep = levels[floor] - min(levels.values())
+            if sep > RAISED_SEP_M:
+                rise = round(RAISED_FRACTION * sep, 2)
+                if rise >= STEP_MIN_RISE_M:
+                    return {"step": True, "rise_m": rise, "risers": max(1, round(rise / RISER_M)),
+                            "step_basis": f"estimated: entry floor is {sep:.1f} m above the scan's lowest floor"}
+    s = _step(og, door_enu, out_id)
+    return {"step": s, "rise_m": None, "risers": None, "step_basis": "dtm at the door" if s != "unknown" else None}
+
+
 def _step(og, door_enu, out_id):
     """true/false/'unknown' for a step at the door, from dtm ground at the door vs the approach."""
     elev = getattr(og, "elevation", None)
@@ -279,11 +349,18 @@ def _step(og, door_enu, out_id):
 
 
 def apply_confirmations(site, confirmations):
+    """what the site-surveyor saw in the facade imagery replaces the geometric estimate."""
     for c in confirmations or []:
         for p in site.portals:
-            if p["pano_id"] == c.get("pano_id"):
-                p.update(confirmed=True, accessible=c.get("accessible", True),
-                         evidence={**p.get("evidence", {}), **(c.get("evidence") or {})})
+            if p["pano_id"] != c.get("pano_id"):
+                continue
+            p.update(confirmed=True, accessible=c.get("accessible", True),
+                     evidence={**p.get("evidence", {}), **(c.get("evidence") or {})})
+            for k in ("step", "rise_m", "risers", "ramp", "door_type", "note"):
+                if c.get(k) is not None:
+                    p[k] = c[k]
+            if c.get("step") is not None:
+                p["step_basis"] = "seen in facade imagery"
     site.portals.sort(key=lambda p: (not (p["confirmed"] and p.get("accessible", True)),))
     return site
 
@@ -293,13 +370,31 @@ def _entrance_name(p):
     return "main entrance" if any(w in room for w in ("entr", "lobby", "foyer", "vestibule")) else "entrance"
 
 
+def _railing(note):
+    """the railing phrase from the surveyor's note ('curved railing', 'handrail'), only if it says so."""
+    m = re.search(r"\b((?:curved|metal|wooden|iron|two|double)\s+)?(hand ?rails?|railings?|rails?)\b", note or "", re.I)
+    return m.group(0).lower() if m else None
+
+
 def transition_text(p):
     parts = [f"You're at the {_entrance_name(p)}."]
-    step = {False: "no step", True: "with a step"}.get(p.get("step"))
-    if p.get("width_m"):
-        parts.append(f"The door is {p['width_m']:.1f} meters wide" + (f", {step}." if step else "."))
-    elif step:
-        parts.append("No step at the door." if p.get("step") is False else "There is a step at the door.")
+    width = f"{p['width_m']:.1f} meters wide" if p.get("width_m") else None
+    if p.get("step") is True:
+        n = p.get("risers")
+        steps = f"about {n} step{'s' * (n != 1)} up" if n else "steps up"
+        rail = _railing(p.get("note"))
+        lead = "There are" if not n or n != 1 else "There is"
+        sent = f"{lead} {steps}" + (f" with a {rail}" if rail else "")
+        if p.get("ramp"):
+            sent += ", and a ramp"
+        sent += f", then the door, {width}." if width else ", then the door."
+        if not p.get("confirmed"):
+            sent = sent.replace(lead, f"{lead} probably", 1)
+        parts.append(sent)
+    elif width:
+        parts.append(f"The door is {width}" + (", no step." if p.get("step") is False else "."))
+    elif p.get("step") is False:
+        parts.append("No step at the door.")
     if not p.get("confirmed"):
         parts.append("This entrance was not confirmed from imagery.")
     parts.append("Going inside.")
@@ -311,11 +406,14 @@ def plan_door_to_door(start_latlon, sid, goal, profile="blind", site=None):
     from .device import encode_step, route_packet
     site = site or load_site(sid)
     og, gi, geo = site.og, site.gi, site.geo
-    portal = site.best_portal()
+    portal = site.best_portal(profile)  # raises NoRoute with the reason when no entrance suits the profile
     lat, lon = start_latlon
     sx, sy = og.enu.to_enu(lon, lat)
     start, d0 = outdoor.nearest_node(og, sx, sy)
     warnings = list(site.warnings)
+    if profile == "wheelchair" and portal.get("step") is True and not portal.get("confirmed"):
+        warnings.append(f"this entrance probably has steps ({portal.get('step_basis') or 'estimated'}); "
+                        f"not confirmed from imagery, so call ahead")
     if d0 > 30:
         warnings.append(f"start is {meters(d0)} from the nearest mapped path")
     oprof = outdoor.profile(profile)
@@ -351,7 +449,7 @@ class DoorToDoorNavigator:
 
     def __init__(self, site, goal, profile="blind"):
         self.site, self.goal, self.profile = site, goal, profile
-        self.portal = site.best_portal()
+        self.portal = site.best_portal(profile)
         self.outside = Navigator(site.og, self.portal["outdoor_node"], outdoor.profile(profile))
         self.inside = None
         self.phase = "outdoor"
@@ -481,29 +579,56 @@ def facade_view(sid: str, candidate: int, direction: str = "") -> list:
             {"type": "image", "base64": base64.b64encode(jpeg).decode(), "mime_type": "image/jpeg"}]
 
 
+def confirmation_record(pano_id, accessible=True, note="", steps=-1, ramp=None, door_type="", direction=""):
+    """the entrances.json record for what the facade imagery showed. steps: count seen, 0 = level, -1 = unsure."""
+    rec = {"pano_id": pano_id, "accessible": accessible, "note": note or None, "door_type": door_type or None,
+           "ramp": ramp, "evidence": {"note": note, "facade_view": direction or None, "source": "vexcel oblique"}}
+    if steps is not None and steps > 0:
+        rec.update(step=True, risers=int(steps), rise_m=round(steps * RISER_M, 2))
+    elif steps == 0:
+        rec.update(step=False, risers=0, rise_m=0.0)
+    if rec.get("step") and not ramp and accessible:
+        rec["accessible"] = False  # steps and no ramp: not step-free, whatever the caller said
+    return rec
+
+
+def save_confirmation(sid, rec):
+    from .agents.tools import dossier_dir
+    path = dossier_dir(sid) / "entrances.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"confirmed": []}
+    data["confirmed"] = [c for c in data["confirmed"] if c["pano_id"] != rec["pano_id"]] + [rec]
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return data["confirmed"]
+
+
 @tool(parse_docstring=True)
-def confirm_entrance(sid: str, pano_id: str, accessible: bool = True, note: str = "") -> str:
+def confirm_entrance(sid: str, pano_id: str, accessible: bool = True, note: str = "", steps: int = -1,
+                     ramp: bool = False, door_type: str = "", direction: str = "") -> str:
     """Mark one candidate as the entrance you verified in the imagery. Only candidates are accepted.
 
     Args:
         sid: Matterport model id.
         pano_id: The candidate's pano_id.
         accessible: False if you saw steps with no ramp at this door.
-        note: What you saw, e.g. "automatic sliding doors, level with the sidewalk".
+        note: What you saw, e.g. "5 curved steps up to a porch, curved railing, no ramp".
+        steps: Number of steps you counted up to the door; 0 if it is level with the sidewalk; -1 if you could not tell.
+        ramp: True if you saw a ramp to this door.
+        door_type: e.g. "push door", "automatic sliding", "revolving", "gate".
+        direction: Which facade view you judged from (north, south, east or west).
     """
-    from .agents.tools import dossier_dir
     site, err = _site_or_err(sid)
     if err:
         return json.dumps({"error": err})
     if pano_id not in {p["pano_id"] for p in site.portals}:
         return json.dumps({"error": "not a candidate; pick a pano_id from entrance_candidates_tool"})
-    path = dossier_dir(sid) / "entrances.json"
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"confirmed": []}
-    data["confirmed"] = [c for c in data["confirmed"] if c["pano_id"] != pano_id]
-    data["confirmed"].append({"pano_id": pano_id, "accessible": accessible, "evidence": {"note": note}})
-    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    apply_confirmations(site, data["confirmed"])
-    return json.dumps({"ok": True, "best": site.best_portal()}, default=str)
+    rec = confirmation_record(pano_id, accessible, note, steps, ramp, door_type, direction)
+    apply_confirmations(site, save_confirmation(sid, rec))
+    out = {"ok": True, "recorded": rec, "best": site.best_portal()}
+    try:
+        out["wheelchair"] = site.best_portal("wheelchair")
+    except NoRoute as ex:
+        out["wheelchair"] = str(ex)
+    return json.dumps(out, default=str)
 
 
 OUTDOOR_TOOLS = [entrance_candidates_tool, facade_view, confirm_entrance]

@@ -47,6 +47,9 @@ def model(s=None, role="text", **kw):
     s = s or spec(role)
     if s.startswith("openrouter:"):
         kw.setdefault("app_url", "https://github.com/arkankau/hackprinceton-26fa")
-        kw.setdefault("max_retries", 4)  # free tier rate-limits
-        kw.setdefault("timeout", 180_000)  # ms; one stuck free-tier call shouldn't eat the run's budget
+        # the free router sometimes lands on a slow model; fail fast and let the agent move on
+        # (a real run saw one call take 23 min with 4 retries x 180 s)
+        kw.setdefault("max_retries", 1)
+        kw.setdefault("timeout", 120_000)  # ms
+        kw.setdefault("max_tokens", 8000)  # caps rambling; a full places file is ~1.5k tokens
     return init_chat_model(s, **kw)

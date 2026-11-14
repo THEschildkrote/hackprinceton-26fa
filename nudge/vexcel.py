@@ -166,7 +166,8 @@ def oblique_views(lat, lon, include="image-name,product-type,capture-date,camera
 
 
 def oblique_image(lat, lon, direction="north", half_m=25, image_name=None, crosshair=True, px=1024):
-    """one oblique facade view looking from `direction`: /oriented/extract. returns jpeg bytes."""
+    """one oblique view with the camera looking TOWARD `direction` (oblique-east is shot looking east, so it shows
+    west-facing facades): /oriented/extract. returns jpeg bytes."""
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {DIRECTIONS}")
     p = {"wkt": wkt_point(lon, lat), "srid": "4326", "layer": LAYERS, "product-type": f"oblique-{direction}",

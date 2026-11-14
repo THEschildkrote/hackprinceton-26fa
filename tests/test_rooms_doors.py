@@ -34,9 +34,9 @@ def test_route_goes_through_door_middle_square_on(g):
 
 
 def test_narrow_door_wheelchair_hard_stop_blind_hears_it():
-    g = walkgraph.build(building(kitchen_door_w=0.7))
+    g = walkgraph.build(building(kitchen_door_w=0.6))
     e = g.edge("p_K1", "p_L6")
-    assert e is not None and "narrow_door" in e.tags and e.doors[0]["width"] == 0.7
+    assert e is not None and "narrow_door" in e.tags and e.doors[0]["width"] == 0.6
     with pytest.raises(NoRoute):
         plan(g, "p_L1", "Kitchen", "wheelchair")  # 0.7 m < 32 in clear width
     r = plan(g, "p_L1", "Kitchen", "blind")
@@ -124,7 +124,7 @@ def test_room_cue_reads_the_entry_landmark():
 
 
 def test_narrow_door_cue():
-    g = walkgraph.build(building(kitchen_door_w=0.7))
+    g = walkgraph.build(building(kitchen_door_w=0.6))
     _, ev = _events(g, "p_K3", "Lobby")
     assert any(e["type"] == "door" and e["text"].startswith("Narrow doorway ahead") for e in ev)
 

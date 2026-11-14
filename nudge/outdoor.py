@@ -24,6 +24,7 @@ STEEP = 0.05          # 1:20, ada 403.3 max running slope for a walking surface
 TOO_STEEP = 1 / 12    # 1:12, ada 405.2 max ramp slope (and only with handrails)
 CURB_STEP_M = 0.10    # a dtm jump this big over one sample, with no curb ramp known, is a curb
 CURB_GRADE = 0.12     # ...if it is also sharper than any ramp
+MIN_GRADE_RUN_M = 1.5  # shorter edges are too short to judge a slope from the dtm
 OVERPASS = "https://overpass-api.de/api/interpreter"
 OVERPASS_MIRRORS = ("https://overpass.kumi.systems/api/interpreter",
                     "https://overpass.private.coffee/api/interpreter",
@@ -35,6 +36,14 @@ ROADS = ("residential", "service", "unclassified", "tertiary", "secondary", "pri
 OBSTACLE_LABELS = ("pole", "bollard", "tree trunk", "bench", "fire hydrant", "planter")
 CROSSWALK_LABEL = "crosswalk"
 CURB_RAMP_LABEL = "curb ramp"
+# streets that get sidewalks inferred on both sides when osm doesn't map them (not alleys, not motorways)
+SIDEWALK_ROADS = ("primary", "secondary", "tertiary", "residential", "unclassified")
+HALF_WIDTH = {"primary": 6.0, "secondary": 5.0, "tertiary": 4.5, "residential": 4.0, "unclassified": 3.5}
+LANE_M = 3.3
+SIDEWALK_GAP_M = 1.5    # curb to the middle of the sidewalk
+DENSIFY_M = 10.0        # sidewalk nodes at least this often, so gps snaps nearby
+SIGNAL_NEAR_M = 20.0    # a signal node this close to a junction makes its crossings signalised
+CONNECT_M = 8.0         # dangling footway ends join the nearest inferred sidewalk within this
 
 # tests swap this: overpass_transport(query) -> dict (overpass json)
 OVERPASS_TRANSPORT = None
@@ -42,13 +51,15 @@ OVERPASS_TRANSPORT = None
 # extra penalties for outdoor tags, merged over the indoor profiles
 OUTDOOR = {
     "default": {"avoid": set(), "penalty": {"roadway": 10, "crossing": 5, "unsignalised": 5, "steep": 5, "curb": 5,
-                                            "too_steep": 15}},
+                                            "too_steep": 15, "sidewalk_inferred": 1, "driveway_crossing": 1}},
     # blind: crossings and curbs are the risk; slopes barely matter
     "blind": {"avoid": set(), "penalty": {"roadway": 60, "crossing": 25, "unsignalised": 40, "curb": 30,
-                                          "steep": 0.5, "too_steep": 2}},
+                                          "steep": 0.5, "too_steep": 2, "sidewalk_inferred": 1,
+                                          "driveway_crossing": 5}},
     # wheelchair: a curb or a ramp steeper than 1:12 is a hard stop
     "wheelchair": {"avoid": {"too_steep", "curb"}, "penalty": {"roadway": 40, "crossing": 5, "unsignalised": 10,
-                                                               "steep": 20}},
+                                                               "steep": 20, "sidewalk_inferred": 1,
+                                                               "driveway_crossing": 2}},
 }
 
 
@@ -72,6 +83,21 @@ def overpass(lat, lon, radius_m=150):
   node(around:{radius_m},{lat},{lon})[entrance];
 );
 out body geom;"""
+    return _overpass_query(q)
+
+
+def signal_nodes(lat, lon, radius_m=150):
+    """traffic signal nodes (on the road ways themselves, so the main query doesn't return their tags)."""
+    q = f"""[out:json][timeout:25];
+(
+  node(around:{radius_m},{lat},{lon})[highway=traffic_signals];
+  node(around:{radius_m},{lat},{lon})[crossing=traffic_signals];
+);
+out body;"""
+    return _overpass_query(q)
+
+
+def _overpass_query(q):
     if OVERPASS_TRANSPORT is not None:
         return OVERPASS_TRANSPORT(q)
     key = hashlib.sha1(q.encode()).hexdigest()[:20]
@@ -138,6 +164,23 @@ def build(lat, lon, osm=None, elevation=None, detections=None, footprint_lonlat=
     nodes_info = {el["id"]: el.get("tags") or {} for el in osm.get("elements", []) if el.get("type") == "node"}
     crossing_nodes = {nid: t for nid, t in nodes_info.items() if t.get("highway") == "crossing"}
     kerbs = {nid: _kerb_kind(t) for nid, t in nodes_info.items() if _kerb_kind(t)}
+    g.roads, road_ways = [], []
+    # what a crossing node crosses: a street (inferred-sidewalk road) or just a driveway/alley (service road)
+    street_nodes, service_nodes = set(), set()
+    for el in osm.get("elements", []):
+        if el.get("type") == "way":
+            t = el.get("tags") or {}
+            if t.get("highway") in SIDEWALK_ROADS:
+                street_nodes.update(el.get("nodes") or [])
+            elif t.get("highway") == "service":
+                service_nodes.update(el.get("nodes") or [])
+    mapped_sidewalk = set()  # nodes of osm-mapped sidewalks, joined to the inferred ones later
+
+    def crossing_tags(raw):
+        if raw in service_nodes and raw not in street_nodes:
+            return {"driveway_crossing"}  # a sidewalk across a driveway mouth, not a street
+        c = crossing_nodes[raw].get("crossing", "")
+        return {"crossing", "signals" if c in ("traffic_signals", "signals") else "unsignalised"}
 
     def nid(osm_id):
         return f"out:{osm_id}"
@@ -147,6 +190,13 @@ def build(lat, lon, osm=None, elevation=None, detections=None, footprint_lonlat=
             continue
         tags = el.get("tags") or {}
         ids, geom = el.get("nodes") or [], el["geometry"]
+        if tags.get("highway") in ROADS:
+            # every street, kept for "which side faces the main road" even when it isn't walked on
+            g.roads.append({"pts": [enu.to_enu(p["lon"], p["lat"]) for p in geom], "highway": tags.get("highway"),
+                            "name": tags.get("name"), "osm_way": el["id"]})
+        if _infer_sidewalk(tags) and len(ids) == len(geom):
+            road_ways.append((el, tags))  # walked on inferred sidewalks, not down the middle of the street
+            continue
         base = _edge_tags(tags)
         for i, gpt in enumerate(geom):
             k = nid(ids[i]) if i < len(ids) else nid(f"{el['id']}_{i}")
@@ -159,12 +209,14 @@ def build(lat, lon, osm=None, elevation=None, detections=None, footprint_lonlat=
             if a == b:
                 continue
             tg = set(base)
-            # crossing info carried on the crossing node
-            for raw in (ids[i] if i < len(ids) else None, ids[i + 1] if i + 1 < len(ids) else None):
-                if raw in crossing_nodes:
-                    tg.add("crossing")
-                    c = crossing_nodes[raw].get("crossing", "")
-                    tg.add("signals" if c in ("traffic_signals", "signals") else "unsignalised")
+            # crossing info carried on the crossing node, but only for the footway that crosses there:
+            # walking along the road itself past a crossing node is not crossing anything
+            if tags.get("highway") not in ROADS:
+                for raw in (ids[i] if i < len(ids) else None, ids[i + 1] if i + 1 < len(ids) else None):
+                    if raw in crossing_nodes:
+                        tg |= crossing_tags(raw)
+            if tags.get("footway") == "sidewalk" or tags.get("highway") == "sidewalk":
+                mapped_sidewalk.update({a, b})
             e = g.link(a, b, tg)
             e.info.update({"osm_way": el["id"], "highway": tags.get("highway")})
             for raw in (ids[i] if i < len(ids) else None, ids[i + 1] if i + 1 < len(ids) else None):
@@ -177,6 +229,18 @@ def build(lat, lon, osm=None, elevation=None, detections=None, footprint_lonlat=
         if t.get("entrance") and nid(raw) in g.nodes:
             g.nodes[nid(raw)].tags.add("entrance")
             g.nodes[nid(raw)].landmarks.append({"text": f"{t.get('entrance')} entrance", "sense": "touch"})
+    if road_ways:
+        signals = [enu.to_enu(el["lon"], el["lat"]) for el in osm.get("elements", [])
+                   if el.get("type") == "node" and "lat" in el and (el.get("tags") or {}).get("crossing") == "traffic_signals"]
+        try:
+            sig = signal_nodes(lat, lon, radius_m)
+            signals += [enu.to_enu(el["lon"], el["lat"]) for el in sig.get("elements", [])
+                        if el.get("type") == "node" and "lat" in el
+                        and ((el.get("tags") or {}).get("highway") == "traffic_signals"
+                             or (el.get("tags") or {}).get("crossing") == "traffic_signals")]
+        except Exception as ex:  # overpass down: crossings default to unsignalised, the cautious choice
+            g.warnings.append(f"traffic signals unknown ({ex}); inferred crossings treated as unsignalised")
+        _infer_sidewalks(g, road_ways, crossing_nodes, signals, nid, mapped_sidewalk)
     # signalised beats unsignalised when both got added
     for e in g.edges():
         if "signals" in e.tags:
@@ -191,6 +255,137 @@ def build(lat, lon, osm=None, elevation=None, detections=None, footprint_lonlat=
             detections = []
     _apply_detections(g, detections)
     return g
+
+
+def _infer_sidewalk(tags):
+    """a street we should walk beside rather than in: sidewalk-class road, no 'separate' or 'no' sidewalk tag."""
+    if tags.get("highway") not in SIDEWALK_ROADS:
+        return False
+    vals = {tags.get(k) for k in ("sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right")}
+    if "separate" in vals:
+        return False  # mapped as their own footways; those are used instead
+    return not (vals & {"no", "none"}) or bool(vals & {"both", "left", "right", "yes"})
+
+
+def _offset_m(tags):
+    """centreline to the middle of the sidewalk: half the carriageway plus the curb gap."""
+    try:
+        return float(str(tags.get("width", "")).split()[0]) / 2 + SIDEWALK_GAP_M
+    except (ValueError, IndexError):
+        pass
+    try:
+        return int(tags.get("lanes")) * LANE_M / 2 + SIDEWALK_GAP_M
+    except (TypeError, ValueError):
+        return HALF_WIDTH.get(tags.get("highway"), 4.0) + SIDEWALK_GAP_M
+
+
+def _infer_sidewalks(g, road_ways, crossing_nodes, signals, nid, mapped_sidewalk=()):
+    """sidewalk polylines on both sides of streets that osm draws only as centrelines. corners join the
+    sidewalks of one block; crossings exist only at junctions (or at osm-mapped crossing nodes)."""
+    xy, arms, off, name = {}, {}, {}, {}
+    for el, tags in road_ways:
+        ids = el["nodes"]
+        for raw, p in zip(ids, el["geometry"]):
+            xy[raw] = g.enu.to_enu(p["lon"], p["lat"])
+        for a, b in zip(ids, ids[1:]):
+            if a == b or math.dist(xy[a], xy[b]) < 0.5:
+                continue
+            for u, v in ((a, b), (b, a)):
+                arms.setdefault(u, []).append(v)
+                off[(u, v)] = _offset_m(tags)
+                name[(u, v)] = tags.get("name") or "the street"
+
+    def unit(u, v):
+        (ux, uy), (vx, vy) = xy[u], xy[v]
+        L = math.hypot(vx - ux, vy - uy)
+        return (vx - ux) / L, (vy - uy) / L, L
+
+    def end(u, v, side):
+        """sidewalk node near u on the left/right of the arm u->v (looking from u toward v)."""
+        k = f"sw:{u}:{v}:{side}"
+        if k not in g.nodes:
+            dx, dy, L = unit(u, v)
+            d = off[(u, v)]
+            s = 1 if side == "L" else -1
+            pull = min(d, L / 2) if len(arms[u]) >= 3 else 0.0  # leave room for the corner at a junction
+            x, y = xy[u][0] - s * dy * d + dx * pull, xy[u][1] + s * dx * d + dy * pull
+            lab = name[(u, v)]
+            g.add_node(Node(k, f"{lab} sidewalk" if lab != "the street" else "sidewalk", x, y, 0.0, FLOOR,
+                            tags={"sidewalk"}))
+        return k
+
+    def link(a, b, tags, info):
+        """link a-b, adding nodes every DENSIFY_M so a gps fix always has a sidewalk node nearby."""
+        na, nb = g.nodes[a], g.nodes[b]
+        L = math.dist(na.xy, nb.xy)
+        n = max(1, math.ceil(L / DENSIFY_M))
+        prev = a
+        for i in range(1, n):
+            k = f"{a}~{b}:{i}"
+            g.add_node(Node(k, na.label, na.x + (nb.x - na.x) * i / n, na.y + (nb.y - na.y) * i / n, 0.0, FLOOR,
+                            tags={"sidewalk"}))
+            e = g.link(prev, k, tags)
+            e.info.update(info)
+            prev = k
+        e = g.link(prev, b, tags)
+        e.info.update(info)
+
+    def signal_state(u):
+        return "signals" if any(math.dist(xy[u], s) <= SIGNAL_NEAR_M for s in signals) else "unsignalised"
+
+    side_tags = {"sidewalk_inferred"}
+    # along each street, both sides
+    done = set()
+    for u, vs in arms.items():
+        for v in vs:
+            if (v, u) in done:
+                continue
+            done.add((u, v))
+            info = {"highway": "sidewalk_inferred", "road": name[(u, v)]}
+            link(end(u, v, "L"), end(v, u, "R"), side_tags, info)
+            link(end(u, v, "R"), end(v, u, "L"), side_tags, info)
+    # corners and crossings at every street vertex
+    for u, vs in arms.items():
+        order = sorted(set(vs), key=lambda v: math.atan2(xy[v][1] - xy[u][1], xy[v][0] - xy[u][0]))
+        n = len(order)
+        if n == 1:  # dead end: walking round the end means crossing the street
+            e = g.link(end(u, order[0], "L"), end(u, order[0], "R"), {"crossing", "sidewalk_inferred", signal_state(u)})
+            e.info.update({"highway": "crossing_inferred", "cross_road": name[(u, order[0])]})
+            continue
+        for k in range(n):
+            a, b = order[k], order[(k + 1) % n]
+            e = g.link(end(u, a, "L"), end(u, b, "R"), side_tags | {"corner"})
+            e.info.update({"highway": "sidewalk_inferred", "road": name[(u, a)]})
+        own_crossing = nid(u) in g.nodes and any("crossing" in e.tags for e in g.adj[nid(u)].values())
+        if n >= 3 or (u in crossing_nodes and not own_crossing):
+            # a junction (or an osm-mapped crossing with no crossing footway): cross each arm near u
+            state = signal_state(u) if n >= 3 else \
+                ("signals" if crossing_nodes[u].get("crossing") in ("traffic_signals", "signals") else "unsignalised")
+            for v in (order if n >= 3 else order[:1]):
+                e = g.link(end(u, v, "L"), end(u, v, "R"), {"crossing", "sidewalk_inferred", state})
+                e.info.update({"highway": "crossing_inferred", "cross_road": name[(u, v)]})
+    # join the mapped walkable ways to the inferred sidewalks
+    sw = [n for n in g.nodes.values() if n.id.startswith("sw:") or "~" in n.id]
+    for n in list(g.nodes.values()):
+        if not n.id.startswith("out:"):
+            continue
+        raw = n.id[4:]
+        raw = int(raw) if raw.isdigit() else raw
+        nbrs = list(g.adj[n.id])
+        if raw in xy and raw not in crossing_nodes and nbrs:
+            # a service road or path meeting the street: join the sidewalk on its own side
+            nb = g.nodes[nbrs[0]]
+            L = math.dist(n.xy, nb.xy) or 1.0
+            q = (n.x + (nb.x - n.x) / L * 3, n.y + (nb.y - n.y) / L * 3)
+            near = [g.nodes[f"sw:{raw}:{v}:{s}"] for v in set(arms[raw]) for s in "LR" if f"sw:{raw}:{v}:{s}" in g.nodes]
+            if near:
+                tgt = min(near, key=lambda m: math.dist(m.xy, q))
+                g.link(n.id, tgt.id, {"connector"}).info.update({"highway": "connector"})
+        elif (len(nbrs) == 1 or n.id in mapped_sidewalk) and raw not in xy and sw:
+            # a mapped footway that just stops, or a mapped sidewalk running beside an inferred one: join them
+            tgt = min(sw, key=lambda m: math.dist(m.xy, n.xy))
+            if math.dist(tgt.xy, n.xy) <= CONNECT_M:
+                g.link(n.id, tgt.id, {"connector"}).info.update({"highway": "connector"})
 
 
 def _slopes(g, elevation):
@@ -221,13 +416,15 @@ def _slopes(g, elevation):
         e.info["grade_max"] = round(max(slopes), 4)
         e.info["grade_mean"] = round(abs(z[-1] - z[0]) / e.length, 4) if e.length else 0.0
         e.info["rise_m"] = round(z[-1] - z[0], 3)  # a -> b
+        g.nodes[e.a].z, g.nodes[e.b].z = z[0], z[-1]
+        if e.length < MIN_GRADE_RUN_M:
+            continue  # a few centimetres of dtm noise over a corner link is not a slope or a curb
         if max(slopes) > TOO_STEEP:
             e.tags.add("too_steep")
         elif max(slopes) > STEEP:
             e.tags.add("steep")
         if curbs and not e.info.get("curb_ramp"):
             e.tags.add("curb")
-        g.nodes[e.a].z, g.nodes[e.b].z = z[0], z[-1]
 
 
 def _apply_detections(g, dets):
@@ -276,9 +473,12 @@ def describe(g, route, ms):
                 continue
             e = g.edge(a, b)
             if "crossing" in e.tags:
-                n = "cross the street at the signal" if "signals" in e.tags else "cross the street, no signal; listen for traffic"
+                road = (e.info or {}).get("cross_road") or "the street"
+                n = f"cross {road} at the signal" if "signals" in e.tags else f"cross {road}, no signal; listen for traffic"
                 if n not in notes:
                     notes.append(n)
+            if "driveway_crossing" in e.tags and "cross a driveway; listen for cars" not in notes:
+                notes.append("cross a driveway; listen for cars")
             if "curb" in e.tags and "curb ahead, step down or up" not in notes:
                 notes.append("curb ahead, step down or up")
             if e.info.get("curb_ramp") and "curb ramp" not in notes:

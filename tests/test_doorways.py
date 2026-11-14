@@ -49,9 +49,9 @@ def test_wall_gap_is_a_door_with_its_width():
 
 
 def test_narrow_gap_is_flagged_for_wheelchairs():
-    g = walkgraph.build(two_rooms([((4, 0), (4, 1.65)), ((4, 2.35), (4, 4))]), use_doorways=False)
+    g = walkgraph.build(two_rooms([((4, 0), (4, 1.7)), ((4, 2.3), (4, 4))]), use_doorways=False)
     e = g.edge("pA", "pB")
-    assert e.doors[0]["width"] == pytest.approx(0.7, abs=0.01) and "narrow_door" in e.tags
+    assert e.doors[0]["width"] == pytest.approx(0.6, abs=0.01) and "narrow_door" in e.tags
 
 
 def test_open_plan_boundary_is_not_a_door():
@@ -90,6 +90,50 @@ def test_cloud_finds_a_doorway_in_a_wall_typed_separator(tmp_path, monkeypatch):
     e = g2.edge("pA", "pB")
     assert e is not None and "uncertain" not in e.tags and "door" in e.tags
     assert e.doors[0]["width"] == pytest.approx(0.9, abs=0.08)
+
+
+def thick_wall_cloud(gap=(1.55, 2.45), thick=0.12, leaf_deg=45.0, leaf_len=0.85):
+    """the shared wall x=4 as two faces (thick apart) with jamb returns at the opening, plus a door leaf
+    hinged on the room-B face at the gap's low end, swung leaf_deg away from the wall plane."""
+    rng = np.random.default_rng(1)
+    pts, h = [], thick / 2
+    for x0, y0, x1, y1 in [(0, 0, 8, 0), (0, 4, 8, 4), (0, 0, 0, 4), (8, 0, 8, 4)]:
+        t = rng.random(20000)
+        pts.append(np.stack([x0 + t * (x1 - x0), y0 + t * (y1 - y0), rng.random(20000) * 2.5], 1))
+    for xf in (4 - h, 4 + h):  # wall faces, interrupted by the opening
+        y = rng.random(30000) * 4
+        y = y[(y < gap[0]) | (y > gap[1])]
+        pts.append(np.stack([np.full(len(y), xf), y, rng.random(len(y)) * 2.5], 1))
+    for yj in gap:  # jamb returns span the wall thickness
+        x = 4 - h + rng.random(3000) * thick
+        pts.append(np.stack([x, np.full(len(x), yj), rng.random(len(x)) * 2.1], 1))
+    r = rng.random(6000) * leaf_len
+    a = np.radians(leaf_deg)
+    pts.append(np.stack([4 + h + r * np.sin(a), gap[0] + r * np.cos(a), rng.random(len(r)) * 2.0], 1))
+    floor = rng.random((20000, 2)) * [8, 4]
+    pts.append(np.column_stack([floor, np.zeros(len(floor))]))
+    return np.concatenate(pts).astype(np.float32)
+
+
+def test_door_leaf_at_45_degrees_still_measures_the_full_opening():
+    # a leaf standing in the wall slab used to read as jamb and eat into the clear width
+    g = walkgraph.build(two_rooms([((4, 0), (4, 4))], sid="syn-leaf"), use_doorways=False)
+    cloud = thick_wall_cloud()
+    door = lambda found: next(d for d in found["f1"] if d["kind"] == "door")
+    naive = door(walkgraph.cloud_doorways(g, cloud, {"f1": (0.0, 2.6)}, reach=0))
+    grown = door(walkgraph.cloud_doorways(g, cloud, {"f1": (0.0, 2.6)}))
+    assert naive["width"] < 0.85  # the leaf hides part of the opening
+    assert grown["width"] == pytest.approx(0.9, abs=0.05)
+
+
+def test_review_drops_not_a_door(tmp_path, monkeypatch):
+    monkeypatch.setattr(walkgraph, "DOORWAYS", tmp_path)
+    found = {"f1": [{"a": [4, 1.55], "b": [4, 2.45], "width": 0.9, "kind": "door", "exterior": False}]}
+    (tmp_path / "syn-rev.json").write_text(json.dumps({"floors": found}), encoding="utf-8")
+    assert len(walkgraph.load_doorways("syn-rev")["floors"]["f1"]) == 1
+    (tmp_path / "syn-rev.review.json").write_text(json.dumps(
+        {"doors": [{"floor": "f1", "mid": [4.0, 2.0], "verdict": "not_a_door"}]}), encoding="utf-8")
+    assert walkgraph.load_doorways("syn-rev")["floors"]["f1"] == []
 
 
 @pytest.mark.skipif(not REAL.exists(), reason="real scan not cached (needs Matterport keys)")
