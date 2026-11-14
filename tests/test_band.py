@@ -5,7 +5,7 @@ runs in no time and is exact. same trick as firmware/test/test_protocol.cpp.
 """
 import pytest
 
-from nudge.band import CUES, Engine, NullBand, REST_DEG, approach_cue
+from nudge.band import CUES, RANK, Engine, NullBand, REST_DEG, approach_cue
 
 LEFT, RIGHT = 0, 1
 
@@ -227,6 +227,57 @@ def test_force_cuts_in_but_still_respects_the_rest():
     ended = play_out(e, start=50)
     assert not e.play("hazard", ended + 10, force=True), "force skipped the rest after a pattern"
     assert e.play("hazard", ended + Engine.MIN_GAP_MS + 10, force=True)
+
+
+# --- what gets lost when cues arrive faster than a servo -----------------------
+
+
+def test_every_cue_has_a_rank():
+    assert set(CUES) == set(RANK), f"unranked: {set(CUES) ^ set(RANK)}"
+
+
+def test_a_maneuver_cuts_in_over_a_steering_tap():
+    """steering is advisory; a turn is navigation. losing the turn is a wrong turn."""
+    e = Engine()
+    e.play("steer_left", 0)
+    assert e.play("right", 50), "a turn cue lost to a steering tap"
+
+
+def test_a_steering_tap_never_cuts_in_over_a_maneuver():
+    e = Engine()
+    e.play("right", 0)
+    assert not e.play("steer_left", 50), "a steering tap interrupted a turn cue"
+
+
+def test_two_maneuvers_do_not_interrupt_each_other():
+    e = Engine()
+    e.play("left", 0)
+    assert not e.play("right", 50), "equal ranks should not pre-empt"
+
+
+def test_hazard_still_beats_everything():
+    for cue in ("steer_left", "left", "off_route", "arrive"):
+        e = Engine()
+        e.play(cue, 0)
+        assert e.play("hazard", 50), f"hazard lost to {cue}"
+
+
+def test_rank_never_skips_the_rest_between_patterns():
+    """pre-empting is about which cue wins, never about driving the gears harder."""
+    e = Engine()
+    e.play("steer_left", 0)
+    ended = play_out(e)
+    assert not e.play("hazard", ended + 10), "a higher rank skipped the rest after a pattern"
+    assert e.play("hazard", ended + Engine.MIN_GAP_MS + 10)
+
+
+def test_a_preempted_cue_actually_stops():
+    e = Engine()
+    e.play("steer_left", 0)
+    e.play("uturn", 50)
+    states = drive(e, 4000, start=50)
+    # uturn is three strokes on both shoulders; the left-only steering tap must be gone
+    assert strokes(states, LEFT) == strokes(states, RIGHT) == 3
 
 
 # --- wiring -------------------------------------------------------------------

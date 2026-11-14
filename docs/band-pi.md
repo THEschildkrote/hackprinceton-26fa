@@ -96,7 +96,12 @@ NUDGE_BAND=1 python -m uvicorn nudge.server:app --port 8765
 ```
 
 The band then attaches itself to the first walk that starts. `NUDGE_BAND=dry` does the same
-wiring without touching GPIO, which is how to test it on a laptop. Or attach by hand:
+wiring without touching GPIO, which is how to test it on a laptop.
+
+Or tick the **collar** box in the control row once a walk is running. Next to it the page
+shows the mode (`servo` or `dry`) and any error — on a machine with no GPIO you will see
+`ModuleNotFoundError: No module named 'gpiozero'`, which is the fallback working as
+intended rather than something broken. The endpoints behind it:
 
 ```
 POST /api/band/attach   {"session": "<id>", "dry": false}
@@ -109,11 +114,12 @@ session. `GET /api/band` reports `mode` (`servo` or `dry`) and any `error`, whic
 a missing `gpiozero` or a busy pin shows up. A band that cannot be built falls back to dry
 and says so, because a servo problem must never turn a walk into a 500.
 
-### Don't walk faster than the servos
+### Walk speed, and what gets lost
 
-Cues are **dropped, not queued**, when one is already playing. That is deliberate — a turn
-cue arriving late is worse than no cue — but it means the simulated walk can outrun the
-band. Measured over the synthetic route, varying only how fast positions were posted:
+A servo stroke is ~320 ms, so the band renders about three cues a second however fast
+positions arrive. Cues are **dropped, not queued**, when one is already playing — a turn
+cue arriving late is worse than no cue at all. Measured over the synthetic route, varying
+only how fast positions were posted:
 
 | ms between positions | strokes felt over the route |
 |---|---|
@@ -122,10 +128,43 @@ band. Measured over the synthetic route, varying only how fast positions were po
 | 300 | 13 |
 | 450 | 13 |
 
-It plateaus around 300 ms, and real walking pace is about 420 ms per half-metre step, so a
-real walk renders everything. If the debug view steps faster than that to save demo time,
-the collar quietly goes quiet. Slow the walk down rather than wondering why the servos
-stopped.
+It plateaus around 300 ms. Real walking pace is about 420 ms per half-metre step, so a real
+walk renders everything.
+
+**What gets dropped is ranked** (`RANK` in `nudge/band.py`), so degradation is graceful
+rather than arbitrary:
+
+| rank | cues | treatment |
+|---|---|---|
+| 3 | `hazard` | always gets through |
+| 2 | `arrive`, `off_route`, `unmapped` | state changes you must feel |
+| 1 | turns, bears, `uturn`, `floor` | navigation — a lost one is a wrong turn |
+| 0 | steering, `straight` | advisory; first to go |
+
+A maneuver cuts in over a steering tap, never the reverse, and equal ranks never interrupt
+each other. Pre-empting never skips the rest between patterns, so it costs the gears
+nothing.
+
+It only matters when cues actually collide, which needs two things at once: a walker who
+drifts (that is what generates steering taps) and a walk fast enough that strokes overlap.
+On a clean straight-line walk, ranking changes nothing at any speed — there is nothing to
+arbitrate. With a drifting walker (`wobble 0.6`, eight seeds, 100 ms a step):
+
+| | turn cues delivered | steering taps |
+|---|---|---|
+| without ranking | 20 | 22 |
+| with ranking | **32** | 19 |
+
+Three steering taps traded for twelve turn cues. At 420 ms — real walking pace — the two
+are identical, because nothing collides. `test_a_drifting_walker_keeps_their_turns` pins
+this and fails if the ranks are ever flattened.
+
+### The speed slider is clamped
+
+`web/debug.html` computes `ms = 520 - 48 * speed`, so speed 4 (the default) is 328 ms and
+safe, while speed 10 is 40 ms and the collar goes nearly silent. While the collar is
+attached the slider is capped at 4 and says so; untick the collar to walk faster. `stepMs()`
+clamps again at the point of use, so the cap holds even if the attribute is bypassed.
 
 ## The grammar
 

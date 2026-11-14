@@ -74,8 +74,11 @@
   <button id="sim">Simulate walk</button>
   <button id="drag">Drag the dot</button>
   <button id="block">Block next edge</button>
+  <label><input id="band" type="checkbox" disabled> collar</label>
+  <span id="bandInfo" style="font-size:12px;opacity:.8"></span>
   <label><input id="mute" type="checkbox"> mute</label>
   <label>speed <input id="speed" type="range" min="1" max="10" value="4"></label>
+  <span id="speedNote" style="font-size:12px;opacity:.8"></span>
   <a href="dossier.html" style="margin-left:auto;font-size:13px;color:var(--route)">dossier agent</a>
 </header>
 <main>
@@ -108,6 +111,7 @@ const S = {
   g: null, floor: null, start: null, goal: null, route: null, mans: [],
   session: null, state: null, walker: null, path: [], pi: 0, timer: null, drag: false, dragging: false,
   lastSend: 0,
+  band: { attached: false, mode: null, error: null }, bandWanted: false, bandTimer: null,
 };
 
 function status(msg, err) { const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
@@ -130,6 +134,10 @@ async function load() {
   } catch (e) { status(e.message, true); return; }
   S.nodes = Object.fromEntries(S.g.nodes.map(n => [n.id, n]));
   S.start = S.goal = S.route = S.session = S.state = S.walker = null; S.mans = [];
+  // the collar was bound to a session that no longer exists
+  if (S.band.attached) { try { await api("/api/band/detach", {}); } catch (e) { /* ignore */ } }
+  S.band = { attached: false, mode: null, error: null }; S.bandWanted = false;
+  bandPoll(false); bandRender();
   const fsel = $("floor"); fsel.innerHTML = "";
   for (const f of S.g.floors) fsel.add(new Option(f.label, f.id));
   S.floor = S.g.floors[0]?.id || (S.g.nodes[0] && S.g.nodes[0].floor);
@@ -339,6 +347,8 @@ async function startSim() {
     S.path = pathFrom(S.walker, j.state.route.points); S.pi = 0;
   } catch (e) { status(e.message, true); return; }
   S.lastRouteKey = routeKey();
+  if (S.bandWanted) await bandSet(true);  // new walk, new session id: rebind the collar
+  else bandRender();                      // the checkbox can come alive now there is a session
   $("sim").classList.add("on"); $("sim").textContent = "Stop";
   status("walking...");
   renderMans(); draw(); tick();
@@ -374,8 +384,55 @@ async function tick() {
   try { await sendUpdate(); } catch (e) { status(e.message, true); stopSim(); return; }
   draw();
   if (S.state?.done) { stopSim(); status("arrived"); return; }
-  const ms = 520 - 48 * +$("speed").value;
-  S.timer = setTimeout(tick, ms);
+  S.timer = setTimeout(tick, stepMs());
+}
+
+// ---------- the collar ----------
+// 520 - 48*4 = 328 ms a step. faster than that and a servo cannot finish a stroke before
+// the next cue arrives, so the band quietly drops them (see docs/band-pi.md).
+const BAND_MAX_SPEED = 4;
+
+function stepMs() {
+  const v = S.band.attached ? Math.min(BAND_MAX_SPEED, +$("speed").value) : +$("speed").value;
+  return 520 - 48 * v;
+}
+
+function bandRender() {
+  const b = S.band, sp = $("speed");
+  $("band").checked = b.attached;
+  $("band").disabled = !S.session && !b.attached;
+  $("bandInfo").textContent = b.error ? `collar: ${b.error}` : b.attached ? `collar: ${b.mode}` : "";
+  $("bandInfo").className = b.error ? "err" : "";
+  sp.max = b.attached ? BAND_MAX_SPEED : 10;
+  if (b.attached && +sp.value > BAND_MAX_SPEED) sp.value = BAND_MAX_SPEED;
+  $("speedNote").textContent = b.attached
+    ? `max ${BAND_MAX_SPEED} while the collar is on — untick it to walk faster` : "";
+}
+
+async function bandSet(on) {
+  try {
+    if (on) {
+      S.band = await api("/api/band/attach", { session: S.session, dry: false });
+    } else {
+      await api("/api/band/detach", {});
+      // the service keeps its last error; once the collar is off there is nothing wrong
+      S.band = { attached: false, mode: null, error: null };
+    }
+  } catch (e) {
+    S.band = { attached: false, mode: null, error: e.message };
+  }
+  S.bandWanted = S.band.attached;
+  bandPoll(S.band.attached);
+  bandRender();
+}
+
+function bandPoll(on) {
+  clearInterval(S.bandTimer); S.bandTimer = null;
+  if (!on) return;
+  // the ticker runs in a thread, so a servo can fail long after attach succeeded
+  S.bandTimer = setInterval(async () => {
+    try { S.band = await api("/api/band"); bandRender(); } catch (e) { /* server gone */ }
+  }, 2000);
 }
 
 // ---------- drag the walker ----------
@@ -445,6 +502,8 @@ $("route").onclick = doRoute;
 $("sim").onclick = () => { if (S.timer) { stopSim(); status("paused"); } else startSim(); };
 $("drag").onclick = () => { S.drag = !S.drag; $("drag").classList.toggle("on", S.drag); };
 $("block").onclick = blockNext;
+$("band").onchange = e => bandSet(e.target.checked);
+$("speed").oninput = bandRender;
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
 load();
 </script>
