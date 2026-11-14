@@ -1,0 +1,506 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		EB8282011CD9338035DF06B4 /* Listener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D28659AF364C97E71A9BF0D /* Listener.swift */; };
+		D3D01DE57D9933396186D7A1 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CC4E4F1C707F9DF67C58F9 /* Motion.swift */; };
+		8950484E8B7B0A72A26D53F5 /* NudgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 099FBBC742FFAA3FF919F12E /* NudgeApp.swift */; };
+		2B963C14E17F3CC8FB92192C /* Speech.swift in Sources */ = {isa = PBXBuildFile; fileRef = F79241BABF77F51B595EBDBE /* Speech.swift */; };
+		8967F8565A0B412C596364D7 /* Traveller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2897AEB5928299CF76AEB2BB /* Traveller.swift */; };
+		00D761CC7F70ADD4FF78173B /* TravellerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A13C0367537D9CCB4EB33 /* TravellerSettings.swift */; };
+		58BC51A7E5B0B01FAF608343 /* TravellerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33F7019378CE1ECE86F8205 /* TravellerViews.swift */; };
+		CB799EE2AA36FD9EAA4AF9A3 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE9226A6757D5A88A63FD89 /* API.swift */; };
+		C3365160876416E056C3A9D5 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C97BF49E8E301B11D29A37C /* Format.swift */; };
+		2A2E4C590694D470DD7A2F4D /* Heading.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9610D2DD6F71D1C92C9A386 /* Heading.swift */; };
+		C7D25B8C95592FB7CFA66645 /* StepDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63830AE35D1517F9E4B336BD /* StepDetector.swift */; };
+		ED11AD8BB37A1C016A865BB6 /* StepQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE726E7BBFC3B8A6DBDA1B46 /* StepQueue.swift */; };
+		17FC886F59AAA030AD4EF3BE /* CareStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A9662BA6493A3CB71728E3 /* CareStore.swift */; };
+		57518F62A8A4B5D855792CA9 /* CareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C97C897B738D57DEF1FBB3 /* CareViews.swift */; };
+		E62A06E9D03E2FE05DCAEB6C /* FloorPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D9085B01F99724CA40C4CA /* FloorPlanView.swift */; };
+		21BD3D054679ECB89C4F4804 /* NudgeCareApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F9B3C43D3F215389E8ED67 /* NudgeCareApp.swift */; };
+		4BC2D157C62431CC2F6046D7 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE9226A6757D5A88A63FD89 /* API.swift */; };
+		D5E04D463749F6D8B42C6862 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C97BF49E8E301B11D29A37C /* Format.swift */; };
+		31F86EC7EA040EA580FBBF2D /* Heading.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9610D2DD6F71D1C92C9A386 /* Heading.swift */; };
+		FFF65C019A30C88C9EDE7E34 /* StepDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63830AE35D1517F9E4B336BD /* StepDetector.swift */; };
+		BB630273C4181B5A6DE5319E /* StepQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE726E7BBFC3B8A6DBDA1B46 /* StepQueue.swift */; };
+		860073EC79833ECC5C24AB78 /* SharedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5D9DA16045FE067B2FEAFF /* SharedTests.swift */; };
+		7D09649B607D5844B30BEBA2 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE9226A6757D5A88A63FD89 /* API.swift */; };
+		CC80511C3DE2ABA7B0326CBE /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C97BF49E8E301B11D29A37C /* Format.swift */; };
+		C716D14F6BD4094E3A1751DB /* Heading.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9610D2DD6F71D1C92C9A386 /* Heading.swift */; };
+		AAC597D32AB487B310A50EA8 /* StepDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63830AE35D1517F9E4B336BD /* StepDetector.swift */; };
+		62C68124904C2C76DAB34EC4 /* StepQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE726E7BBFC3B8A6DBDA1B46 /* StepQueue.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		473054E53EFE0A90099DD3CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		8D28659AF364C97E71A9BF0D /* Listener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Listener.swift; sourceTree = "<group>"; };
+		99CC4E4F1C707F9DF67C58F9 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		099FBBC742FFAA3FF919F12E /* NudgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeApp.swift; sourceTree = "<group>"; };
+		F79241BABF77F51B595EBDBE /* Speech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech.swift; sourceTree = "<group>"; };
+		2897AEB5928299CF76AEB2BB /* Traveller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Traveller.swift; sourceTree = "<group>"; };
+		CA0A13C0367537D9CCB4EB33 /* TravellerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravellerSettings.swift; sourceTree = "<group>"; };
+		E33F7019378CE1ECE86F8205 /* TravellerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravellerViews.swift; sourceTree = "<group>"; };
+		A6A9662BA6493A3CB71728E3 /* CareStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CareStore.swift; sourceTree = "<group>"; };
+		54C97C897B738D57DEF1FBB3 /* CareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CareViews.swift; sourceTree = "<group>"; };
+		29D9085B01F99724CA40C4CA /* FloorPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPlanView.swift; sourceTree = "<group>"; };
+		7AC61A5DAAB54B2E099E254A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		69F9B3C43D3F215389E8ED67 /* NudgeCareApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeCareApp.swift; sourceTree = "<group>"; };
+		4AE9226A6757D5A88A63FD89 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		2C97BF49E8E301B11D29A37C /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
+		F9610D2DD6F71D1C92C9A386 /* Heading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Heading.swift; sourceTree = "<group>"; };
+		63830AE35D1517F9E4B336BD /* StepDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StepDetector.swift; sourceTree = "<group>"; };
+		DE726E7BBFC3B8A6DBDA1B46 /* StepQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StepQueue.swift; sourceTree = "<group>"; };
+		2D5D9DA16045FE067B2FEAFF /* SharedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTests.swift; sourceTree = "<group>"; };
+		D4F6B606DDF1BC45180F1AD2 /* Nudge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nudge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		498145AD683D6255D8CE3526 /* NudgeCare.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NudgeCare.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15B3AACA8365D2B0888785BC /* NudgeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NudgeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2ED03F9C1E8BE8FEB1760132 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FB832C950EDBD292982CFF35 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8C288550CC45A5575A6527C9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4EAE695AD1F489F78EA3E1C6 = {
+			isa = PBXGroup;
+			children = (
+				77A0D737443A588E93042403 /* Nudge */,
+				96E43311D285B22A11C00E65 /* NudgeCare */,
+				9D10A42589C8F5479091BEBD /* Shared */,
+				E3503CAAF74C2C35D95A624D /* NudgeTests */,
+				2AC8BA37DAC32D5437812408 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		77A0D737443A588E93042403 /* Nudge */ = {
+			isa = PBXGroup;
+			children = (
+				473054E53EFE0A90099DD3CE /* Info.plist */,
+				8D28659AF364C97E71A9BF0D /* Listener.swift */,
+				99CC4E4F1C707F9DF67C58F9 /* Motion.swift */,
+				099FBBC742FFAA3FF919F12E /* NudgeApp.swift */,
+				F79241BABF77F51B595EBDBE /* Speech.swift */,
+				2897AEB5928299CF76AEB2BB /* Traveller.swift */,
+				CA0A13C0367537D9CCB4EB33 /* TravellerSettings.swift */,
+				E33F7019378CE1ECE86F8205 /* TravellerViews.swift */,
+			);
+			path = Nudge;
+			sourceTree = "<group>";
+		};
+		96E43311D285B22A11C00E65 /* NudgeCare */ = {
+			isa = PBXGroup;
+			children = (
+				A6A9662BA6493A3CB71728E3 /* CareStore.swift */,
+				54C97C897B738D57DEF1FBB3 /* CareViews.swift */,
+				29D9085B01F99724CA40C4CA /* FloorPlanView.swift */,
+				7AC61A5DAAB54B2E099E254A /* Info.plist */,
+				69F9B3C43D3F215389E8ED67 /* NudgeCareApp.swift */,
+			);
+			path = NudgeCare;
+			sourceTree = "<group>";
+		};
+		9D10A42589C8F5479091BEBD /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				4AE9226A6757D5A88A63FD89 /* API.swift */,
+				2C97BF49E8E301B11D29A37C /* Format.swift */,
+				F9610D2DD6F71D1C92C9A386 /* Heading.swift */,
+				63830AE35D1517F9E4B336BD /* StepDetector.swift */,
+				DE726E7BBFC3B8A6DBDA1B46 /* StepQueue.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		E3503CAAF74C2C35D95A624D /* NudgeTests */ = {
+			isa = PBXGroup;
+			children = (
+				2D5D9DA16045FE067B2FEAFF /* SharedTests.swift */,
+			);
+			path = NudgeTests;
+			sourceTree = "<group>";
+		};
+		2AC8BA37DAC32D5437812408 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D4F6B606DDF1BC45180F1AD2 /* Nudge.app */,
+				498145AD683D6255D8CE3526 /* NudgeCare.app */,
+				15B3AACA8365D2B0888785BC /* NudgeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2664F7A7950FEA5D6CB1D849 /* Nudge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 15AC6258B572E250848FB408 /* Build configuration list for PBXNativeTarget "Nudge" */;
+			buildPhases = (
+				C36F3A13E39C0B7F08DE5D3B /* Sources */,
+				2ED03F9C1E8BE8FEB1760132 /* Frameworks */,
+				AF9B984B8219B6D12673A065 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Nudge;
+			productName = Nudge;
+			productReference = D4F6B606DDF1BC45180F1AD2 /* Nudge.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7DCE294713C5808F1BDB85FC /* NudgeCare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 57EB7FAFB4C40EFE00A848A2 /* Build configuration list for PBXNativeTarget "NudgeCare" */;
+			buildPhases = (
+				7E17C85D8DF67A206555B087 /* Sources */,
+				FB832C950EDBD292982CFF35 /* Frameworks */,
+				5BAC66BB95676F5C1E293A96 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NudgeCare;
+			productName = NudgeCare;
+			productReference = 498145AD683D6255D8CE3526 /* NudgeCare.app */;
+			productType = "com.apple.product-type.application";
+		};
+		253111CCD33B65271447F658 /* NudgeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1425F085EECE85A0DAF2040E /* Build configuration list for PBXNativeTarget "NudgeTests" */;
+			buildPhases = (
+				7784C6041B5B24318E51839F /* Sources */,
+				8C288550CC45A5575A6527C9 /* Frameworks */,
+				07A2B61F215E14B16D79D53E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NudgeTests;
+			productName = NudgeTests;
+			productReference = 15B3AACA8365D2B0888785BC /* NudgeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					2664F7A7950FEA5D6CB1D849 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					7DCE294713C5808F1BDB85FC = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					253111CCD33B65271447F658 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = B61A476A5531CC175278BDCF /* Build configuration list for PBXProject "Nudge" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 4EAE695AD1F489F78EA3E1C6;
+			productRefGroup = 2AC8BA37DAC32D5437812408 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2664F7A7950FEA5D6CB1D849 /* Nudge */,
+				7DCE294713C5808F1BDB85FC /* NudgeCare */,
+				253111CCD33B65271447F658 /* NudgeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AF9B984B8219B6D12673A065 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5BAC66BB95676F5C1E293A96 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		07A2B61F215E14B16D79D53E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C36F3A13E39C0B7F08DE5D3B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EB8282011CD9338035DF06B4 /* Listener.swift in Sources */,
+				D3D01DE57D9933396186D7A1 /* Motion.swift in Sources */,
+				8950484E8B7B0A72A26D53F5 /* NudgeApp.swift in Sources */,
+				2B963C14E17F3CC8FB92192C /* Speech.swift in Sources */,
+				8967F8565A0B412C596364D7 /* Traveller.swift in Sources */,
+				00D761CC7F70ADD4FF78173B /* TravellerSettings.swift in Sources */,
+				58BC51A7E5B0B01FAF608343 /* TravellerViews.swift in Sources */,
+				CB799EE2AA36FD9EAA4AF9A3 /* API.swift in Sources */,
+				C3365160876416E056C3A9D5 /* Format.swift in Sources */,
+				2A2E4C590694D470DD7A2F4D /* Heading.swift in Sources */,
+				C7D25B8C95592FB7CFA66645 /* StepDetector.swift in Sources */,
+				ED11AD8BB37A1C016A865BB6 /* StepQueue.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E17C85D8DF67A206555B087 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17FC886F59AAA030AD4EF3BE /* CareStore.swift in Sources */,
+				57518F62A8A4B5D855792CA9 /* CareViews.swift in Sources */,
+				E62A06E9D03E2FE05DCAEB6C /* FloorPlanView.swift in Sources */,
+				21BD3D054679ECB89C4F4804 /* NudgeCareApp.swift in Sources */,
+				4BC2D157C62431CC2F6046D7 /* API.swift in Sources */,
+				D5E04D463749F6D8B42C6862 /* Format.swift in Sources */,
+				31F86EC7EA040EA580FBBF2D /* Heading.swift in Sources */,
+				FFF65C019A30C88C9EDE7E34 /* StepDetector.swift in Sources */,
+				BB630273C4181B5A6DE5319E /* StepQueue.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7784C6041B5B24318E51839F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				860073EC79833ECC5C24AB78 /* SharedTests.swift in Sources */,
+				7D09649B607D5844B30BEBA2 /* API.swift in Sources */,
+				CC80511C3DE2ABA7B0326CBE /* Format.swift in Sources */,
+				C716D14F6BD4094E3A1751DB /* Heading.swift in Sources */,
+				AAC597D32AB487B310A50EA8 /* StepDetector.swift in Sources */,
+				62C68124904C2C76DAB34EC4 /* StepQueue.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		80DB6ACE13380ADC3D86D6C5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		08723DE70035A45CE7E33CC1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		FAFA0C39D3BAA4D75A8789FE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Nudge/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudge;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		4B39FAB2456901E0377804E6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Nudge/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudge;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		1D3CBF4D870A62E6B0814C00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NudgeCare/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudgecare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		0633D17158ADF81F069E7A04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NudgeCare/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudgecare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		C263E0CE720206F96DE5D9E6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudgetests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Debug;
+		};
+		CDDA7E8E39A871BCB7A4D155 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hackprinceton.nudgetests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B61A476A5531CC175278BDCF /* Build configuration list for PBXProject "Nudge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				80DB6ACE13380ADC3D86D6C5 /* Debug */,
+				08723DE70035A45CE7E33CC1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		15AC6258B572E250848FB408 /* Build configuration list for PBXNativeTarget "Nudge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAFA0C39D3BAA4D75A8789FE /* Debug */,
+				4B39FAB2456901E0377804E6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		57EB7FAFB4C40EFE00A848A2 /* Build configuration list for PBXNativeTarget "NudgeCare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D3CBF4D870A62E6B0814C00 /* Debug */,
+				0633D17158ADF81F069E7A04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1425F085EECE85A0DAF2040E /* Build configuration list for PBXNativeTarget "NudgeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C263E0CE720206F96DE5D9E6 /* Debug */,
+				CDDA7E8E39A871BCB7A4D155 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

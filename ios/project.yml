@@ -1,0 +1,65 @@
+name: Nudge
+options:
+  bundleIdPrefix: com.hackprinceton
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""          # set your Apple ID team in Xcode > Signing & Capabilities
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  # the traveller's tool: rides on their back, everything spoken
+  Nudge:
+    type: application
+    platform: iOS
+    sources:
+      - path: Nudge
+        excludes: [Info.plist]
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: Nudge
+        PRODUCT_BUNDLE_IDENTIFIER: com.hackprinceton.nudge
+        INFOPLIST_FILE: Nudge/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+  # the caretaker's app: pair, watch live, send trips, get help alerts
+  NudgeCare:
+    type: application
+    platform: iOS
+    sources:
+      - path: NudgeCare
+        excludes: [Info.plist]
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: NudgeCare
+        PRODUCT_BUNDLE_IDENTIFIER: com.hackprinceton.nudgecare
+        INFOPLIST_FILE: NudgeCare/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+  # logic tests for the shared code; compiles Shared directly, no app host
+  NudgeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NudgeTests
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hackprinceton.nudgetests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Nudge:
+    build:
+      targets:
+        Nudge: all
+    test:
+      targets: [NudgeTests]
+  NudgeCare:
+    build:
+      targets:
+        NudgeCare: all

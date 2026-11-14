@@ -22,8 +22,9 @@ if os.environ.get("GEMINI_API_KEY") and not os.environ.get("GOOGLE_API_KEY"):
 FREE_TEXT = "openrouter:openrouter/free"
 FREE_VISION = "openrouter:openrouter/free"
 CLAUDE = "anthropic:claude-opus-5-5"
-# gemini 4 hydrogen: fast, multimodal, tool calling (checked live: tool call ~9 s, image ~28 s)
-GEMINI = "google_genai:gemini-4-hydrogen"
+# gemini 3.5 flash-lite: tool calls ~1 s, images ~2 s, and roomier rate limits than gemini-4-hydrogen,
+# which hit 429 when the lead started several subagents at once (checked live on the venue)
+GEMINI = "google_genai:gemini-3.5-flash-lite"
 
 
 def _default(role):
@@ -61,5 +62,20 @@ def model(s=None, role="text", **kw):
         kw.setdefault("max_tokens", 8000)  # caps rambling; a full places file is ~1.5k tokens
     elif s.startswith("google_genai:"):
         kw.setdefault("timeout", 120)  # seconds
-        kw.setdefault("max_retries", 2)
+        kw.setdefault("max_retries", 6)  # backs off on 429s
+        # the lead and every subagent share one limiter: parallel subagents queue instead of tripping the
+        # trial key's per-minute quota (a real run hit 429 RESOURCE_EXHAUSTED after 5 parallel calls)
+        kw.setdefault("rate_limiter", _gemini_limiter())
     return init_chat_model(s, **kw)
+
+
+_LIMITER = None
+
+
+def _gemini_limiter():
+    global _LIMITER
+    if _LIMITER is None:
+        from langchain_core.rate_limiters import InMemoryRateLimiter
+        rps = float(os.environ.get("NUDGE_GEMINI_RPS", "0.2"))  # 12 calls a minute
+        _LIMITER = InMemoryRateLimiter(requests_per_second=rps, check_every_n_seconds=0.1, max_bucket_size=2)
+    return _LIMITER

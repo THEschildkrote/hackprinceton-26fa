@@ -215,6 +215,11 @@ def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=Non
     """focus: pano ids to survey first (route-scoped quick dossier for a first visit); see tools.route_focus.
     whatever happens (budget, recursion limit, a flaky model), the run ends with finalize(): valid files + gaps."""
     from .finalize import finalize
+    # a run must never destroy names an earlier run (or a person) already wrote: keep a copy, restore if gone
+    cat = dossier_dir(sid) / "places.json"
+    snapshot = cat.read_text(encoding="utf-8") if cat.exists() else None
+    if snapshot is not None:
+        cat.with_suffix(".json.bak").write_text(snapshot, encoding="utf-8")
     agent = create_dossier_agent(sid, model, vision_model=vision_model)
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 400}
     t0, calls, reason = time.time(), 0, "the lead finished"
@@ -259,6 +264,9 @@ def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=Non
     stop.set()  # a straggling call may still finish and write a file; finalize's merge is safe to re-run
     on_event(f"[finalize] {reason}")
     summary = finalize(sid, reason)
+    if snapshot is not None and not cat.exists():
+        cat.write_text(snapshot, encoding="utf-8")
+        on_event("[finalize] places.json had gone missing; restored the catalog from before the run")
     summary["reason"], summary["model_calls"], summary["minutes"] = reason, calls, round((time.time() - t0) / 60, 1)
     on_event(f"[finalize] annotations {summary['annotations']['hazards']} hazards, "
              f"{summary['annotations']['landmarked_panos']} landmarked panos; places ok={summary['places']['ok']}; "
