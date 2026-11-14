@@ -42,15 +42,20 @@ class BandRunner:
 
     def start(self, x, y, floor, heading=None, sid=None, now=0):
         events = self.nav.start(x, y, floor, heading, sid)
-        self._sync(heading, now)
+        self.sync(heading, now)
         return events
 
     def update(self, x, y, floor, heading=None, sid=None, now=0):
         events = self.nav.update(x, y, floor, heading, sid)
-        self._sync(heading, now)
+        self.sync(heading, now)
         return events
 
-    def _sync(self, heading, now):
+    def sync(self, heading=None, now=0):
+        """push the navigator's current state into the engine without driving it.
+
+        for when something else owns the navigator: the server has already called
+        nav.update() on an http request, and the band only needs to hear what changed.
+        """
         self.heading = heading
         self.engine.on_live(live_packet(self.nav, heading), now)
 

@@ -87,6 +87,46 @@ wrong when wiring the band into something new.
 The runner owns no clock and starts no thread, so whatever is already running the show —
 the server, the CLI, a `while True` on the Pi — keeps control of the loop.
 
+## From the debug view
+
+The server drives the collar too, so the browser's simulated walk taps a real shoulder.
+
+```bash
+NUDGE_BAND=1 python -m uvicorn nudge.server:app --port 8765
+```
+
+The band then attaches itself to the first walk that starts. `NUDGE_BAND=dry` does the same
+wiring without touching GPIO, which is how to test it on a laptop. Or attach by hand:
+
+```
+POST /api/band/attach   {"session": "<id>", "dry": false}
+POST /api/band/detach
+GET  /api/band
+```
+
+The Pi has one collar, so attaching moves it — a second attach takes it off the first
+session. `GET /api/band` reports `mode` (`servo` or `dry`) and any `error`, which is where
+a missing `gpiozero` or a busy pin shows up. A band that cannot be built falls back to dry
+and says so, because a servo problem must never turn a walk into a 500.
+
+### Don't walk faster than the servos
+
+Cues are **dropped, not queued**, when one is already playing. That is deliberate — a turn
+cue arriving late is worse than no cue — but it means the simulated walk can outrun the
+band. Measured over the synthetic route, varying only how fast positions were posted:
+
+| ms between positions | strokes felt over the route |
+|---|---|
+| 20 | 2 |
+| 100 | 7 |
+| 300 | 13 |
+| 450 | 13 |
+
+It plateaus around 300 ms, and real walking pace is about 420 ms per half-metre step, so a
+real walk renders everything. If the debug view steps faster than that to save demo time,
+the collar quietly goes quiet. Slow the walk down rather than wondering why the servos
+stopped.
+
 ## The grammar
 
 | Cue | What you feel |

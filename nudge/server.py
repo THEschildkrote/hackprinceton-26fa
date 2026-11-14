@@ -157,6 +157,23 @@ def _device(nav):
         return {"packet": None, "line": None, "error": str(ex)}
 
 
+def _band_sync(session, nav, heading=None, start=False):
+    """keep the collar in step with this session. best effort, always.
+
+    a missing servo, a busy pin or no gpio at all must never turn a nav request into a 500:
+    the walk still works, you just can't feel it. NUDGE_BAND=1 attaches the band to the
+    first walk that starts (NUDGE_BAND=dry wires it up without touching gpio).
+    """
+    try:
+        from . import bandserve
+        want = os.environ.get("NUDGE_BAND")
+        if start and want and not bandserve.status()["attached"]:
+            bandserve.attach(session, nav, dry=(want == "dry"))
+        bandserve.sync(session, nav, heading)
+    except Exception:
+        pass
+
+
 def _nav(session):
     s = _sessions.get(session)
     if not s:
@@ -223,6 +240,7 @@ def nav_start(req: StartReq):
     hub.register_traveller(tid)
     hub.attach_session(tid, sid, req.sid, goal, req.profile)
     _publish(sid, nav, [dict(e, goal=goal) for e in ev])
+    _band_sync(sid, nav, req.heading, start=True)
     return {"session": sid, "traveller": tid, "events": _events(ev), "state": _state(nav), "device": _device(nav),
             "place": place}
 
@@ -232,6 +250,7 @@ def nav_update(req: UpdateReq):
     nav = _nav(req.session)
     ev = nav.update(req.x, req.y, req.floor, req.heading, sid=req.sid)
     _publish(req.session, nav, ev)
+    _band_sync(req.session, nav, req.heading)
     tid = _session_traveller.get(req.session)
     if tid:
         from . import hub
@@ -242,6 +261,30 @@ def nav_update(req: UpdateReq):
         why = next(e.get("why") for e in ev if e.get("type") == "unmapped")
         out["explore_hint"] = f"Traveller is off the map (why: {why})."
     return out
+
+
+class BandReq(BaseModel):
+    session: str
+    dry: bool = False   # wire it up without touching gpio, for testing off the pi
+
+
+@app.post("/api/band/attach")
+def band_attach(req: BandReq):
+    """bind the collar to this session. the pi has one band, so this moves it."""
+    from . import bandserve
+    return bandserve.attach(req.session, _nav(req.session), dry=req.dry)
+
+
+@app.post("/api/band/detach")
+def band_detach():
+    from . import bandserve
+    return bandserve.detach()
+
+
+@app.get("/api/band")
+def band_status():
+    from . import bandserve
+    return bandserve.status()
 
 
 @app.post("/api/nav/block")
