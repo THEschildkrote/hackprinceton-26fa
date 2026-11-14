@@ -75,6 +75,16 @@ CUES = {
 }
 
 
+RANK = {
+    # advisory: "you are drifting". lose these first, nothing depends on them
+    "straight": 0, "steer_left": 0, "steer_right": 0,
+    # navigation: the maneuver you are about to make. losing one is a wrong turn
+    "bear_left": 1, "bear_right": 1, "left": 1, "right": 1, "uturn": 1, "floor": 1,
+    # state and safety: always get through
+    "arrive": 2, "off_route": 2, "unmapped": 2, "hazard": 3,
+}
+
+
 def approach_cue(act, direction):
     """which cue to tap as a maneuver comes up. mirrors haptics.h approach_cue."""
     if act == "turn":
@@ -122,15 +132,20 @@ class Engine:
     def play(self, cue, now, force=False):
         """start a pattern.
 
-        `force` lets an important cue cut in over one already playing. it never skips the
-        rest after a pattern ends: that gap is what keeps a burst of cues off the gears.
+        a servo stroke is ~320 ms, so the band renders about three cues a second however
+        fast positions arrive. when they come faster than that, something has to be lost,
+        and RANK decides what: a maneuver cuts in over a steering tap, never the reverse.
+        equal ranks do not pre-empt, so two turn cues never interrupt each other.
+
+        `force` cuts in regardless. neither it nor a rank ever skips the rest after a
+        pattern ends: that gap is what keeps a burst of cues off the gears.
         """
         pat = CUES.get(cue)
         if not pat:
             return False
         if not self._active and now - self._ended_at < self.MIN_GAP_MS:
             return False
-        if self._active and not force:
+        if self._active and not force and RANK.get(cue, 0) <= RANK.get(self._playing, 0):
             return False
         tl, t = [], 0
         for s in pat:
