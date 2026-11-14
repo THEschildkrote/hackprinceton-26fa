@@ -25,6 +25,9 @@ TOO_STEEP = 1 / 12    # 1:12, ada 405.2 max ramp slope (and only with handrails)
 CURB_STEP_M = 0.10    # a dtm jump this big over one sample, with no curb ramp known, is a curb
 CURB_GRADE = 0.12     # ...if it is also sharper than any ramp
 OVERPASS = "https://overpass-api.de/api/interpreter"
+OVERPASS_MIRRORS = ("https://overpass.kumi.systems/api/interpreter",
+                    "https://overpass.private.coffee/api/interpreter",
+                    "https://maps.mail.ru/osm/tools/overpass/api/interpreter")
 OSM_CACHE = ROOT / "cache" / "osm"
 USER_AGENT = "nudge-wayfinding-prototype/0.1 (hackathon accessibility research)"
 WALKABLE = ("footway", "path", "pedestrian", "steps", "living_street", "crossing", "sidewalk", "corridor")
@@ -75,11 +78,23 @@ out body geom;"""
     p = OSM_CACHE / f"{key}.json"
     if p.exists():
         return json.loads(p.read_text(encoding="utf-8"))
-    r = requests.post(OVERPASS, data={"data": q}, headers={"User-Agent": USER_AGENT}, timeout=60)
-    r.raise_for_status()
-    OSM_CACHE.mkdir(parents=True, exist_ok=True)
-    p.write_text(r.text, encoding="utf-8")
-    return r.json()
+    # the main overpass server is often overloaded (502/504/429); try the public mirrors in turn
+    last = None
+    for url in (OVERPASS, *OVERPASS_MIRRORS):
+        try:
+            r = requests.post(url, data={"data": q}, headers={"User-Agent": USER_AGENT}, timeout=90)
+            if r.status_code in (429, 502, 503, 504):
+                last = requests.HTTPError(f"{r.status_code} from {url}")
+                continue
+            r.raise_for_status()
+            data = r.json()
+        except (requests.RequestException, ValueError) as ex:
+            last = ex
+            continue
+        OSM_CACHE.mkdir(parents=True, exist_ok=True)
+        p.write_text(r.text, encoding="utf-8")
+        return data
+    raise last
 
 
 def _edge_tags(way_tags):

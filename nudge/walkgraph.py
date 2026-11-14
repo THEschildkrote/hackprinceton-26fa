@@ -4,11 +4,18 @@ nodes are scan positions: someone stood there with a tripod, so they are walkabl
 two panos on a floor are linked when the straight line between them crosses no wall.
 floors are joined through rooms labelled stairs or elevator.
 """
+import json
 from dataclasses import dataclass, field
 
 from .geom import dist, point_in_poly, poly_len, project, segments_cross
+from .mp import ROOT
 
-PASSABLE = {"opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage"}
+# open_plan: a room boundary with no wall around it; walkable, but not a door
+PASSABLE = {"opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage", "open_plan"}
+NOT_DOORS = {"open_plan"}
+DOORWAYS = ROOT / "cache" / "doorways"   # doorways found in the point cloud, per scan
+DOOR_MIN_M = 0.5     # a free run narrower than this along a wall is noise or a corner, not a doorway
+OPEN_PLAN_M = 2.5    # wider than this is an open-plan boundary, not a door
 STAIRS = ("stair", "staircase", "stairwell", "steps")
 ELEVATOR = ("elevator", "lift")
 MAX_LINK = 5.0      # metres between linked panos
@@ -195,8 +202,9 @@ def _is(label, words):
     return bool(label) and any(w in label.lower() for w in words)
 
 
-def build(model, annotations=None):
-    """model: the model api `model {...}` dict (see fetch.Q_WALK). annotations: the agent dossier, optional."""
+def build(model, annotations=None, use_doorways=True):
+    """model: the model api `model {...}` dict (see fetch.Q_WALK). annotations: the agent dossier, optional.
+    use_doorways: apply cache/doorways/<id>.json (point-cloud doorways) when it exists."""
     g = WalkGraph()
     floors = sorted(model.get("floors") or [], key=lambda f: (f.get("sequence") is None, f.get("sequence") or 0))
     floor_ids = [f["id"] for f in floors]
@@ -209,6 +217,12 @@ def build(model, annotations=None):
                  for e in f.get("edges") or [] for a, b in [[v["id"] for v in e["vertices"]][:2]]
                  if a in V and b in V]
         g.floors.append({"id": f["id"], "label": f.get("label") or f["id"], "walls": walls})
+
+    # real scans type every edge "wall"; doorways found in the point cloud split those walls
+    dw = load_doorways(model.get("id")) if use_doorways else None
+    if dw:
+        for f in g.floors:
+            f["walls"] = split_walls(f["walls"], dw.get("floors", {}).get(f["id"], []))
 
     for r in model.get("rooms") or []:
         fid = (r.get("floor") or {}).get("id")
@@ -242,6 +256,7 @@ def build(model, annotations=None):
         g.warnings.append("no wall graph: links are by distance only")
 
     _link_same_floor(g)
+    gap_doorways(g)
     for a, nbrs in (model.get("neighbors") or {}).items():  # showcase sdk sweep graph, when we have it
         for b in nbrs:
             if a in g.nodes and b in g.nodes:
@@ -365,8 +380,8 @@ def _clear_path(g, floor, pts):
 
 def _door_via(g, floor, a, b):
     """waypoints that take the line a->b through the middle of each doorway it crosses, square-on."""
-    crossings = sorted(g.door_crossings(a, b, floor), key=lambda w: project(((w[0][0] + w[1][0]) / 2,
-                                                                             (w[0][1] + w[1][1]) / 2), a, b)[0])
+    crossings = sorted((w for w in g.door_crossings(a, b, floor) if w[2] not in NOT_DOORS),
+                       key=lambda w: project(((w[0][0] + w[1][0]) / 2, (w[0][1] + w[1][1]) / 2), a, b)[0])
     via, doors = [], []
     for w in crossings:
         mid = ((w[0][0] + w[1][0]) / 2, (w[0][1] + w[1][1]) / 2)
@@ -430,6 +445,193 @@ def shape_edges(g):
             e.tags.add("narrow_door")
         if doors:
             e.tags.add("door")
+
+
+# doorways. typed scans mark them (door/opening edges). real matterport scans type every edge "wall":
+# a doorway is then either a gap between wall ends, or a "wall" edge that is really a room separator
+# with nothing physical in it. the point cloud tells the two apart: jamb, empty run, jamb.
+
+def load_doorways(sid):
+    p = DOORWAYS / f"{sid}.json" if sid else None
+    if not p or not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def split_walls(walls, doors):
+    """cut each doorway span out of the wall it lies on; doorways on no wall are added as they are."""
+    out, used = [], set()
+    for p, q, kind in walls:
+        L = dist(p, q)
+        cuts = []
+        for i, d in enumerate(doors):
+            a, b = tuple(d["a"]), tuple(d["b"])
+            ta, _, da = project(a, p, q)
+            tb, _, db = project(b, p, q)
+            if L > 1e-6 and da < 0.06 and db < 0.06 and abs(ta - tb) * L > 0.2:
+                cuts.append((min(ta, tb), max(ta, tb), d))
+                used.add(i)
+        if not cuts:
+            out.append((p, q, kind))
+            continue
+        lerp = lambda t: (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+        t0 = 0.0
+        for s, e, d in sorted(cuts, key=lambda c: c[0]):
+            if (s - t0) * L > 0.02:
+                out.append((lerp(t0), lerp(s), kind))
+            out.append((lerp(max(s, t0)), lerp(e), d.get("kind", "door")))
+            t0 = max(t0, e)
+        if (1 - t0) * L > 0.02:
+            out.append((lerp(t0), q, kind))
+    out += [(tuple(d["a"]), tuple(d["b"]), d.get("kind", "door")) for i, d in enumerate(doors) if i not in used]
+    return out
+
+
+def gap_doorways(g):
+    """links between rooms that cross no wall pass through a gap: measure it between the nearest
+    collinear wall ends and add it as a door (or an open-plan boundary when no walls bound it)."""
+    for e in list(g.edges()):
+        a, b = g.nodes[e.a], g.nodes[e.b]
+        if "room_change" not in e.tags or a.floor != b.floor or g.door_crossings(a.xy, b.xy, a.floor):
+            continue
+        poly = (g.rooms.get(a.room) or {}).get("poly")
+        if not poly or len(poly) < 3:
+            continue
+        hit = None
+        for i in range(len(poly)):
+            u, v = poly[i - 1], poly[i]
+            if segments_cross(a.xy, b.xy, u, v):
+                hit = (u, v)
+                break
+        if not hit:
+            continue
+        u, v = hit
+        L = dist(u, v)
+        if L < 1e-6:
+            continue
+        ux, uy = (v[0] - u[0]) / L, (v[1] - u[1]) / L
+        # where the link crosses the boundary line, as a distance along it
+        c = _line_cross(a.xy, b.xy, u, v)
+        if c is None:
+            continue
+        tc = (c[0] - u[0]) * ux + (c[1] - u[1]) * uy
+        lo, hi = None, None
+        for p, q, kind in g.walls(a.floor):
+            if kind in PASSABLE:
+                continue
+            for w in (p, q):
+                off = abs((w[0] - u[0]) * -uy + (w[1] - u[1]) * ux)
+                if off > 0.15:
+                    continue
+                t = (w[0] - u[0]) * ux + (w[1] - u[1]) * uy
+                if t <= tc and (lo is None or t > lo):
+                    lo = t
+                if t >= tc and (hi is None or t < hi):
+                    hi = t
+        if lo is not None and hi is not None and hi - lo <= OPEN_PLAN_M and hi - lo >= DOOR_MIN_M * 0.6:
+            kind, t0, t1 = "door", lo, hi
+        else:
+            kind, t0, t1 = "open_plan", tc - OPEN_PLAN_M / 2, tc + OPEN_PLAN_M / 2
+        seg = ((u[0] + ux * t0, u[1] + uy * t0), (u[0] + ux * t1, u[1] + uy * t1), kind)
+        f = next(f for f in g.floors if f["id"] == a.floor)
+        if not any(dist(s[0], seg[0]) < 0.05 and dist(s[1], seg[1]) < 0.05 for s in f["walls"]):
+            f["walls"].append(seg)
+
+
+def _line_cross(p, q, u, v):
+    d1x, d1y, d2x, d2y = q[0] - p[0], q[1] - p[1], v[0] - u[0], v[1] - u[1]
+    den = d1x * d2y - d1y * d2x
+    if abs(den) < 1e-12:
+        return None
+    t = ((u[0] - p[0]) * d2y - (u[1] - p[1]) * d2x) / den
+    return (p[0] + t * d1x, p[1] + t * d1y)
+
+
+def cloud_doorways(g, pts, levels, step=0.03, half=0.15, band=(0.15, 1.9)):
+    """{floor_id: [doorway...]} from the point cloud: along each wall edge, a run of empty slices
+    between jambs in the band a person walks through. pts is (n, 3) in the model frame."""
+    import numpy as np
+    out = {}
+    for f in g.floors:
+        if f["id"] not in levels:
+            continue
+        z0 = levels[f["id"]][0]
+        sel = pts[(pts[:, 2] > z0 + band[0]) & (pts[:, 2] < z0 + band[1])][:, :2]
+        found = []
+        for p, q, kind in f["walls"]:
+            if kind in PASSABLE:
+                continue
+            L = dist(p, q)
+            if L < DOOR_MIN_M:
+                continue
+            P = np.array(p)
+            u = (np.array(q) - P) / L
+            nrm = np.array([-u[1], u[0]])
+            lo, hi = np.minimum(p, q) - 0.3, np.maximum(p, q) + 0.3
+            box = sel[(sel[:, 0] > lo[0]) & (sel[:, 0] < hi[0]) & (sel[:, 1] > lo[1]) & (sel[:, 1] < hi[1])]
+            rel = box - P
+            t, s = rel @ u, rel @ nrm
+            t = t[np.abs(s) < half]
+            nb = max(1, int(round(L / step)))
+            h, _ = np.histogram(t, bins=nb, range=(0, L))
+            solid = h[h > 0]
+            # a doorway is near-empty (scan noise leaves ~10% of wall density); walls stay dense
+            thr = max(3, 0.25 * float(np.median(solid))) if len(solid) else 3
+            free = h <= thr
+            i = 0
+            while i < nb:
+                if not free[i]:
+                    i += 1
+                    continue
+                j = i
+                while j < nb and free[j]:
+                    j += 1
+                w = (j - i) * L / nb
+                at_end = i == 0 or j == nb
+                # a free run at the very end of an edge is usually a corner, unless it is most of the edge
+                if w >= DOOR_MIN_M and (not at_end or w >= 0.9 * L):
+                    a, b = P + u * (i * L / nb), P + u * (j * L / nb)
+                    found.append({"a": [round(float(a[0]), 3), round(float(a[1]), 3)],
+                                  "b": [round(float(b[0]), 3), round(float(b[1]), 3)],
+                                  "width": round(w, 3), "kind": "door" if w <= OPEN_PLAN_M else "open_plan",
+                                  "exterior": _is_exterior(g, f["id"], p, q), "source": "cloud"})
+                i = j
+        out[f["id"]] = found
+    return out
+
+
+def _is_exterior(g, floor, p, q):
+    mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+    L = dist(p, q)
+    if L < 1e-6:
+        return False
+    nx, ny = -(q[1] - p[1]) / L, (q[0] - p[0]) / L
+    sides = [g.room_at(mx + nx * 0.4, my + ny * 0.4, floor), g.room_at(mx - nx * 0.4, my - ny * 0.4, floor)]
+    return sum(1 for s in sides if s is None) == 1
+
+
+def compute_doorways(sid, model=None, pts=None, save=True):
+    """find doorways in the scan's point cloud and cache them; later builds of this scan use them."""
+    from . import perceive
+    from .fetch import load
+    model = model or load(sid)
+    g = build(model, use_doorways=False)
+    pts = perceive.cloud(sid) if pts is None else pts
+    levels = perceive.floor_levels(g, pts)
+    floors = cloud_doorways(g, pts, levels)
+    res = {"sid": sid, "floors": floors,
+           "stats": {fid: {"doors": sum(1 for d in ds if d["kind"] == "door"),
+                           "open_plan": sum(1 for d in ds if d["kind"] == "open_plan"),
+                           "exterior": sum(1 for d in ds if d["exterior"]),
+                           "widths": sorted(d["width"] for d in ds if d["kind"] == "door")}
+                     for fid, ds in floors.items()}}
+    if save:
+        DOORWAYS.mkdir(parents=True, exist_ok=True)
+        (DOORWAYS / f"{sid}.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
+    return res
 
 
 def _poly_dist(g, e, xy):

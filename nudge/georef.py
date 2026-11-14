@@ -11,6 +11,8 @@ import numpy as np
 
 from .mp import M_PER_DEG
 
+OK_RMSE_M = 1.5  # scan-to-footprint fit counted as good
+
 
 class ENU:
     """local east/north metres around an origin. fine over a city block."""
@@ -214,7 +216,8 @@ def register(model_outline, footprint_enu, step_deg=2.0, enu=None, try_mirror=No
             continue
         alts.append({"theta_deg": round(th, 1), "rmse_m": round(r[1], 3), "inlier_frac": round(r[2], 3)})
     ambiguous = any(a["rmse_m"] < rmse * 1.25 + 0.15 and a["inlier_frac"] > inl - 0.1 for a in alts)
-    ok = rmse <= 1.0 and inl >= 0.6
+    # footprints are traced from aerials and scans miss eaves and porches; ~1.5 m is a good fit
+    ok = rmse <= OK_RMSE_M and inl >= 0.6
     return Georef(enu, theta, float(t[0]), float(t[1]), rmse, inl, ok, mirrored, ambiguous,
                   [a for a in alts if a["rmse_m"] < 2 * rmse + 0.5])
 
