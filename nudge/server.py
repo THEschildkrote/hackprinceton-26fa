@@ -250,69 +250,39 @@ def _hub_to_traces():
 _hub_to_traces()
 
 
-# who is connected: the traveller's phone and the caretaker app, by when each last called in.
-# the phone polls for a trip every 2 s and posts every second while walking, so 12 s of quiet is offline.
-ONLINE_S = 12.0
-_seen = {}   # (role, traveller) -> {"ts", "heading"?}
-_seen_lock = threading.Lock()
-_seen_watch = []
-
-
-def _touch(role, tid, **info):
-    if not tid or tid == "replay":
+def _belt_apply(session, x, y, floor, heading):
+    """a position from the belt, treated like one from POST /api/nav/update: the navigator moves, the hub
+    hears about it, the caretaker sees progress. the belt does its own taps, so the collar is left alone."""
+    nav = _sessions.get(session)
+    if nav is None:
         return
-    now = time.time()
-    with _seen_lock:
-        prev = _seen.get((role, tid))
-        _seen[(role, tid)] = {**(prev or {}), **{k: v for k, v in info.items() if v is not None}, "ts": now,
-                              "online": True}
-        back = prev is None or not prev.get("online")
-        if not _seen_watch:
-            _seen_watch.append(threading.Thread(target=_watch_seen, daemon=True, name="nudge-presence"))
-            _seen_watch[0].start()
-    if back:
-        _trace("device", role=role, traveller=tid, name=_traveller_name(tid), phase="online")
-
-
-def _traveller_name(tid):
-    try:
+    ev = nav.update(x, y, floor, heading)
+    _publish(session, nav, ev)
+    _trace_nav(session, nav, ev, source="belt")
+    tid = _session_traveller.get(session)
+    if tid:
         from . import hub
-        return (hub.status(tid) or {}).get("name")
+        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+
+
+def _belt_start(session, nav):
+    """hand this walk's route to the belt and start following its position. best effort, always:
+    NUDGE_BELT_URL unset, the pi off or the belt refusing must never turn a nav request into a 500."""
+    try:
+        from . import belt
+        if belt.enabled():
+            belt.send_route(session, nav)
+            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading))
     except Exception:
-        return None
+        pass
 
 
-def _watch_seen():
-    while True:
-        time.sleep(1.0)
-        now, gone = time.time(), []
-        with _seen_lock:
-            for (role, tid), v in _seen.items():
-                if v.get("online") and now - v["ts"] > ONLINE_S:
-                    v["online"] = False
-                    gone.append((role, tid))
-        for role, tid in gone:
-            _trace("device", role=role, traveller=tid, name=_traveller_name(tid), phase="offline")
-
-
-def _presence():
-    now = time.time()
-    with _seen_lock:
-        rows = sorted(_seen.items(), key=lambda kv: -kv[1]["ts"])
-        return [{"role": role, "traveller": tid, "age_s": round(now - v["ts"], 1), "online": v.get("online", False),
-                 "heading": v.get("heading")} for (role, tid), v in rows]
-
-
-def _voice_told(tid, heard, out):
-    """every voice exchange on the dashboard: what the traveller said and what nudge said back."""
-    _touch("phone", tid)
-    session = out.get("session")
-    if heard:
-        _trace("voice", session=session, traveller=tid, who="traveller", text=heard)
-    if out.get("say") and not out.get("pending_job"):
-        _trace("voice", session=session, traveller=tid, who="nudge", text=out["say"])
-    elif out.get("say_now"):
-        _trace("voice", session=session, traveller=tid, who="nudge", text=out["say_now"])
+def _belt_begin(session):
+    try:
+        from . import belt
+        belt.begin(session)
+    except Exception:
+        pass
 
 
 def _nav(session):
@@ -397,6 +367,7 @@ def nav_start(req: StartReq):
         _touch("phone", req.traveller, heading=req.heading)
     _trace_nav(sid, nav, ev)
     _band_sync(sid, nav, req.heading, start=True)
+    _belt_start(sid, nav)
     from .pdr import Tracker
     if site is None and not req.building:
         from .pdr import site_for
@@ -452,6 +423,7 @@ def nav_calibrate(req: CalibrateReq):
     _touch("phone", _session_traveller.get(req.session), heading=req.heading_deg)
     _trace("calibrate", session=req.session, heading_deg=round(req.heading_deg, 1))
     _band_sync(req.session, nav, tr.to_model(req.heading_deg))
+    _belt_begin(req.session)
     return out
 
 
@@ -508,6 +480,37 @@ def band_detach():
 def band_status():
     from . import bandserve
     return bandserve.status()
+
+
+class BeltWearerReq(BaseModel):
+    height_cm: float
+
+
+@app.get("/api/belt")
+def belt_status():
+    """is NUDGE_BELT_URL set, which session has the belt, its last error, and what the belt itself reports."""
+    from . import belt
+    return belt.status()
+
+
+@app.post("/api/belt/begin")
+def belt_begin(body: dict):
+    """calibrate and start the belt without a phone compass: the wearer is on the first point, facing the second."""
+    from . import belt
+    return {"ok": belt.begin(body.get("session")) is not None, **belt.status()}
+
+
+@app.post("/api/belt/stop")
+def belt_stop():
+    from . import belt
+    return {"ok": belt.stop() is not None, **belt.status()}
+
+
+@app.post("/api/belt/wearer")
+def belt_wearer(req: BeltWearerReq):
+    """someone else is wearing it: the belt scales its step length to their height."""
+    from . import belt
+    return {"ok": belt.wearer(req.height_cm) is not None, **belt.status()}
 
 
 @app.post("/api/nav/block")
