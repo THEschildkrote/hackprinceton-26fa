@@ -386,9 +386,23 @@ def _belt_start(session, nav):
         # runtime (which tracks position itself) stays out of it; one source of position per walk
         if belt.enabled() and not os.environ.get("NUDGE_BAND"):
             belt.send_route(session, nav)
-            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading))
+            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading),
+                        tell=lambda kind, **f: _belt_tell(session, kind, **f),
+                        nav_of=lambda: _sessions.get(session))
     except Exception:
         pass
+
+
+def _belt_tell(session, kind, **f):
+    """what the belt's own phone and pods are doing, in the words the dashboard has for a phone and a
+    collar: `step` and `band` traces, and the phone counted as connected while the belt hears from it."""
+    tid = _session_traveller.get(session)
+    if kind == "presence":
+        _touch("phone", tid, heading=f.get("heading_deg"))
+        return
+    _trace(kind, session=session, **f)
+    if kind == "step":
+        _touch("phone", tid, heading=f.get("heading_deg"))
 
 
 def _belt_begin(session):
@@ -650,7 +664,18 @@ def belt_status():
 def belt_begin(body: dict):
     """calibrate and start the belt without a phone compass: the wearer is on the first point, facing the second."""
     from . import belt
-    return {"ok": belt.begin(body.get("session")) is not None, **belt.status()}
+    out = belt.begin(body.get("session"))
+    if out is not None and out.get("heading_deg") is not None:
+        _trace("calibrate", session=body.get("session"), heading_deg=round(out["heading_deg"], 1))
+    return {"ok": out is not None, **belt.status()}
+
+
+@app.post("/api/belt/floor")
+def belt_floor():
+    """the wearer is on the next floor, standing where the route goes on: the belt puts them there and
+    guides again. at a change of floor it stops them and waits for this (its state is FLOOR)."""
+    from . import belt
+    return {"ok": belt.next_floor() is not None, **belt.status()}
 
 
 @app.post("/api/belt/stop")
@@ -1685,6 +1710,16 @@ def ops_snapshot(events: int = 200):
         band = bandserve.status()
     except Exception as ex:
         band = {"attached": False, "error": str(ex)}
+    try:
+        # the belt taps by itself, so the collar's runner is not attached; say so as haptics all the same
+        from . import belt
+        if not band.get("attached") and belt.enabled() and not os.environ.get("NUDGE_BAND"):
+            belt.watch()
+            b = belt.summary()
+            if b["online"]:
+                band = {**band, "attached": True, "mode": "belt", "session": b["session"], "state": b["state"]}
+    except Exception:
+        pass
     try:
         from . import hub
         travellers = {tid: {**(hub.status(tid) or {}), "imessage": len(hub.caretakers(tid))}

@@ -59,14 +59,30 @@ ours (radians counter-clockwise from +x).
 Like the collar, all of this is best effort. A belt that is off, out of range or refusing never turns a
 nav request into a 500: the route still plans and speaks, and `GET /api/belt` says what went wrong.
 
+## Reroutes, floors and the dashboard
+
+- **A reroute mid-walk.** When the navigator's route changes while the belt is walking (a blocked door,
+  an exception the agent rerouted around), the new route goes to the belt as `POST /route` with
+  `"reroute": true`. The belt keeps its position and its calibration, picks the route up from where the
+  wearer is and carries on tapping. Nobody stops. Each new route is offered once.
+- **A change of floor.** The belt takes the whole route. At the end of a floor's stretch it stops the
+  wearer (both pods) and waits, with its state `FLOOR`; it cannot tell when they are upstairs. Say so with
+  `POST /api/belt/floor`, or Next floor in the belt's own viewer. The belt then puts the wearer on the
+  first point of the next floor's stretch and guides again, and the floor it reports, which is the floor
+  our navigator is told, is the new one.
+- **The dashboard.** While a walk is followed, the belt's phone and pods show on `ops.html` the way a
+  phone and a collar do: its steps come through as `step` traces (pace, the phone tile), its taps as `band`
+  traces in the collar's cue words (a single tap is `steer_left`, a double tap `left`, a tap back after
+  turning too far `overturn_left`, the stop at a change of floor `floor`, arrival `arrive`), and the phone
+  counts as connected while the belt hears from it. Haptics reads "Belt" whenever the belt is answering.
+
+These need the belt runtime from 14 Nov evening or later. An older one refuses a reroute ("stop first");
+the refusal is kept in `GET /api/belt` and the walk goes on along the old route.
+
 ## What the belt cannot do yet
 
-- **Change floor.** It follows the route up to the first change of floor and reports how many points it
-  dropped (`route.dropped_other_floors`). Send it the next floor's route once the wearer is there.
-- **Take a new route mid-walk.** A reroute has to stop the belt and calibrate again at the start of the
-  new route, because it lines itself up by having the wearer face the first leg.
 - **Play our cue grammar.** It taps left or right to steer, and has a stop and an arrival pattern. There is
-  no hazard, off-route or floor cue on it.
+  no hazard or off-route cue on it.
 - **Two position sources.** While the belt is walking, do not also post `/api/nav/step` from the phone
   app for the same session; the two would disagree about where the wearer is.
 
@@ -74,9 +90,13 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
 
 `tests/test_belt.py` runs the real server against a stand-in belt: the route is sent in our format,
 calibrate lines it up and starts it, its position moves our navigator, arrival ends the feed, a new walk
-takes the belt over, and a belt that is off never breaks a walk.
+takes the belt over, and a belt that is off never breaks a walk. Also: a blocked edge reroutes the
+navigator and the new route reaches the belt without a stop, an old belt's refusal is kept and not
+repeated, the floor follows the belt after `/api/belt/floor`, and the belt's steps and taps arrive as
+`step` and `band` traces.
 
 It has also been run against the real on-body runtime in simulator mode on a laptop: the synthetic
 building's route was handed over (five points on the first floor, two on the second dropped), the walk
 was started, and after four steps both sides had the wearer at (4.0, 1.5) facing along the first leg.
-It has not yet been walked on the belt itself with a route from here.
+It has not yet been walked on the belt itself with a route from here, and the reroute and the change of
+floor have only been run against the stand-in and the simulator.
