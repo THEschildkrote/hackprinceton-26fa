@@ -557,8 +557,8 @@ def load_site(sid, refresh=False):
             early.append(f"doorways were not measured from the point cloud ({ex}); exterior doors may be missed")
     gi = graph(sid)
     from . import opendata
-    # vexcel inside its coverage (houston, la); openstreetmap + usgs everywhere else, or when vexcel refuses
-    fp, fp_source, note = opendata.footprint_any(lat, lon)
+    # vexcel inside its geofence (opendata.VEXCEL_AREAS); openstreetmap + usgs elsewhere, or when vexcel refuses
+    fp, fp_source, note = opendata.footprint_any(lat, lon, sid=sid)
     if note:
         early.append(note)
     # usgs whenever the footprint came from osm: if vexcel refused the footprint it will refuse the dtm too

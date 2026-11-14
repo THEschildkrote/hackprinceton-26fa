@@ -1,6 +1,6 @@
 """thin cached client for the vexcel api v2, written against reference/vexcel_api_v2.json.
 
-auth: X-API-KEY header (VEXCEL_API_KEY). hackathon keys cover houston and los angeles only.
+auth: X-API-KEY header (VEXCEL_API_KEY). hackathon keys are geofenced: opendata.VEXCEL_AREAS lists where.
 all coordinates in and out are lon/lat (EPSG:4326) unless a function says otherwise.
 """
 import hashlib
@@ -48,7 +48,7 @@ def _call(method, path, params=None, body=None, binary=False):
     if status == 401:
         raise VexcelError("vexcel rejected the key (401); check VEXCEL_API_KEY")
     if status == 403:
-        raise VexcelError("vexcel answered 403; hackathon keys cover houston and los angeles only")
+        raise VexcelError("vexcel answered 403; this point is outside the hackathon geofence (opendata.VEXCEL_AREAS)")
     if status >= 400:
         raise VexcelError(f"vexcel {path} answered {status}: {data[:200]!r}")
     if TRANSPORT is None:

@@ -1,4 +1,4 @@
-"""outdoor leg without vexcel: osm footprint + usgs elevation, outside houston/la or when vexcel refuses."""
+"""outdoor leg without vexcel: osm footprint + usgs elevation, outside its geofence or when vexcel refuses."""
 import json
 from pathlib import Path
 
@@ -8,7 +8,8 @@ from nudge import handoff, opendata, outdoor, vexcel
 from nudge.agents import tools as T
 import tests.synthetic_outdoor as so
 
-PRINCETON = (40.3490893, -74.6554659)
+PRINCETON = (40.3490893, -74.6554659)   # rabinowitz hall: inside vexcel's geofence since the princeton update
+OUTSIDE = (40.5008, -74.4474)           # rutgers, new brunswick: outside every vexcel area
 
 
 def _block(monkeypatch, tmp_path, where):
@@ -47,14 +48,27 @@ def _block(monkeypatch, tmp_path, where):
 def princeton_block(monkeypatch, tmp_path):
     T._graph_cached.cache_clear()
     handoff._SITES.pop("synthetic-princeton", None)
-    yield _block(monkeypatch, tmp_path, PRINCETON)
+    yield _block(monkeypatch, tmp_path, OUTSIDE)
     T._graph_cached.cache_clear()
     handoff._SITES.pop("synthetic-princeton", None)
 
 
-def test_coverage_boxes():
+def test_coverage_areas():
     assert opendata.in_vexcel_coverage(34.05, -118.25) and opendata.in_vexcel_coverage(29.76, -95.37)
-    assert not opendata.in_vexcel_coverage(*PRINCETON)
+    assert opendata.in_vexcel_coverage(*PRINCETON)
+    assert opendata.in_vexcel_coverage(38.58, -121.49)       # sacramento, northern california
+    assert not opendata.in_vexcel_coverage(37.87, -122.27)   # berkeley is just south of that box
+    assert opendata.in_vexcel_coverage(30.42, -86.62)        # fort walton beach, the gulf coast polygon
+    assert not opendata.in_vexcel_coverage(*OUTSIDE)
+    assert not opendata.in_vexcel_coverage(29.55, -84.6)     # in the gulf polygon's bounding box, outside its edge
+
+
+def test_pinned_scan_skips_vexcel_inside_the_geofence(monkeypatch):
+    calls = []
+    monkeypatch.setattr(vexcel, "TRANSPORT", lambda *a: calls.append(a) or (500, "", b""))
+    monkeypatch.setattr(opendata, "footprint", lambda lat, lon: [(lon, lat)] * 4)
+    ring, source, note = opendata.footprint_any(*PRINCETON, sid="R1FX6EmdcDt")
+    assert source == "osm" and "by choice" in note and not calls
 
 
 def test_princeton_site_comes_from_open_data(princeton_block):
@@ -155,8 +169,9 @@ def _venue_cached():
 
 @pytest.mark.skipif(not _venue_cached(), reason="needs the cached rabinowitz scan, osm and usgs responses")
 def test_rabinowitz_hall_outdoor_site(monkeypatch):
-    """princeton, no vexcel: osm footprint, usgs slopes, the scan's walls fitted inside the h-shaped footprint,
-    and the entrance arcade on the washington road side, where an osm footway meets the facade."""
+    """rabinowitz hall, pinned to open data although it is inside vexcel's geofence now: osm footprint, usgs
+    slopes, the scan's walls fitted inside the h-shaped footprint, and the entrance arcade on the washington road
+    side, where an osm footway meets the facade."""
     from nudge import building
     from nudge.mp import ROOT
     # the place catalog names the "Entrance arcade"; tests otherwise get an empty dossier folder (read only here)
@@ -169,10 +184,15 @@ def test_rabinowitz_hall_outdoor_site(monkeypatch):
     assert site.geo.source.startswith("footprint-partial") and site.geo.ok and site.geo.rmse_m < 1.5
     front = site.portals[0]
     assert front["room"] == "Entrance arcade" and front["faces"] == "west"
-    assert front["evidence"] == {"basis": "indoor entrance zone"} and front["confirmed"] is False
+    seen = (ROOT / "cache" / "dossiers" / "R1FX6EmdcDt" / "entrances.json").exists()
+    if seen:   # the site-surveyor checked the facade in vexcel's obliques: the same door, now confirmed
+        assert front["confirmed"] is True and front["evidence"]["source"] == "vexcel oblique"
+        assert front["risers"] == 0
+    else:
+        assert front["evidence"] == {"basis": "indoor entrance zone"} and front["confirmed"] is False
     start = (40.3493295, -74.6561356)  # osm node 8948919411, washington road footway, ~54 m from the door
     plan = handoff.plan_door_to_door(start, "R1FX6EmdcDt", "Grand staircase", "blind", site=site)
     assert 40 < plan["outdoor"]["length_m"] < 120 and plan["indoor"]["length_m"] > 0
-    assert "not confirmed from imagery" in plan["transition"]["text"]
+    assert seen or "not confirmed from imagery" in plan["transition"]["text"]
     handoff._SITES.pop("R1FX6EmdcDt", None)
     T._graph_cached.cache_clear()

@@ -336,12 +336,42 @@ def describe(chunk):
     return out
 
 
+def survey_site(sid, model=None, on_event=print):
+    """only the site-surveyor step, as the lead would delegate it: the approach and the entrance, checked against
+    the vexcel facade imagery. for outdoor data that arrived after the survey (princeton entered vexcel's
+    geofence late). writes /dossier/site.md and, through confirm_entrance, /dossier/entrances.json."""
+    from langchain_core.messages import HumanMessage
+    m = model if model is not None else llm.model(role="vision")
+    agent = create_deep_agent(model=m, tools=SUBAGENTS["site-surveyor"][1], system_prompt=_prompt("site-surveyor"),
+                              backend=backend(sid), skills=["/agent/skills/"], permissions=READ_ONLY_AGENT,
+                              middleware=[tool_errors_as_messages, images_to_user_turn], name="site-surveyor")
+    config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 150}
+    try:  # the ops dashboard shows it like any other agent run
+        from ..traces import config_with, publish
+        config = config_with(config, "site surveyor")
+        publish("agent", event="run_start", agent="site surveyor", depth=0, sid=sid, goal="entrance check")
+    except Exception:
+        pass
+    ask = (f"sid: {sid}. Survey the approach. Above all, check the entrance candidates against the Vexcel facade "
+           f"imagery and confirm the one a blind or wheelchair visitor should use, then write /dossier/site.md.")
+    result = agent.invoke({"messages": [HumanMessage(content=ask)]}, config=config)
+    last = next((x for x in reversed(result["messages"]) if type(x).__name__ == "AIMessage" and x.text), None)
+    for x in result["messages"]:
+        for tc in getattr(x, "tool_calls", None) or []:
+            on_event(f"[site-surveyor] {tc['name']}({', '.join(f'{k}={v}' for k, v in tc['args'].items() if k != 'sid')})")
+    return last.text if last else ""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sid")
     ap.add_argument("--model", default=None)
     ap.add_argument("--goal", default=None, help="route-scoped quick survey toward this room first")
+    ap.add_argument("--site", action="store_true", help="only the site survey: approach and entrance from the imagery")
     a = ap.parse_args()
+    if a.site:
+        print(survey_site(a.sid, llm.model(a.model) if a.model else None))
+        return
     focus = None
     if a.goal:
         from .tools import route_focus

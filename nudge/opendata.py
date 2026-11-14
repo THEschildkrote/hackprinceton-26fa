@@ -1,4 +1,4 @@
-"""open-data fallbacks for the outdoor leg where vexcel has no coverage (hackathon keys: houston and la only).
+"""open-data fallbacks for the outdoor leg where vexcel has no coverage (see VEXCEL_AREAS for where it does).
 
   footprint:  openstreetmap building polygons via overpass (same mirrors, cache and user-agent as outdoor.py)
   elevation:  usgs 3dep (the data behind the elevation point query service), us only; sampled on a grid in
@@ -29,12 +29,29 @@ WORKERS = 2           # polite concurrency: each request takes ~15 s, and more a
 USGS_TRANSPORT = None  # tests swap in a fake: fn(lon, lat) -> metres or None
 FORCE = False          # open data even inside vexcel coverage (python -m nudge.opendata SID --open)
 
-# hackathon vexcel coverage (anything outside answers 403 geofencing)
-VEXCEL_BOXES = {"houston": (29.4, 30.3, -96.0, -94.9), "los angeles": (33.6, 34.5, -118.8, -117.6)}
+# hackathon vexcel geofence, (lon, lat) rings as the track announced them; outside answers 403 geofencing
+VEXCEL_AREAS = {
+    "los angeles": [(-119.0134, 33.0945), (-116.8949, 33.0945), (-116.8949, 34.3154), (-119.0134, 34.3154)],
+    "houston": [(-96.2185, 29.0173), (-94.5758, 29.0173), (-94.5758, 30.3804), (-96.2185, 30.3804)],
+    "northern california": [(-124.7437, 38.0655), (-118.9869, 38.0655), (-118.9869, 41.9596), (-124.7437, 41.9596)],
+    "gulf coast": [(-88.2145, 30.8016), (-88.3285, 30.132), (-86.2124, 30.2269), (-85.5125, 29.6277),
+                   (-84.8004, 29.5039), (-84.9062, 30.7876)],
+    "princeton": [(-74.6943406774712, 40.31565454915983), (-74.59812447568899, 40.31565454915983),
+                  (-74.59812447568899, 40.3713908156042), (-74.6943406774712, 40.3713908156042)],
+}
+
+
+# scans whose outdoor site stays on open data inside the geofence, and why
+OPEN_DATA_SIDS = {
+    # rabinowitz hall: vexcel's footprint here is a much larger structure (the scan touches 7% of it, and the
+    # fit is ambiguous by a half turn), and its dtm climbs 4 m along the flat washington road footway where
+    # usgs lidar is level. osm's outline fits the scan at 0.7 m with the entrance arcade on the right side.
+    "R1FX6EmdcDt": "vexcel's footprint and ground model don't match this building yet",
+}
 
 
 def in_vexcel_coverage(lat, lon):
-    return any(s <= lat <= n and w <= lon <= e for s, n, w, e in VEXCEL_BOXES.values())
+    return any(_ring_contains(ring, lon, lat) for ring in VEXCEL_AREAS.values())
 
 
 # footprint
@@ -274,9 +291,12 @@ def overlay_png(site, path, px=1000, half_m=None):
 
 # choosing a source
 
-def footprint_any(lat, lon):
-    """(ring, source, note). vexcel inside its coverage, osm otherwise or when vexcel refuses."""
-    if in_vexcel_coverage(lat, lon) and not FORCE:
+def footprint_any(lat, lon, sid=None):
+    """(ring, source, note). vexcel inside its coverage, osm otherwise, when vexcel refuses, or for a scan
+    pinned to open data (OPEN_DATA_SIDS)."""
+    if sid in OPEN_DATA_SIDS:
+        note = f"open data by choice: {OPEN_DATA_SIDS[sid]}"
+    elif in_vexcel_coverage(lat, lon) and not FORCE:
         try:
             return vexcel.footprint(lat, lon), "vexcel", None
         except Exception as ex:  # 401/403/no structure: fall through
@@ -296,7 +316,7 @@ def elevation_for(lat, lon):
 
 def main(argv=None):
     """python -m nudge.opendata SID [--open] [--refresh]: the outdoor site for any scan with a geolocation, with
-    no vexcel outside houston/la (--open forces open data inside them too). prints the fit and entrances and
+    no vexcel outside its geofence (--open forces open data inside it too). prints the fit and entrances and
     writes cache/bringup/<sid>_georef_osm.png."""
     import argparse
     from . import handoff
