@@ -1,7 +1,7 @@
 import SwiftUI
 
-// setup happens once (a helper or the traveller with voiceover). after that the screen is one dark,
-// full-screen control: everything is spoken, the phone goes on the traveller's back.
+// setup happens once. after that the screen shows one status line; everything is spoken and the
+// phone rides on the traveller's back.
 
 struct TravellerRoot: View {
     @Environment(TravellerSettings.self) private var settings
@@ -31,40 +31,28 @@ struct MainView: View {
     let traveller: Traveller
     @Binding var showSetup: Bool
 
+    // one line, always the most important thing: no connection beats everything else
+    private var line: String {
+        let s = traveller.piReachable ? traveller.status : "Pi not reachable"
+        return s.hasSuffix(".") ? String(s.dropLast()) : s
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 24) {
-                Spacer()
-                Text(traveller.status)
-                    .font(.largeTitle.bold())
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white)
-                if let d = traveller.distanceToNext, traveller.phase == .walking {
-                    Text(fmtMetres(d)).font(.system(size: 64, weight: .heavy)).foregroundStyle(.yellow)
-                }
-                // a small readout for a sighted helper; the traveller never needs it
-                VStack(spacing: 6) {
-                    Text("\(traveller.steps) steps · \(traveller.heading.map { "\(Int($0))°" } ?? "no direction yet")")
-                    if traveller.compassPoor { Text("Direction is unreliable: keep the phone upright").foregroundStyle(.orange) }
-                    if !traveller.piReachable { Text("Pi not reachable").foregroundStyle(.red) }
-                    if !traveller.heard.isEmpty { Text("Heard: “\(traveller.heard)”") }
-                }
-                .font(.callout)
-                .foregroundStyle(.gray)
-                Spacer()
-                Button("Setup") { showSetup = true }
-                    .font(.footnote)
-                    .foregroundStyle(.gray)
-                    .accessibilityHint("Server, step length and how the phone is worn")
-            }
-            .padding()
+            Text(line)
+                .font(.largeTitle.bold())
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .padding(32)
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { Task { await traveller.startLastTrip() } }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(traveller.status)
-        .accessibilityHint("Double tap to start your last trip. Or say where am I, repeat, how far, or I need help.")
+        .onLongPressGesture(minimumDuration: 2) { showSetup = true }   // for a sighted helper
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line)
+        .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityHint("Double tap to start your last trip.")
         .accessibilityAction(named: "Start last trip") { Task { await traveller.startLastTrip() } }
         .accessibilityAction(named: "Stop trip") { traveller.stopTrip() }
         .accessibilityAction(named: "Setup") { showSetup = true }
@@ -82,57 +70,67 @@ struct SetupView: View {
         @Bindable var s = settings
         NavigationStack {
             Form {
-                Section {
-                    TextField("http://172.20.10.2:8765", text: $s.server)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .accessibilityLabel("Pi address")
-                    Button(working ? "Testing…" : "Test connection") { Task { await test() } }
-                        .frame(minHeight: 44)
-                    if !testResult.isEmpty { Text(testResult).accessibilityAddTraits(.updatesFrequently) }
-                } header: { Text("Raspberry Pi") } footer: {
-                    Text("On iPhone hotspot the Pi is usually 172.20.10.2–14, port 8765.")
+                Section("Raspberry Pi") {
+                    TextField("Pi address", text: $s.server)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button {
+                        Task { await test() }
+                    } label: {
+                        HStack {
+                            Text("Test")
+                            Spacer()
+                            if working { ProgressView() } else if !testResult.isEmpty {
+                                Text(testResult).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .frame(minHeight: 44)
                 }
 
-                Section("How the phone is worn") {
+                Section("Wear") {
                     Picker("Mount", selection: $s.mountRaw) {
                         ForEach(Mount.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                     .pickerStyle(.inline)
-                    Text("Wear it upright, top edge up, in a back pocket or a backpack pouch.").font(.footnote)
+                    .labelsHidden()
                 }
 
-                Section {
-                    Stepper("Step length \(String(format: "%.2f", s.stepM)) m", value: $s.stepM, in: 0.3...1.2, step: 0.05)
+                Section("Step length") {
+                    Stepper(value: $s.stepM, in: 0.3...1.2, step: 0.05) {
+                        Text(String(format: "%.2f m", s.stepM)).monospacedDigit()
+                    }
                     HStack {
-                        TextField("Metres for 10 steps", text: $metres).keyboardType(.decimalPad)
+                        TextField("Metres for 10 steps", text: $metres)
+                            .keyboardType(.decimalPad)
                         Button("Set") {
                             if let v = Double(metres.replacingOccurrences(of: ",", with: ".")), let m = stepLength(metres: v) {
                                 s.stepM = m
                                 metres = ""
                             }
                         }
+                        .disabled(metres.isEmpty)
                     }
-                } header: { Text("Walking") } footer: {
-                    Text("Walk 10 normal steps, measure how far you went, and enter it.")
                 }
 
                 Section("Caretaker") {
-                    TextField("Your first name (optional)", text: $s.name)
-                    if let code = s.code {
-                        Text("Your caretaker enters code \(code) in Nudge Care, or texts follow \(code) to the Nudge iMessage line.")
-                            .font(.headline)
-                    } else {
-                        Text("A code appears here once the Pi is reachable.")
+                    TextField("Name", text: $s.name)
+                    LabeledContent("Code") {
+                        Text(s.code ?? "Not set")
+                            .font(.headline.monospacedDigit())
+                            .foregroundStyle(s.code == nil ? .secondary : .primary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
 
                 Section {
                     Button("Done") { Task { await finish() } }
-                        .frame(maxWidth: .infinity, minHeight: 64)
-                        .font(.title2.bold())
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 50)
                 }
             }
-            .navigationTitle("Nudge setup")
+            .navigationTitle("Setup")
         }
     }
 
@@ -141,10 +139,10 @@ struct SetupView: View {
         defer { working = false }
         do {
             try await settings.api.ping()
-            testResult = "Connected to the Pi."
+            testResult = "Connected"
             await register()
         } catch {
-            testResult = error.localizedDescription
+            testResult = "Not reachable"
         }
         UIAccessibility.post(notification: .announcement, argument: testResult)
     }

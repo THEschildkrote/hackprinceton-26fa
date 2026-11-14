@@ -11,7 +11,6 @@ struct CareRoot: View {
                 PairView()
             }
         }
-        .animation(.smooth, value: store.paired)
         .task { store.start() }
     }
 }
@@ -27,63 +26,41 @@ struct PairView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 28) {
-                Spacer()
-                Image(systemName: "figure.walk.motion")
-                    .font(.system(size: 54, weight: .semibold))
-                    .foregroundStyle(Theme.navy)
-                    .frame(width: 116, height: 116)
-                    .background(Theme.yellow, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.9), lineWidth: 4))
-                    .shadow(color: .black.opacity(0.25), radius: 14, y: 8)
-                    .symbolEffect(.pulse)
-                    .accessibilityHidden(true)
-                VStack(spacing: 8) {
-                    Text("Follow a traveller").font(.largeTitle.bold()).foregroundStyle(.white)
-                    Text("Enter the 6-digit code shown in their Nudge setup.")
-                        .multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.9))
+            Form {
+                Section {
+                    TextField("6-digit code", text: $code)
+                        .keyboardType(.numberPad)
+                        .font(.title2.monospacedDigit())
+                        .onChange(of: code) { _, v in code = String(v.filter(\.isNumber).prefix(6)) }
+                } header: {
+                    Text("Traveller code")
+                } footer: {
+                    if !error.isEmpty { Text(error).foregroundStyle(Theme.red) }
                 }
-                TextField("000000", text: $code)
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.navy)
-                    .multilineTextAlignment(.center)
-                    .keyboardType(.numberPad)
-                    .padding()
-                    .background(.white, in: RoundedRectangle(cornerRadius: 20))
-                    .shadow(color: .black.opacity(0.2), radius: 10, y: 5)
-                    .onChange(of: code) { _, v in code = String(v.filter(\.isNumber).prefix(6)) }
-                if !error.isEmpty {
-                    // red text on blue would be hard to read, so the error is a white-on-red pill
-                    Text(error).font(.callout.weight(.semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Theme.red, in: Capsule())
+                Section {
+                    Button {
+                        Task { await pair() }
+                    } label: {
+                        HStack {
+                            Text("Follow")
+                            if working { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(code.count != 6 || working)
                 }
-                Button {
-                    Task { await pair() }
-                } label: {
-                    Label(working ? "Pairing…" : "Follow", systemImage: "link")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(code.count != 6 || working)
-                Spacer()
             }
-            .padding(24)
-            .background(
-                LinearGradient(colors: [Theme.blue, Theme.navy], startPoint: .top, endPoint: .bottom)
-                    .ignoresSafeArea()
-            )
+            .navigationTitle("Follow")
             .toolbar {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .tint(.white)
                     .accessibilityLabel("Settings")
             }
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showSettings) { CareSettingsView().environment(store) }
         }
     }
 
     private func pair() async {
         working = true
+        error = ""
         defer { working = false }
         do {
             try await store.pair(code: code)
@@ -104,30 +81,22 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    if let a = store.alert { AlertBanner(message: a) }
-                    StatusCard()
-                    MapCard()
-                    TimelineCard()
-                }
-                .padding()
-                .animation(.smooth, value: store.alert)
+            List {
+                if let a = store.alert { HelpSection(message: a) }
+                StatusSection()
+                MapSection()
+                ActivitySection()
             }
-            .background(Theme.paper)
+            .listStyle(.insetGrouped)
+            .animation(.default, value: store.alert)
             .navigationTitle(store.displayName)
-            .navigationBarTitleDisplayMode(.inline)   // the large title vanished against the blue bar
-            .brandBar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .tint(.white)
                         .accessibilityLabel("Settings")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    // yellow on the blue bar is 6.7:1; it would fail on white, which is why it lives here
-                    Button { showTrip = true } label: { Label("Send trip", systemImage: "paperplane.fill") }
-                        .tint(Theme.yellow)
+                    Button("Send Trip") { showTrip = true }
                 }
             }
             .sheet(isPresented: $showTrip) { SendTripView().environment(store) }
@@ -136,138 +105,131 @@ struct HomeView: View {
     }
 }
 
-struct AlertBanner: View {
+// the only loud thing in the app
+struct HelpSection: View {
     @Environment(CareStore.self) private var store
     let message: CareMessage
 
+    private var callURL: URL? {
+        let n = store.callNumber.filter { $0.isNumber || $0 == "+" }
+        return n.isEmpty ? nil : URL(string: "tel:\(n)")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.yellow)  // 3.8:1, an icon not text
-                Text("Needs attention").font(.headline)
-            }
-            Text(message.text).font(.body)
-            HStack {
-                if let url = URL(string: "tel:\(store.callNumber.filter { $0.isNumber || $0 == "+" })"),
-                   !store.callNumber.isEmpty {
-                    Link(destination: url) {
-                        Label("Call", systemImage: "phone.fill").frame(maxWidth: .infinity, minHeight: 44)
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Needs help", systemImage: "exclamationmark.triangle.fill").font(.headline)
+                Text(message.text)
+                HStack(spacing: 12) {
+                    if let url = callURL {
+                        Link(destination: url) {
+                            Text("Call").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white)
+                        .foregroundStyle(Theme.red)
                     }
-                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(Theme.red)
+                    Button { store.dismissAlert() } label: {
+                        Text("Dismiss").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
                 }
-                Button("Dismiss") { store.dismissAlert() }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .buttonStyle(.bordered).tint(.white)
             }
+            .foregroundStyle(.white)
+            .padding(.vertical, 4)
+            .listRowBackground(Theme.red)
+            .accessibilityElement(children: .contain)
         }
-        .foregroundStyle(.white)
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.red, in: RoundedRectangle(cornerRadius: 22))
-        .shadow(color: Theme.red.opacity(0.35), radius: 12, y: 6)
-        .transition(.move(edge: .top).combined(with: .opacity))
-        .accessibilityElement(children: .contain)
     }
 }
 
-// state -> words, symbol, badge fill, symbol colour.
-// the symbol sits on a filled circle, so each pair is chosen for contrast on its own fill:
-// white on blue or red, navy on yellow. that is how yellow can mean "careful" without
-// ever being yellow-on-white.
-private func look(_ state: String?) -> (String, String, Color, Color) {
+// state -> words and a status icon. the word carries the meaning; the icon and colour only back it up.
+private func stateLook(_ state: String?) -> (word: String, symbol: String, color: Color) {
     switch state {
-    case "walking": return ("Walking", "figure.walk", Theme.blue, .white)
-    case "arrived": return ("Arrived", "checkmark", Theme.navy, Theme.yellow)
-    case "help": return ("Needs help", "exclamationmark", Theme.red, .white)
-    case "unmapped": return ("Off the map", "questionmark", Theme.yellow, Theme.navy)
-    case "off_route", "rerouting": return ("Finding a new way", "arrow.triangle.turn.up.right.diamond.fill", Theme.yellow, Theme.navy)
-    default: return ("Not on a trip", "moon.zzz.fill", Color(.systemGray4), Theme.navy)
+    case "walking": return ("Walking", "figure.walk", Theme.blue)
+    case "arrived": return ("Arrived", "checkmark.circle.fill", Theme.navy)
+    case "help": return ("Needs help", "exclamationmark.triangle.fill", Theme.red)
+    case "unmapped": return ("Off the map", "questionmark.circle.fill", Theme.navy)
+    case "off_route", "rerouting": return ("Rerouting", "arrow.triangle.branch", Theme.navy)
+    default: return ("Not on a trip", "pause.circle.fill", .secondary)
     }
 }
 
-struct StatusCard: View {
+struct StatusSection: View {
     @Environment(CareStore.self) private var store
 
     var body: some View {
         let s = store.status
-        let (word, symbol, fill, glyph) = look(s?.state)
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: symbol).font(.title3.weight(.bold)).foregroundStyle(glyph)
-                    .frame(width: 48, height: 48)
-                    .background(fill, in: Circle())
-                    .symbolEffect(.bounce, value: s?.state)
-                VStack(alignment: .leading) {
-                    Text(word).font(.title2.bold())
-                    if let goal = s?.goal, s?.state != nil, s?.state != "idle" {
-                        Text("to \(goal)").foregroundStyle(.secondary)
+        let look = stateLook(s?.state)
+        let onTrip = s?.state != nil && s?.state != "idle"
+        Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Label {
+                    Text(look.word).font(.title2.bold())
+                } icon: {
+                    Image(systemName: look.symbol).foregroundStyle(look.color)
+                }
+                if onTrip, let goal = s?.goal {
+                    Text("to \(goal)").foregroundStyle(.secondary)
+                }
+                let place = [s?.place, s?.floor].compactMap { $0 }.joined(separator: ", ")
+                if !place.isEmpty {
+                    Text(place).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 2) {
+                GridRow {
+                    Text("Left"); Text("ETA"); Text("Updated")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                GridRow {
+                    Text(s?.remaining_m.map(fmtMetres) ?? "-")
+                    Text(s?.eta_min.map { "\(Int($0)) min" } ?? "-")
+                    if let ts = s?.last_update_ts {
+                        Text(Date(timeIntervalSince1970: ts), format: .dateTime.hour().minute())
+                    } else {
+                        Text("-")
                     }
                 }
-                Spacer()
-                if !store.reachable {
-                    Label("Offline", systemImage: "wifi.slash").font(.caption.weight(.semibold)).foregroundStyle(Theme.red)
-                }
+                .font(.headline)
+                .monospacedDigit()
             }
-            HStack(spacing: 12) {
-                Metric(title: "Where", value: [s?.place, s?.floor].compactMap { $0 }.joined(separator: " · "), symbol: "mappin.and.ellipse")
-                Metric(title: "Left", value: s?.remaining_m.map(fmtMetres) ?? "-", symbol: "ruler")
-                Metric(title: "ETA", value: s?.eta_min.map { "\(Int($0)) min" } ?? "-", symbol: "clock")
-            }
-            if let ts = s?.last_update_ts {
-                Text("Updated \(Date(timeIntervalSince1970: ts), style: .relative) ago")
-                    .font(.caption).foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+
+            if !store.reachable {
+                Label("Offline", systemImage: "wifi.slash").foregroundStyle(Theme.red)
             }
             if let sent = store.tripSentTo {
-                Label("Trip sent to \(sent): waiting for \(store.displayName) to start", systemImage: "paperplane")
-                    .font(.callout).foregroundStyle(.tint)
+                Text("Trip sent: \(sent)").foregroundStyle(.secondary)
             }
         }
-        .padding()
-        .card()
-        .accessibilityElement(children: .combine)
     }
 }
 
-struct Metric: View {
-    let title: String
-    let value: String
-    let symbol: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(title, systemImage: symbol).font(.caption).foregroundStyle(.secondary)
-            Text(value.isEmpty ? "-" : value).font(.headline).lineLimit(2).minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Theme.mist, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-struct MapCard: View {
+struct MapSection: View {
     @Environment(CareStore.self) private var store
 
     var body: some View {
         let s = store.status
         let sid = s?.sid ?? s?.position?.sid
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Live map", systemImage: "map").font(.headline)
-            if let sid, let plan = store.plans[sid] {
-                let floor = s?.position?.floor ?? plan.floors.first?.id ?? ""
+        if let sid, let plan = store.plans[sid] {
+            let floor = s?.position?.floor ?? plan.floors.first?.id ?? ""
+            Section(plan.floors.first(where: { $0.id == floor })?.label ?? "Map") {
                 FloorPlanView(plan: plan, floor: floor, route: s?.route?.points ?? [], position: s?.position)
-                    .frame(height: 320)
-                    .animation(.smooth(duration: 0.6), value: s?.position)
-                if let label = plan.floors.first(where: { $0.id == floor })?.label {
-                    Text(label).font(.caption).foregroundStyle(.secondary)
-                }
-            } else {
-                ContentUnavailableView("No live trip", systemImage: "map",
-                                       description: Text("The map appears when \(store.displayName) starts walking."))
-                    .frame(height: 220)
+                    .frame(height: 300)
+                    .animation(.easeInOut(duration: 0.5), value: s?.position)
+            }
+        } else {
+            Section("Map") {
+                ContentUnavailableView("No trip", systemImage: "map")
+                    .frame(height: 160)
             }
         }
-        .padding()
-        .card()
     }
 }
 
@@ -278,7 +240,7 @@ struct TimelineItem: Identifiable {
     let urgent: Bool
 }
 
-struct TimelineCard: View {
+struct ActivitySection: View {
     @Environment(CareStore.self) private var store
 
     // live feed first; before any arrives, the recent events from the status
@@ -294,40 +256,28 @@ struct TimelineCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Timeline", systemImage: "list.bullet.rectangle").font(.headline)
+        Section("Activity") {
             if items.isEmpty {
-                Text("Nothing yet.").foregroundStyle(.secondary)
+                Text("No activity").foregroundStyle(.secondary)
             }
             ForEach(items) { item in
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: symbol(for: item.text, urgent: item.urgent))
-                        .foregroundStyle(item.urgent ? Theme.red : Theme.blue)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    if let ts = item.ts {
+                        Text(Date(timeIntervalSince1970: ts), format: .dateTime.hour().minute())
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    if item.urgent {
+                        Label(item.text, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.red)
+                    } else {
                         Text(item.text)
-                        if let ts = item.ts {
-                            Text(Date(timeIntervalSince1970: ts), style: .time).font(.caption).foregroundStyle(.secondary)
-                        }
                     }
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityElement(children: .combine)
             }
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-        .animation(.smooth, value: store.messages)
-    }
-
-    private func symbol(for text: String, urgent: Bool) -> String {
-        let t = text.lowercased()
-        if urgent { return "exclamationmark.triangle.fill" }
-        if t.contains("arrived") { return "checkmark.circle.fill" }
-        if t.contains("floor") { return "stairs" }
-        if t.contains("route") || t.contains("way") { return "arrow.triangle.turn.up.right.diamond" }
-        if t.contains("started") { return "figure.walk" }
-        return "circle.fill"
     }
 }
 
@@ -350,52 +300,55 @@ struct SendTripView: View {
             Form {
                 Section("Building") {
                     if let b = building {
-                        HStack {
-                            Label(b.label, systemImage: "building.2.fill")
-                            Spacer()
+                        LabeledContent(b.label) {
                             Button("Change") { building = nil; places = []; destination = nil }
                         }
                     } else {
-                        TextField("Search an address or building", text: $query)
+                        TextField("Search", text: $query)
                             .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                         ForEach(buildings) { b in
-                            Button { Task { await choose(b) } } label: {
-                                Label(b.label, systemImage: "building.2")
-                            }
+                            Button(b.label) { Task { await choose(b) } }
+                                .foregroundStyle(.primary)
                         }
                     }
                 }
                 if building != nil {
-                    Section("Destination") {
-                        if places.isEmpty { ProgressView() }
-                        Picker("Go to", selection: $destination) {
-                            Text("Choose…").tag(String?.none)
-                            ForEach(places, id: \.self) { Text($0).tag(String?.some($0)) }
+                    Section {
+                        if places.isEmpty {
+                            ProgressView()
+                        } else {
+                            Picker("Destination", selection: $destination) {
+                                Text("None").tag(String?.none)
+                                ForEach(places, id: \.self) { Text($0).tag(String?.some($0)) }
+                            }
+                            .pickerStyle(.navigationLink)
                         }
-                        .pickerStyle(.navigationLink)
                     }
-                    Section("Travels") {
-                        Picker("Travels", selection: $profile) {
-                            Label("With a cane", systemImage: "figure.walk").tag("blind")
-                            Label("In a wheelchair", systemImage: "figure.roll").tag("wheelchair")
+                    Section("Mobility") {
+                        Picker("Mobility", selection: $profile) {
+                            Text("Cane").tag("blind")
+                            Text("Wheelchair").tag("wheelchair")
                         }
-                        .pickerStyle(.inline)
+                        .pickerStyle(.segmented)
                         .labelsHidden()
                     }
                 }
-                if !error.isEmpty { Text(error).foregroundStyle(Theme.red) }
+                if !error.isEmpty {
+                    Section { Text(error).foregroundStyle(Theme.red) }
+                }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.paper)
-            .brandBar()
-            .navigationTitle("Send a trip")
+            .navigationTitle("Send Trip")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // the app tint is blue, which would vanish on the blue bar
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.tint(.white) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(sending ? "Sending…" : "Send") { Task { await send() } }
-                        .tint(Theme.yellow)
-                        .disabled(building == nil || destination == nil || sending)
+                    if sending {
+                        ProgressView()
+                    } else {
+                        Button("Send") { Task { await send() } }
+                            .disabled(building == nil || destination == nil)
+                    }
                 }
             }
             .task(id: query) { await search() }
@@ -416,6 +369,7 @@ struct SendTripView: View {
     private func send() async {
         guard let b = building, let to = destination else { return }
         sending = true
+        error = ""
         defer { sending = false }
         do {
             try await store.sendTrip(sid: b.sid, to: to, profile: profile)
@@ -432,37 +386,58 @@ struct CareSettingsView: View {
     @Environment(CareStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var test = ""
+    @State private var testing = false
 
     var body: some View {
         @Bindable var s = store
         NavigationStack {
             Form {
-                Section {
-                    TextField("http://172.20.10.2:8765", text: $s.server)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button("Test connection") {
-                        Task {
-                            do { try await store.api.ping(); test = "Connected." } catch { test = error.localizedDescription }
+                Section("Server") {
+                    TextField("Pi address", text: $s.server)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button {
+                        Task { await runTest() }
+                    } label: {
+                        HStack {
+                            Text("Test")
+                            Spacer()
+                            if testing { ProgressView() } else if !test.isEmpty {
+                                Text(test).foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    if !test.isEmpty { Text(test).font(.callout) }
-                } header: { Text("Nudge server") } footer: {
-                    Text("The Raspberry Pi running Nudge. On the traveller's iPhone hotspot it's usually 172.20.10.2–14, port 8765.")
                 }
                 Section("Emergency call") {
-                    TextField("Phone number to call", text: $s.callNumber).keyboardType(.phonePad)
+                    TextField("Phone number", text: $s.callNumber)
+                        .keyboardType(.phonePad)
                 }
                 if store.paired {
                     Section {
-                        Button("Stop following \(store.displayName)", role: .destructive) { store.unpair(); dismiss() }
+                        Button("Stop Following \(store.displayName)", role: .destructive) {
+                            store.unpair()
+                            dismiss()
+                        }
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.paper)
-            .brandBar()
             .navigationTitle("Settings")
-            .toolbar { Button("Done") { dismiss() }.tint(Theme.yellow) }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    private func runTest() async {
+        testing = true
+        defer { testing = false }
+        do {
+            try await store.api.ping()
+            test = "Connected"
+        } catch {
+            test = "Not reachable"
         }
     }
 }

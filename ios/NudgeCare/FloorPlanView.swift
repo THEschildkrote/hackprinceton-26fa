@@ -1,6 +1,6 @@
 import SwiftUI
 
-// the traveller's current floor, drawn from the walk graph: rooms, walls, the route, and a pulsing dot.
+// the traveller's current floor, drawn from the walk graph: rooms, walls, the route, and their position.
 // model coordinates are metres with y up; the view flips y so north-ish stays up like the floor plan.
 struct FloorPlanView: View {
     let plan: FloorPlan
@@ -76,7 +76,7 @@ struct FloorPlanView: View {
                     }
                 }
                 if let p = position, p.floor == floor {
-                    PulsingDot().position(map(p.x, p.y))
+                    PositionDot().position(map(p.x, p.y))
                 }
             }
         }
@@ -85,17 +85,10 @@ struct FloorPlanView: View {
     }
 }
 
-struct PulsingDot: View {
+// red against the blue route, so the traveller is the first thing the eye finds
+struct PositionDot: View {
     var body: some View {
-        ZStack {
-            Circle().fill(Theme.red.opacity(0.3)).frame(width: 34, height: 34)
-                .phaseAnimator([false, true]) { v, on in
-                    v.scaleEffect(on ? 1.4 : 0.7).opacity(on ? 0 : 1)
-                } animation: { _ in .easeOut(duration: 1.4) }
-            // red against the blue route, so the traveller is the first thing the eye finds
-            Circle().fill(Theme.red).frame(width: 16, height: 16)
-                .overlay(Circle().stroke(.white, lineWidth: 3))
-                .shadow(radius: 3)
-        }
+        Circle().fill(Theme.red).frame(width: 16, height: 16)
+            .overlay(Circle().stroke(.white, lineWidth: 3))
     }
 }
