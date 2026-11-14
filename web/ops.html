@@ -457,7 +457,7 @@ function renderDevices() {
     ["Phone", cell(dev("phone"), "Online", "Not connected")],
     ["Caretaker app", cell(dev("care"), "Watching", "Not open")],
     ["iMessage", n ? `<span class="on">${n} paired</span>` : `<span class="off">None paired</span>`],
-    ["Collar", !b?.attached ? `<span class="off">Off</span>` : b.mode === "dry" ? "<span>Dry run</span>" : `<span class="on">${esc(cap(b.mode))}</span>`],
+    ["Collar", !b?.attached ? `<span class="off">Off</span>` : b.mode === "dry" ? "<span>Dry run</span>" : `<span class="on">${b.mode === "pca" ? "Belt" : "Collar"}</span>`],
   ];
   put("devices", rows.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join(""));
   if (S.session) return;

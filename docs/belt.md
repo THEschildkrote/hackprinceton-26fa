@@ -11,7 +11,26 @@ handful of HTTP calls, in `nudge/belt.py`.
 It is separate from the collar in [band-pi.md](band-pi.md). `nudge/band.py` drives servos on GPIO 12 and
 13; the belt's servos are on the PCA9685 over I2C, which that driver does not speak. Use one or the other.
 
-## Running it
+## The demo setup: our phone app tracks, our server taps
+
+For the demo the Nudge iPhone app is the only source of position. It posts steps and compass to our
+server, our tracker keeps the wearer on the route, and our server drives the belt's servos itself with the
+same cue grammar as the collar (`nudge/band.py`, `PcaBand`). The belt's own runtime is not used, so stop it
+first: it owns the I2C bus.
+
+On the Pi (I2C enabled in `raspi-config`):
+
+```bash
+pip install smbus2
+OPENBLAS_NUM_THREADS=1 NUDGE_BAND=pca python -m nudge.photon_bot
+```
+
+`NUDGE_BELT_CHANNELS` (default `0,1`, left then right) and `NUDGE_BELT_I2C` (default `0x40`) say where the
+servos are on the board. With `NUDGE_BAND` set the server never talks to the belt runtime, even if
+`NUDGE_BELT_URL` is also set. Every trip that starts takes the band over. Check on the hardware that a
+tap swings the right way: the angles are the collar's.
+
+## Running it with the belt's own runtime
 
 On the Pi, the on-body runtime is already listening on port 8000. On the laptop:
 

@@ -41,6 +41,8 @@ servo care, which matters when it is strapped to someone
 - software pwm jitters and makes the horn twitch at rest. this uses pigpio for hardware
   timed pulses when the daemon is up (`sudo pigpiod`) and falls back quietly if not.
 """
+import os
+import time
 from collections import namedtuple
 
 REST_DEG = 0.0      # horn parked, off the shoulder
@@ -325,6 +327,74 @@ class ServoBand:
             except Exception:
                 pass
             servo.close()
+
+
+class PcaBand:
+    """the belt's two servos on a pca9685 board over i2c (NUDGE_BAND=pca).
+
+    the same angles and pulse widths as ServoBand, so a stroke feels the same on the belt as on the
+    collar. a detached channel is switched fully off, so the servo is silent between strokes.
+    channels and address come from NUDGE_BELT_CHANNELS (default "0,1", left then right) and
+    NUDGE_BELT_I2C (default 0x40).
+    """
+
+    MODE1, MODE2, PRESCALE, LED0 = 0x00, 0x01, 0xFE, 0x06
+
+    def __init__(self, channels=(0, 1), address=0x40, bus=None, busno=1, max_deg=90.0,
+                 min_pulse_ms=0.5, max_pulse_ms=2.4, hz=50):
+        if bus is None:
+            try:
+                from smbus2 import SMBus
+            except ImportError:
+                from smbus import SMBus  # raspberry pi os ships python3-smbus
+            bus = SMBus(busno)
+        self.bus, self.addr, self.ch = bus, address, tuple(channels)
+        self.max_deg, self.lo, self.hi, self.hz = max_deg, min_pulse_ms, max_pulse_ms, hz
+        w = bus.write_byte_data
+        w(address, self.MODE1, 0x10)                               # asleep, to set the prescaler
+        w(address, self.PRESCALE, round(25e6 / (4096 * hz)) - 1)    # 25 MHz oscillator -> 50 Hz
+        w(address, self.MODE1, 0x00)
+        time.sleep(0.005)                                           # the oscillator settles
+        w(address, self.MODE1, 0xA0)                                # restart, auto increment
+        w(address, self.MODE2, 0x04)                                # totem pole outputs
+        self._state = (None, None)
+        for c in self.ch:
+            self._off(c)
+
+    @classmethod
+    def from_env(cls):
+        chans = os.environ.get("NUDGE_BELT_CHANNELS", "0,1").split(",")
+        return cls(channels=(int(chans[0]), int(chans[1])), address=int(os.environ.get("NUDGE_BELT_I2C", "0x40"), 0))
+
+    def _count(self, deg):
+        deg = max(0.0, min(self.max_deg, deg))
+        ms = self.lo + (self.hi - self.lo) * deg / self.max_deg
+        return round(ms * self.hz / 1000.0 * 4096)
+
+    def _off(self, c):
+        self.bus.write_i2c_block_data(self.addr, self.LED0 + 4 * c, [0, 0, 0, 0x10])
+
+    def apply(self, left, right):
+        if (left, right) == self._state:
+            return
+        for c, want in zip(self.ch, (left, right)):
+            if want is None:
+                self._off(c)
+            else:
+                n = self._count(want)
+                self.bus.write_i2c_block_data(self.addr, self.LED0 + 4 * c, [0, 0, n & 0xFF, n >> 8])
+        self._state = (left, right)
+
+    def close(self):
+        for c in self.ch:
+            try:
+                self._off(c)
+            except Exception:
+                pass
+        try:
+            self.bus.close()
+        except Exception:
+            pass
 
 
 TOUR = ["bear_left", "left", "bear_right", "right", "uturn",

@@ -163,14 +163,15 @@ def _band_sync(session, nav, heading=None, start=False):
     """keep the collar in step with this session. best effort, always.
 
     a missing servo, a busy pin or no gpio at all must never turn a nav request into a 500:
-    the walk still works, you just can't feel it. NUDGE_BAND=1 attaches the band to the
-    first walk that starts (NUDGE_BAND=dry wires it up without touching gpio).
+    the walk still works, you just can't feel it. NUDGE_BAND=1 drives the collar's gpio servos,
+    NUDGE_BAND=pca the belt's pca9685, NUDGE_BAND=dry neither. each walk that starts takes the band over,
+    so a second trip taps as well as the first.
     """
     try:
         from . import bandserve
         want = os.environ.get("NUDGE_BAND")
-        if start and want and not bandserve.status()["attached"]:
-            bandserve.attach(session, nav, dry=(want == "dry"))
+        if start and want and bandserve.status()["session"] != session:
+            bandserve.attach(session, nav, dry=(want == "dry"), kind="pca" if want == "pca" else "servo")
         bandserve.sync(session, nav, heading)
         if bandserve.status()["attached"]:
             _band_watch()
@@ -335,7 +336,9 @@ def _belt_start(session, nav):
     NUDGE_BELT_URL unset, the pi off or the belt refusing must never turn a nav request into a 500."""
     try:
         from . import belt
-        if belt.enabled():
+        # NUDGE_BAND set: our server drives the servos from the phone app's steps, so the belt's own
+        # runtime (which tracks position itself) stays out of it; one source of position per walk
+        if belt.enabled() and not os.environ.get("NUDGE_BAND"):
             belt.send_route(session, nav)
             belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading))
     except Exception:

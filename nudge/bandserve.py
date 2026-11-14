@@ -15,7 +15,7 @@ follows whatever walk begins (NUDGE_BAND=dry to wire everything up without touch
 import threading
 import time
 
-from .band import NullBand, ServoBand
+from .band import NullBand, PcaBand, ServoBand
 from .bandrun import BandRunner
 
 TICK_S = 0.005
@@ -36,15 +36,19 @@ class BandService:
 
     # --- lifecycle ----------------------------------------------------------
 
-    def attach(self, session, nav, dry=False, left_pin=12, right_pin=13):
-        """bind the collar to a session. falls back to dry if the gpio isn't there."""
+    def attach(self, session, nav, dry=False, left_pin=12, right_pin=13, kind="servo"):
+        """bind the band to a session: the collar's gpio servos, or the belt's pca9685 (kind="pca").
+        falls back to dry if the hardware isn't there."""
         with self._lock:
             self._teardown()
             self.error = None
             band, mode = NullBand(), "dry"
             if not dry:
                 try:
-                    band, mode = ServoBand(left_pin=left_pin, right_pin=right_pin), "servo"
+                    if kind == "pca":
+                        band, mode = PcaBand.from_env(), "pca"
+                    else:
+                        band, mode = ServoBand(left_pin=left_pin, right_pin=right_pin), "servo"
                 except Exception as ex:
                     # no gpiozero, no pi, pins busy: say so in the status and carry on
                     self.error = f"{type(ex).__name__}: {ex}"
