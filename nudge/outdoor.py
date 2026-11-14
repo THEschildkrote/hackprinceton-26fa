@@ -399,6 +399,7 @@ def _slopes(g, elevation):
     flat = [g.enu.to_lonlat(*p) for _, pts in plan for p in pts]
     if not flat:
         return
+    coarse = getattr(elevation, "grid", 0) > SAMPLE_M
     try:
         zs = elevation(flat)
     except Exception as ex:
@@ -410,8 +411,9 @@ def _slopes(g, elevation):
         k += len(pts)
         run = e.length / (len(pts) - 1) if len(pts) > 1 else 0.0
         steps = [(abs(z[i + 1] - z[i]), abs(z[i + 1] - z[i]) / run if run > 0 else 0.0) for i in range(len(z) - 1)]
-        # a sharp jump over one sample is a curb, not a slope
-        curbs = [s for s in steps if s[0] >= CURB_STEP_M and s[1] > CURB_GRADE]
+        # a sharp jump over one sample is a curb, not a slope. a dem sampled coarser than that (usgs on a grid,
+        # outside vexcel coverage) can't see one: curbs then come from osm kerb tags only
+        curbs = [] if coarse else [s for s in steps if s[0] >= CURB_STEP_M and s[1] > CURB_GRADE]
         slopes = [s[1] for s in steps if s not in curbs] or [0.0]
         e.info["grade_max"] = round(max(slopes), 4)
         e.info["grade_mean"] = round(abs(z[-1] - z[0]) / e.length, 4) if e.length else 0.0
@@ -484,7 +486,11 @@ def describe(g, route, ms):
             if e.info.get("curb_ramp") and "curb ramp" not in notes:
                 notes.append("curb ramp")
             rise = e.info.get("rise_m", 0.0) * (1 if a == e.a else -1)
-            if "steep" in e.tags or "too_steep" in e.tags:
+            if "stairs" in e.tags:  # mapped steps on the way: say so, not "steep slope"
+                n = f"steps {'up' if rise > 0 else 'down'}" if abs(rise) > 0.05 else "steps"
+                if n not in notes:
+                    notes.append(n)
+            elif "steep" in e.tags or "too_steep" in e.tags:
                 n = f"steep slope {'up' if rise > 0 else 'down'}"
                 if n not in notes:
                     notes.append(n)

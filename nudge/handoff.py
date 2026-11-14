@@ -1,4 +1,5 @@
-"""entrances: the portal between the vexcel outdoor graph and the matterport indoor graph.
+"""entrances: the portal between the outdoor graph (vexcel, or osm + usgs outside its coverage) and the
+matterport indoor graph.
 
 candidates are deterministic (entry-labelled rooms, doors on the scan's outer boundary), mapped to the world
 with georef and snapped to the outdoor graph. an agent may confirm which candidate is the accessible entrance
@@ -22,7 +23,7 @@ from .walkgraph import NOT_DOORS, PASSABLE
 
 OPPOSITE = {"north": "south", "south": "north", "east": "west", "west": "east"}
 SNAP_FAR_M = 25.0      # second try when nothing outdoor is within SNAP_M
-SOURCE_ORDER = {"outer_door": 0, "entry_room": 1, "near_outline": 2}
+SOURCE_ORDER = {"outer_door": 0, "entry_room": 1, "entry_zone": 1, "near_outline": 2}
 
 ENTRY_WORDS = ("entr", "lobby", "vestibule", "foyer", "reception")
 SNAP_M = 15.0
@@ -42,6 +43,7 @@ class Site:
     geo: object              # georef.Georef
     portals: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    source: str = "vexcel"   # "vexcel" or "osm+usgs" (open data, outside vexcel coverage)
 
     def best_portal(self, profile="blind"):
         if not self.portals:
@@ -156,17 +158,21 @@ def _entrance_candidates(gi, geo, og, sid, snap_m):
         # a door that opens onto an entry-labelled room is the front door, even if no pano stands in that room
         onto_entry = any(f == floor and (point_in_poly(door_xy, poly) or _closest_on_ring(door_xy, poly)[1] < 0.3)
                          for f, poly in entry_polys)
+        osm_tagged = "entrance" in og.nodes[out_id].tags
+        basis = "osm entrance tag" if osm_tagged else \
+            "indoor entrance zone" if source in ("entry_zone", "entry_room") else None
         rec = {"outdoor_node": out_id, "sid": sid, "pano_id": pano, "kind": "entrance",
                "door_model": [round(door_xy[0], 3), round(door_xy[1], 3)],
                "width_m": round(width, 2) if width else None, **_step_info(og, fp_pt, out_id, gi, floor),
-               "ramp": None, "confirmed": False, "evidence": {}, "room": n.room_label, "source": source,
+               "ramp": None, "confirmed": False, "evidence": {"basis": basis} if basis else {},
+               "room": n.room_label, "source": source,
                "floor": floor, "onto_entry_room": onto_entry,
                "door_enu": [round(fp_pt[0], 2), round(fp_pt[1], 2)],
                "door_lonlat": list(og.enu.to_lonlat(*fp_pt)) if getattr(og, "enu", None) else None,
                "snap_m": round(d, 2), "faces": ["north", "east", "south", "west"][int(((world_deg + 45) % 360) // 90)],
                "osm_entrance": "entrance" in og.nodes[out_id].tags,
                "_rank": (0 if "entrance" in og.nodes[out_id].tags else 1, 0 if onto_entry else 1,
-                         SOURCE_ORDER.get(source, 3), rank, d)}
+                         0 if rank < 2 else 1, SOURCE_ORDER.get(source, 3), rank, d)}
         old = cands.get(out_id)
         if old is None or rec["_rank"] < old["_rank"]:
             cands[out_id] = rec
@@ -204,6 +210,15 @@ def _entrance_candidates(gi, geo, og, sid, snap_m):
                 pano = _nearest_pano(gi, floor, (cx, cy), max_m=10.0)
                 if d <= 1.5 and pano:
                     add(floor, ring, pano, c, None, "entry_room")
+        # (ii-b) entrance areas named by the place catalog (matterport often labels rooms "Other"):
+        # tools.graph gives those panos the agents' names, so "Entrance arcade" shows up here. the door is
+        # the footprint edge nearest the pano (add() snaps to it); a porch can push the hull a few metres out
+        entry_room_ids = {rid for rid, r in gi.rooms.items() if _is_entry(r["label"])}
+        for n in gi.nodes.values():
+            if n.floor != floor or n.room in entry_room_ids or not _is_entry(n.room_label):
+                continue
+            if _closest_on_ring(n.xy, ring)[1] <= 12.0:
+                add(floor, ring, n.id, n.xy, None, "entry_zone")
     if not cands:
         # (iii) last resort: panos close to the outline on the side facing the street
         for floor in floors:
@@ -250,9 +265,17 @@ def _street_dist(og, geo, xy):
 
 
 def _flip_geo(geo, alt, gi):
-    """the georef rotated to the alternative angle about the scan's centre."""
+    """the georef rotated to the alternative angle about the scan's centre (a partial-scan alternative carries
+    its own translation)."""
     from .georef import Georef, sample_ring
-    c = sample_ring(outline(gi)).mean(0)
+    if "tx" in alt:
+        g = Georef(geo.enu, alt["theta_deg"], alt["tx"], alt["ty"], alt["rmse_m"], alt["inlier_frac"], geo.ok,
+                   geo.mirrored, False, [{"theta_deg": round(geo.theta_deg, 1), "tx": round(geo.tx, 3),
+                                          "ty": round(geo.ty, 3), "rmse_m": round(geo.rmse_m, 3),
+                                          "inlier_frac": round(geo.inlier_frac, 3)}], source=geo.source + "+street")
+        g.score, g.outside_frac = alt.get("score"), alt.get("outside_frac")
+        return g
+    c = sample_ring(outline(gi, georef_floor(gi))).mean(0)
     cx, cy = float(c[0]), float(c[1])
     ce = geo.model_to_enu(cx, cy)
     th = math.radians(alt["theta_deg"])
@@ -333,7 +356,7 @@ def _step_info(og, door_enu, out_id, gi=None, floor=None):
 def _step(og, door_enu, out_id):
     """true/false/'unknown' for a step at the door, from dtm ground at the door vs the approach."""
     elev = getattr(og, "elevation", None)
-    if not elev:
+    if not elev or getattr(elev, "grid", 0) > 1.0:  # a gridded dem (usgs fallback) is too coarse to judge a step
         return "unknown"
     try:
         zd = elev([og.enu.to_lonlat(*door_enu)])[0]
@@ -376,6 +399,10 @@ def _railing(note):
     return m.group(0).lower() if m else None
 
 
+BASIS_TEXT = {"osm entrance tag": "an OpenStreetMap entrance tag",
+              "indoor entrance zone": "the scan's entrance area, placed on the map outline"}
+
+
 def transition_text(p):
     parts = [f"You're at the {_entrance_name(p)}."]
     width = f"{p['width_m']:.1f} meters wide" if p.get("width_m") else None
@@ -396,7 +423,9 @@ def transition_text(p):
     elif p.get("step") is False:
         parts.append("No step at the door.")
     if not p.get("confirmed"):
-        parts.append("This entrance was not confirmed from imagery.")
+        basis = BASIS_TEXT.get((p.get("evidence") or {}).get("basis"))
+        parts.append(f"This entrance comes from {basis}; it was not confirmed from imagery." if basis
+                     else "This entrance was not confirmed from imagery.")
     parts.append("Going inside.")
     return " ".join(parts)
 
@@ -490,7 +519,22 @@ class DoorToDoorNavigator:
         return self.phase == "indoor" and self.inside is not None and self.inside.done
 
 
-# loading a real site (needs keys): indoor graph, vexcel footprint, georef, outdoor graph, candidates
+# loading a real site: indoor graph, footprint (vexcel or osm), georef, outdoor graph, candidates
+
+def georef_floor(gi):
+    """the floor whose outline is registered to the footprint: the lowest one unless it has no panos (an
+    unscanned basement, as at rabinowitz hall), then the floor with the entrance, else the busiest floor."""
+    floors = [f["id"] for f in gi.floors]
+    if not floors:
+        return None
+    count = {f: sum(1 for n in gi.nodes.values() if n.floor == f) for f in floors}
+    if count[floors[0]]:
+        return floors[0]
+    entry = [n.floor for n in gi.nodes.values() if _is_entry(n.room_label)]
+    if entry:
+        return max(set(entry), key=entry.count)
+    return max(floors, key=count.get)
+
 
 def load_site(sid, refresh=False):
     if sid in _SITES and not refresh:
@@ -512,15 +556,32 @@ def load_site(sid, refresh=False):
         except Exception as ex:  # no matterpak yet, etc.
             early.append(f"doorways were not measured from the point cloud ({ex}); exterior doors may be missed")
     gi = graph(sid)
-    fp = vexcel.footprint(lat, lon)
-    geo = georef_model(gi, lat, lon, fp)
-    og = outdoor.build(lat, lon, footprint_lonlat=fp)
-    site = Site(sid, gi, og, geo, warnings=early + list(og.warnings))
+    from . import opendata
+    # vexcel inside its coverage (houston, la); openstreetmap + usgs everywhere else, or when vexcel refuses
+    fp, fp_source, note = opendata.footprint_any(lat, lon)
+    if note:
+        early.append(note)
+    # usgs whenever the footprint came from osm: if vexcel refused the footprint it will refuse the dtm too
+    if fp_source == "vexcel":
+        elevation, el_source = vexcel.elevation, "vexcel"
+    else:
+        elevation, el_source = opendata.USGSElevation(lat, lon), "usgs"
+    geo = georef_model(gi, lat, lon, fp, floor=georef_floor(gi))
+    og = outdoor.build(lat, lon, footprint_lonlat=fp, elevation=elevation,
+                       detections=None if fp_source == "vexcel" else [])
+    site = Site(sid, gi, og, geo, warnings=early + list(og.warnings),
+                source="vexcel" if fp_source == "vexcel" else f"osm+{el_source}")
     if not geo.ok:
         site.warnings.append(f"scan-to-footprint fit is poor (rmse {geo.rmse_m:.1f} m, over {OK_RMSE_M} m); "
                              f"entrance positions may be off by a few meters")
+    if geo.source == "footprint-partial":
+        site.warnings.append(f"the scan covers part of the building; its walls were fitted inside the footprint "
+                             f"({geo.rmse_m:.1f} m rms on the {geo.inlier_frac:.0%} of the outline they touch), so "
+                             f"positions along the building may be off by a few meters")
     if geo.ambiguous:
-        site.warnings.append("footprint is symmetric; scan rotation is ambiguous until an entrance is confirmed")
+        site.warnings.append("the scan's walls fit the footprint almost as well turned another way; rotation is "
+                             "ambiguous until an entrance is confirmed" if geo.source == "footprint-partial" else
+                             "footprint is symmetric; scan rotation is ambiguous until an entrance is confirmed")
     site.portals = entrance_candidates(gi, geo, og, sid, site.warnings)
     resolve_flip(site)
     conf = dossier_dir(sid) / "entrances.json"

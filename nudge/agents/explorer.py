@@ -223,3 +223,7 @@ def create_explorer_agent(nav, g, sid=None, model=None, vision_model=None, check
         checkpointer=checkpointer or MemorySaver(),
         name="nudge-explorer",
     )
+
+
+# voice.py drives the explorer like the exception agent (and both get traced there)
+from .exception import approve, handle_event, new_thread  # noqa: E402,F401

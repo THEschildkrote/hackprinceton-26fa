@@ -222,6 +222,12 @@ def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=Non
         cat.with_suffix(".json.bak").write_text(snapshot, encoding="utf-8")
     agent = create_dossier_agent(sid, model, vision_model=vision_model)
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 400}
+    try:  # the ops dashboard shows the lead and its subagents live
+        from ..traces import config_with, publish
+        config = config_with(config, "dossier lead")
+        publish("agent", event="run_start", agent="dossier lead", depth=0, sid=sid, goal=goal)
+    except Exception:
+        pass
     t0, calls, reason = time.time(), 0, "the lead finished"
     # the stream runs in a worker so the budget holds even when one model call hangs and nothing streams
     q, stop = queue.Queue(), threading.Event()
@@ -276,6 +282,12 @@ def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=Non
              f"{summary['annotations']['landmarked_panos']} landmarked panos; places ok={summary['places']['ok']}; "
              f"{len(summary['gaps'])} gaps listed in /dossier/audit.md")
     run.last_summary = summary
+    try:
+        from ..traces import publish
+        publish("agent", event="run_end", agent="dossier lead", depth=0, sid=sid, reason=reason,
+                model_calls=calls, minutes=summary["minutes"])
+    except Exception:
+        pass
     return dossier_dir(sid)
 
 

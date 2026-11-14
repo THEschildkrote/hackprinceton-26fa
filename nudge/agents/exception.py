@@ -302,6 +302,37 @@ def _cfg(thread_id):
     return {"configurable": {"thread_id": thread_id}}
 
 
+# ops dashboard tracing (nudge/traces.py); never allowed to break a reroute
+
+def _label(agent):
+    name = getattr(agent, "name", "") or ""
+    return {"nudge-exception": "exception agent", "nudge-explorer": "explorer agent"}.get(name, name or "agent")
+
+
+def _traced(cfg, who):
+    try:
+        from ..traces import config_with
+        return config_with(cfg, who)
+    except Exception:
+        return cfg
+
+
+def _trace(event, who, **f):
+    try:
+        from ..traces import clip, publish
+        publish("agent", event=event, agent=who, depth=0, **{k: clip(v, 200) for k, v in f.items()})
+    except Exception:
+        pass
+
+
+def _trace_reply(who, out):
+    if out.get("pending"):
+        p = out["pending"]
+        _trace("hitl_pending", who, tool=p.get("name"), args=p.get("args"))
+    if out.get("say"):
+        _trace("say", who, text=" ".join(out["say"]))
+
+
 def _reply(result, since):
     """lines to speak from ai messages after index `since`, plus the pending approval if any."""
     say = []
@@ -327,8 +358,12 @@ def handle_event(agent, thread_id, event_text):
         since = len(agent.get_state(cfg).values.get("messages", []))
     except Exception:
         since = 0
-    result = agent.invoke({"messages": [HumanMessage(content=event_text)]}, config=cfg)
-    return _reply(result, since + 1)
+    who = _label(agent)
+    _trace("event", who, text=event_text)
+    result = agent.invoke({"messages": [HumanMessage(content=event_text)]}, config=_traced(cfg, who))
+    out = _reply(result, since + 1)
+    _trace_reply(who, out)
+    return out
 
 
 def approve(agent, thread_id, decision="approve", message=None):
@@ -338,8 +373,12 @@ def approve(agent, thread_id, decision="approve", message=None):
     d = {"type": decision}
     if decision == "reject" and message:
         d["message"] = message
-    result = agent.invoke(Command(resume={"decisions": [d]}), config=cfg)
-    return _reply(result, since)
+    who = _label(agent)
+    _trace("hitl_decision", who, decision=decision)
+    result = agent.invoke(Command(resume={"decisions": [d]}), config=_traced(cfg, who))
+    out = _reply(result, since)
+    _trace_reply(who, out)
+    return out
 
 
 def new_thread():

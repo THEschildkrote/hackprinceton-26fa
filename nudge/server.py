@@ -172,8 +172,82 @@ def _band_sync(session, nav, heading=None, start=False):
         if start and want and not bandserve.status()["attached"]:
             bandserve.attach(session, nav, dry=(want == "dry"))
         bandserve.sync(session, nav, heading)
+        if bandserve.status()["attached"]:
+            _band_watch()
     except Exception:
         pass
+
+
+# --- ops dashboard traces (nudge/traces.py): best effort, never in the way of a walk ---------------
+
+def _trace(kind, **f):
+    try:
+        from . import traces
+        traces.publish(kind, **f)
+    except Exception:
+        pass
+
+
+def _trace_nav(session, nav, evs=(), **extra):
+    """where the traveller is now, plus every spoken event, for the dashboard."""
+    try:
+        if nav.pos:
+            x, y, fl = nav.pos[:3]
+            r = getattr(nav, "route", None)
+            _trace("position", session=session, sid=_session_sid.get(session), x=round(x, 3), y=round(y, 3),
+                   floor=fl, progress=round(getattr(nav, "progress", 0.0), 2),
+                   remaining=round(max(0.0, r.length - nav.progress), 2) if r else None,
+                   heading=getattr(nav, "heading", None), done=getattr(nav, "done", False), **extra)
+        for e in evs or ():
+            kind = "reroute" if e.get("type") in ("reroute", "unmapped", "remapped") else "maneuver"
+            _trace(kind, session=session, type=e.get("type"), text=e.get("text"), cue=e.get("cue"))
+    except Exception:
+        pass
+
+
+_band_watch_started = False
+
+
+def _band_watch():
+    """the collar's cues start inside its ticker thread (steering taps) as well as on sync, so watch them."""
+    global _band_watch_started
+    if _band_watch_started:
+        return
+    _band_watch_started = True
+
+    def loop():
+        from . import bandserve
+        last = None
+        while True:
+            try:
+                svc = bandserve.SERVICE
+                runner = svc._runner
+                eng = getattr(runner, "engine", None)
+                if eng is not None:
+                    key = (getattr(eng, "_t0", None), getattr(eng, "_playing", None))
+                    if key != last and key[1] and getattr(eng, "_active", False):
+                        _trace("band", session=svc._session, cue=key[1], mode=svc.mode)
+                    last = key
+            except Exception:
+                pass
+            time.sleep(0.04)
+    threading.Thread(target=loop, daemon=True, name="nudge-band-watch").start()
+
+
+def _hub_to_traces():
+    try:
+        from . import hub
+
+        def fwd(tid, e):
+            st = hub.status(tid) or {}
+            _trace("hub", traveller=tid, type=e.get("type"), text=e.get("text"), state=st.get("state"),
+                   place=st.get("place"), floor=st.get("floor"))
+        hub.subscribe(fwd)
+    except Exception:
+        pass
+
+
+_hub_to_traces()
 
 
 def _nav(session):
@@ -252,6 +326,9 @@ def nav_start(req: StartReq):
     hub.register_traveller(tid)
     hub.attach_session(tid, sid, req.sid, goal, req.profile)
     _publish(sid, nav, [dict(e, goal=goal) for e in ev])
+    _trace("session", session=sid, sid=req.sid, goal=goal, profile=req.profile, traveller=tid,
+           route_m=round(nav.route.length, 1) if nav.route else None)
+    _trace_nav(sid, nav, ev)
     _band_sync(sid, nav, req.heading, start=True)
     from .pdr import Tracker
     if site is None and not req.building:
@@ -268,6 +345,7 @@ def nav_update(req: UpdateReq):
     nav = _nav(req.session)
     ev = nav.update(req.x, req.y, req.floor, req.heading, sid=req.sid)
     _publish(req.session, nav, ev)
+    _trace_nav(req.session, nav, ev)
     _band_sync(req.session, nav, req.heading)
     tid = _session_traveller.get(req.session)
     if tid:
@@ -322,6 +400,11 @@ def nav_step(req: StepReq):
     out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
     ev = out["events"]
     _publish(req.session, nav, ev)
+    _trace("step", session=req.session, steps=req.steps, heading_deg=req.heading_deg,
+           step_m=req.step_m or getattr(tr, "step_m", None))
+    _trace_nav(req.session, nav, ev, waiting_for=out.get("waiting_for"))
+    for line in out.get("say") or []:
+        _trace("voice", session=req.session, text=line)
     _band_sync(req.session, nav, out["heading_model"])
     tid = _session_traveller.get(req.session)
     if tid:
@@ -361,6 +444,7 @@ def band_status():
 def nav_block(req: BlockReq):
     nav = _nav(req.session)
     ev = nav.block(req.x, req.y, req.floor, req.a, req.b, req.heading, sid=req.sid)
+    _trace_nav(req.session, nav, ev)
     _publish(req.session, nav, ev)
     return {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
@@ -790,6 +874,7 @@ def nav_exception(req: ExceptionReq):
         raise HTTPException(409, "no active route")
     _reported[req.session] = req.text
     _publish(req.session, nav, [{"type": "reported", "text": req.text}])
+    _trace("exception", session=req.session, text=req.text, phase="reported")
     from .agents import llm
     if llm.has_credentials(llm.spec()):
         from .agents.exception import create_exception_agent, handle_event, new_thread
@@ -801,6 +886,8 @@ def nav_exception(req: ExceptionReq):
                                            "thread": new_thread()}
             return handle_event(ctx["agent"], ctx["thread"], req.text)
         r, why = _capped(ask)
+        _trace("exception", session=req.session, text=req.text, phase="answered" if r is not None else "fallback",
+               reason=why, pending=(r or {}).get("pending", {}).get("name") if r and r.get("pending") else None)
         if r is not None:
             return {"mode": "agent", "reason": f"exception agent on {llm.spec()}", "say_now": SAY_NOW,
                     "say": r.get("say") or [], "pending": r.get("pending"), "events": [], "state": _state(nav),
@@ -808,10 +895,13 @@ def nav_exception(req: ExceptionReq):
         _exc.pop(req.session, None)  # a late answer must not be approved later by mistake
         ev, say = _fallback_block(nav, req.text)
         _publish(req.session, nav, ev, reason=req.text)
+        _trace_nav(req.session, nav, ev)
         return {"mode": "fallback", "reason": why, "say_now": SAY_NOW, "say": say, "pending": None,
                 "events": _events(ev), "state": _state(nav), "device": _device(nav)}
     ev, say = _fallback_block(nav, req.text)
     _publish(req.session, nav, ev, reason=req.text)
+    _trace("exception", session=req.session, text=req.text, phase="fallback", reason="no model credentials")
+    _trace_nav(req.session, nav, ev)
     return {"mode": "fallback", "reason": "no model credentials", "say_now": SAY_NOW, "say": say, "pending": None,
             "events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
@@ -1274,9 +1364,223 @@ async def caretaker_events(tid: str, after: int = 0):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# --- ops dashboard (web/ops.html): live traces, a snapshot, and a rehearsal replay ------------------
+
+@app.get("/api/ops/stream")
+async def ops_stream(since: int = 0):
+    """every trace event as server-sent events; ?since=id replays what is still in the ring first."""
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from . import traces
+    loop = asyncio.get_running_loop()
+    q = asyncio.Queue(maxsize=5000)
+
+    def push(ev):
+        try:
+            loop.call_soon_threadsafe(q.put_nowait, ev)
+        except Exception:
+            pass
+    unsubscribe = traces.subscribe(push)
+
+    async def stream():
+        try:
+            yield "retry: 1500\n\n"
+            for ev in traces.recent(n=2000, since=since) if since else []:
+                yield f"id: {ev['id']}\ndata: {_json.dumps(ev, default=str)}\n\n"
+            while True:
+                try:
+                    ev = await asyncio.wait_for(q.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if since and ev["id"] <= since:
+                    continue
+                yield f"id: {ev['id']}\ndata: {_json.dumps(ev, default=str)}\n\n"
+        finally:
+            unsubscribe()
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _session_view(session, nav):
+    st = {"session": session, "sid": _session_sid.get(session), "goal": nav.goal, "profile": nav.profile,
+          "traveller": _session_traveller.get(session), "done": bool(getattr(nav, "done", False)),
+          "reroutes": getattr(nav, "reroutes", 0), "position": None, "route": None, "progress": None,
+          "remaining": None, "replay": session in _replayed, "replaying": session in _replays}
+    try:
+        if nav.pos:
+            st["position"] = {"x": nav.pos[0], "y": nav.pos[1], "floor": nav.pos[2],
+                              "heading": getattr(nav, "heading", None)}
+        if nav.route:
+            st["route"] = {"points": nav.route.to_dict(nav.g)["points"], "length": round(nav.route.length, 2)}
+            st["progress"] = round(nav.progress, 2)
+            st["remaining"] = round(max(0.0, nav.route.length - nav.progress), 2)
+        state = nav.state()
+        st["next"] = state.get("next")
+        st["to_next"] = state.get("distance_to_next_m")
+    except Exception as ex:
+        st["error"] = str(ex)
+    return st
+
+
+@app.get("/api/ops/snapshot")
+def ops_snapshot(events: int = 200):
+    """sessions, collar, travellers and buildings now, plus the last `events` trace events (0 when polling)."""
+    from . import traces
+    sessions = [_session_view(s, nav) for s, nav in list(_sessions.items())]
+    try:
+        from . import bandserve
+        band = bandserve.status()
+    except Exception as ex:
+        band = {"attached": False, "error": str(ex)}
+    try:
+        from . import hub
+        travellers = {tid: hub.status(tid) for tid in list(hub._load()["travellers"])}
+    except Exception:
+        travellers = {}
+    try:
+        from .agents import llm
+        model = llm.spec()
+    except Exception:
+        model = None
+    buildings = {}
+    for sid in {s["sid"] for s in sessions if s.get("sid")}:
+        buildings[sid] = _ops_building(sid)
+    return {"sessions": sessions, "band": band, "travellers": travellers, "model": model,
+            "buildings": buildings, "events": traces.recent(max(0, min(events, traces.RING))) if events else []}
+
+
+_ops_facts = {}
+
+
+def _ops_building(sid):
+    """name, costar facts and the entrance record for the facts card (cached; best effort)."""
+    if sid in _ops_facts:
+        return _ops_facts[sid]
+    out = {"sid": sid, "label": sid}
+    try:
+        from . import buildings
+        out["label"] = buildings.label(sid) or sid
+    except Exception:
+        pass
+    try:
+        from . import costar
+        r = costar.lookup(sid)
+        if not r.get("error"):
+            f = costar.accessibility_facts(r["record"]).get("facts", {})
+            out["costar"] = {k: f.get(k) for k in ("year_built", "pre_ada", "floors", "building_class",
+                                                  "property_type") if f.get(k) is not None}
+    except Exception:
+        pass
+    try:
+        from .agents.tools import dossier_dir
+        e = dossier_dir(sid) / "entrances.json"
+        if e.exists():
+            conf = (json.loads(e.read_text(encoding="utf-8")).get("confirmed") or [None])[0]
+            if conf:
+                out["entrance"] = {k: conf.get(k) for k in ("step", "risers", "ramp", "accessible", "note")}
+    except Exception:
+        pass
+    _ops_facts[sid] = out
+    return out
+
+
+_replays = {}  # session -> {"stop": Event, "file": name}, while it plays
+_replayed = set()  # every session a replay drove, so it never shows as live afterwards
+
+
+class ReplayReq(BaseModel):
+    sid: str = "R1FX6EmdcDt"
+    to: str = "seminar room"
+    start: str = "entrance arcade"
+    profile: str = "blind"
+    file: str | None = None      # a cache/replays/*.jsonl name; made on the fly when missing
+    speed: float = 1.0           # 1.0 is real walking pace; the collar drops cues if you go much faster
+
+
+def _replay_file(req):
+    """a named recording, or None: then the walk is made fresh from the session's own tracker."""
+    if not req.file:
+        return None
+    d = (ROOT / "cache" / "replays").resolve()
+    f = (d / req.file).resolve()
+    if f.parent != d or not f.exists():
+        raise HTTPException(404, f"no replay named {req.file}")
+    return f
+
+
+@app.get("/api/ops/replays")
+def ops_replays():
+    d = ROOT / "cache" / "replays"
+    return {"files": sorted(p.name for p in d.glob("*.jsonl")) if d.exists() else []}
+
+
+@app.post("/api/ops/replay")
+def ops_replay(req: ReplayReq):
+    """rehearsal only: feed a recorded walk through the real start / calibrate / step endpoints."""
+    f = _replay_file(req)
+    s = nav_start(StartReq(sid=req.sid, to=req.to, profile=req.profile, start=req.start, traveller="replay"))
+    session = s["session"]
+    tr = _trackers.get(session)
+    if tr is not None and tr.corr is None:
+        nav_calibrate(CalibrateReq(session=session, heading_deg=0.0))   # no georef: compass 0 = route start
+    if f is None:
+        # made from this very session, so it matches the current graph and georef
+        from .pdr import make_walk
+        d = ROOT / "cache" / "replays"
+        d.mkdir(parents=True, exist_ok=True)
+        f = d / f"ops_{req.sid}.jsonl"
+        make_walk(tr, f)
+    lines = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
+    stop = threading.Event()
+    _replays[session] = {"stop": stop, "file": f.name}
+    _replayed.add(session)
+    speed = max(0.1, min(req.speed, 4.0))
+    _trace("replay", session=session, sid=req.sid, start=req.start, goal=req.to, lines=len(lines), speed=speed,
+           phase="start")
+
+    def run():
+        t0, arrived, due, prev = time.monotonic(), False, 0.0, 0.0
+        try:
+            for rec in lines:
+                gap, prev = rec.get("t", 0.0) - prev, rec.get("t", 0.0)
+                due += gap if gap > 2.0 else gap / speed   # an elevator dwell stays real time: the tracker clocks it
+                while not stop.is_set() and time.monotonic() - t0 < due:
+                    time.sleep(0.01)
+                if stop.is_set() or session not in _sessions:
+                    break
+                out = nav_step(StepReq(session=session, steps=rec.get("steps", 0),
+                                       heading_deg=rec.get("heading_deg")))
+                if out.get("done"):
+                    arrived = True
+                    break
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            _trace("replay", session=session, phase="error", error=str(ex)[:200])
+        finally:
+            _trace("replay", session=session, phase="end", arrived=arrived)
+            _replays.pop(session, None)
+    threading.Thread(target=run, daemon=True, name=f"replay-{session}").start()
+    return {"session": session, "file": f.name, "lines": len(lines), "speed": speed}
+
+
+@app.post("/api/ops/replay/stop")
+def ops_replay_stop():
+    n = 0
+    for v in list(_replays.values()):
+        v["stop"].set()
+        n += 1
+    return {"stopped": n}
+
+
 @app.get("/")
 def index():
-    return RedirectResponse("/index.html")
+    return RedirectResponse("/ops.html")
 
 
 app.mount("/", StaticFiles(directory=ROOT / "web"), name="web")

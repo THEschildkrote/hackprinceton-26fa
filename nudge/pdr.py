@@ -165,6 +165,8 @@ class Tracker:
         x, y, floor = self.pos
         while d > 1e-6:
             if self.free_to is None:
+                if h is None:
+                    return  # no compass this tick: can't pick an edge, wait for the next heading
                 near = min((n for n in g.nodes.values() if n.floor == floor),
                            key=lambda n: dist((x, y), n.xy), default=None)
                 if near is None:
@@ -292,11 +294,27 @@ def make_walk(tracker, path, cadence_s=0.55, wobble_deg=8):
     return len(out)
 
 
-def site_for(sid):
-    """the building's outdoor site (georef, entrances) if it can be had; None for unmapped areas like princeton."""
+_SITE_JOBS = {}
+
+
+def site_for(sid, wait_s=3.0):
+    """the building's outdoor site (georef, entrances) if it can be had quickly; None otherwise.
+    a first build can take minutes (usgs elevation), so it keeps loading in the background and a trip
+    never waits on it; the next trip picks it up."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
     try:
         from .handoff import _SITES, load_site
-        return _SITES.get(sid) or load_site(sid)
+    except Exception:
+        return None
+    if sid in _SITES:
+        return _SITES[sid]
+    job = _SITE_JOBS.get(sid)
+    if job is None or (job.done() and job.exception() is not None):
+        job = _SITE_JOBS[sid] = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"site-{sid}").submit(load_site, sid)
+    try:
+        return job.result(timeout=wait_s)
+    except FutTimeout:
+        return None
     except Exception:
         return None
 
