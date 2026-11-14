@@ -108,7 +108,7 @@ Each maneuver has these fields:
 - Lines are ASCII and always under 20 bytes:
   - route step `i,ACT,DIR,deg,m`, e.g. `2,T,L,90,4.5`
   - floor step `i,F,U|D,E|S|X,floor#`
-  - live `N,m_next,deg_next,ACTDIR,flags`, where flag bit 0 is off route and bit 1 is arrived
+  - live `N,m_next,deg_next,ACTDIR,flags`, where flags add up: 1 off route, 2 arrived, 4 unmapped, 8 hazard ahead; route steps also include an `S` step at every doorway middle
 - `encode_*` and `decode_*` round-trip.
 
 ## Dossier agent (`nudge/agents/dossier.py`)
@@ -149,6 +149,43 @@ Its tools are bound to one live `Navigator`:
 - `commit_reroute`
 
 `interrupt_on={"commit_reroute": True}`. `handle_event()` returns lines to say plus the pending action. `approve(..., "approve"|"reject")` resumes with `Command(resume={"decisions": [...]})`. The system prompt forbids inventing geometry and treats profile rules as hard constraints.
+
+## Room changes, multi-scan buildings, unmapped areas
+
+The rule is the same everywhere: agents decide *what* (what to survey, which portal joins two scans, what to do off the map); the router and the scan geometry produce every metre and degree the device follows.
+
+### Room changes (`walkgraph.shape_edges`, `instruct.path` / `door_points`, `navigator`)
+
+- **Doorway waypoints.** Every link that crosses a door or opening gets waypoints at the door's middle, plus one 0.5 m before and after it on the door's normal. The walking line goes through the middle of the opening, square-on, instead of clipping a jamb. Each link stores `doors: [{x, y, width}]`, where width is the passable edge length, and its `length` becomes the polyline length.
+- **Door width.** Under 0.815 m (32 in clear width, ADA 404.2.3), the link is tagged `narrow_door`, and the wheelchair profile treats that as a hard stop. Under 0.9 m, the spoken text says "through a narrow doorway".
+- **Wall clearance.** Any stretch of the line within 0.35 m of a blocking wall gets a single waypoint that pushes it away, but only if the new line stays clear (checked with `blocked_line`). If that fails, the link is tagged `tight`; profiles penalise it, and wheelchair most of all.
+- **Live tracking.** The navigator tracks along that exact polyline. The lookahead bearing (`live()`) therefore steers through the door middle.
+- **Live events.**
+  - `door` fires about 2 m before each door middle ("Doorway ahead, 2 meters").
+  - `room` fires when the room changes. The room comes from the polygon containing the position, else the nearest pano's room, and needs two fixes in a row. The text is "Entering the kitchen." plus the best non-visual landmark at the entry pano.
+- **Device.** The route packet gets an extra `S` step (deg 0) at each door middle, so the next step's metres count from the door.
+
+### Multi-scan buildings (`nudge/building.py`)
+
+- **Why portals.** A building is often several Matterport models: a lobby scan, one scan per floor, suites. They share a `costar_property_id` or a street address (`siblings`), and each has its own frame. Nothing is aligned. `merge()` places the per-scan walk graphs side by side, with ids `sid:pano`, floors `sid:floor`, and each floor's `frame` set to its sid. It joins them only through **portals** (`elevator|stairs|door|entrance`, `cost_m`, `direction`, `note`).
+- **Routing across portals.** Portals are tagged `vertical`. To the router, maneuvers and navigator they are floor changes: "Take the elevator up to 35th Floor", or "Go through the lobby doors into …". Back-to-back rides merge into one maneuver. The A* heuristic is 0 across frames, so it stays admissible.
+- **Finding portals.** `candidates_portals()` proposes pairs from room labels, scan names and floor numbers. The `building-cartographer` subagent confirms or rejects each pair with `look()` at both ends and writes `/dossier/portals.json` (`validate_portals` checks it). `building_graph(sid)` merges only the scans that confirmed portals reach.
+- **Positions.** The navigator takes `(x, y, floor, sid=...)` and namespaces the floor itself.
+
+### Unmapped areas (`navigator`, `agents/explorer.py`)
+
+- **Detection.** A position is off the map when its floor isn't in the map, when no pano is reachable in a straight line within 6 m, or when it is outside every room polygon and more than 3 m from the route.
+- **Behaviour off the map.** The navigator stops all turn instructions and emits `unmapped`.
+  - If the last on-map position is a plausible walk away, it offers the way back: your own breadcrumb trail, reversed (`way_back()`).
+  - Otherwise, or past 30 m of wandering, it says: "This area isn't in my map. Please stop and use your cane; I can call for help."
+- **Back on the map.** It emits `remapped` and a fresh route from the current position.
+- **Device flag 4 (unmapped).** `m`/`deg` point back along the trail, or are empty if there's no safe way back. The band plays slow 600 ms pulses on both motors and repeats them every 4 s. Flag 8 is "hazard ahead".
+- **The explorer agent.** A Deep Agent that runs on `unmapped`, or when the destination has no scan or dossier.
+  - It plans with `write_todos`.
+  - Its tools include `explorer_status`, `dossier_status`, `quick_survey`, `scan_portal_candidates`, `aerial_view`, `costar_record` and `compare_options`.
+  - It delegates to `hazard-scout`, `site-surveyor` and `building-cartographer`.
+  - Its only acting tool, `commit_plan`, is behind HITL. It can set a destination the router resolves, add a *candidate* portal (tagged `uncertain` until confirmed), or block a pano. It never hands over coordinates.
+- **Route-scoped quick dossier.** `dossier.run(sid, focus=..., goal=...)` (or `python -m nudge.agents.dossier <sid> --goal Kitchen`) surveys only the panos within 3 m of the route a first visitor will walk (`tools.route_focus`), hazards first. It writes `annotations.json` early so the router uses the findings within minutes, then carries on with the full survey.
 
 ## Channels
 

@@ -21,12 +21,18 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from ..mp import ROOT
 from . import llm
-from .tools import LANDMARK_TOOLS, LEAD_TOOLS, SCOUT_TOOLS, SITE_TOOLS, dossier_dir
+from .tools import (CARTOGRAPHER_TOOLS, LANDMARK_TOOLS, LEAD_TOOLS, PLACE_TOOLS, SCOUT_TOOLS, SITE_TOOLS,
+                    dossier_dir)
 
 HERE = Path(__file__).resolve().parent
 MEMORIES = ROOT / "cache" / "memories"
 
 SUBAGENTS = {
+    "place-indexer": ("Defines what every section of one floor is BEFORE anything else: names unnamed rooms, adds "
+                      "aliases, what each place serves (water, restroom, exit, help desk...), a short non-visual "
+                      "description, features it sees (water fountain, reception desk) anchored to a pano and "
+                      "bearing, and CoStar tenants. Give it the sid and one floor id (or a list of room ids for a "
+                      "quick survey). Writes /dossier/places.json.", PLACE_TOOLS),
     "hazard-scout": ("Finds and confirms hazards on one floor: protruding objects a cane misses, glass, "
                      "open stair undersides, level changes. Give it one floor id and the sid. "
                      "Writes /dossier/hazards/<floor_id>.json.", SCOUT_TOOLS),
@@ -36,6 +42,11 @@ SUBAGENTS = {
     "site-surveyor": ("Surveys the approach from outside using the aerial view and the CoStar record: accessible "
                       "entrances, drop-off, parking, building facts, tenant directory. Give it the sid. "
                       "Writes /dossier/site.md.", SITE_TOOLS),
+    "building-cartographer": ("Joins a building that is several Matterport scans (lobby, floors, suites). "
+                              "Confirms which elevator, stairs or entrance in one scan is the same place in another, "
+                              "using portal_candidates and look() at both ends. Give it the sid. Only needed when "
+                              "building_models reports more than one scan. Writes /dossier/portals.json.",
+                              CARTOGRAPHER_TOOLS),
 }
 
 
@@ -79,16 +90,30 @@ def create_dossier_agent(sid, model=None, checkpointer=None, vision_model=None):
     )
 
 
-def kickoff(sid):
+def kickoff(sid, focus=None, goal=None):
+    if focus:
+        ids = ",".join(focus)
+        return (f"QUICK SURVEY FIRST for building {sid}: a visitor is about to walk to {goal or 'their destination'} "
+                f"and this building has no dossier. Follow /agent/AGENTS.md, section 'Route-scoped quick survey'. "
+                f"Survey only these panos first (within 3 m of the planned route): {ids}. "
+                f"First delegate place-indexer for just the rooms these panos are in plus the goal, so the goal "
+                f"and the rooms on the way have names and descriptions. "
+                f"Delegate hazard-scout per floor with exactly these pano ids (it passes them as panos= to "
+                f"overhang_candidates and glass_suspects), merge into /dossier/annotations.json and validate_annotations "
+                f"right away so the router can use it. Then landmark-writer for the turn points among them that "
+                f"audit_routes lists. Write a short /dossier/briefing.md. After that, continue with the full survey.")
     return (f"Build the accessibility dossier for building {sid}. Follow /agent/AGENTS.md. "
-            f"Start with building_overview('{sid}') and /memories/lessons.md, plan with write_todos, "
-            f"and finish with a valid /dossier/annotations.json, /dossier/audit.md and /dossier/briefing.md.")
+            f"Start with building_overview('{sid}'), building_models('{sid}') and /memories/lessons.md, plan with "
+            f"write_todos. Define the places first (place-indexer per floor -> /dossier/places.json, then "
+            f"validate_places), and finish with a valid /dossier/annotations.json, /dossier/audit.md and "
+            f"/dossier/briefing.md.")
 
 
-def run(sid, model=None, on_event=print):
-    agent = create_dossier_agent(sid, model)
+def run(sid, model=None, on_event=print, focus=None, goal=None, vision_model=None):
+    """focus: pano ids to survey first (route-scoped quick dossier for a first visit); see tools.route_focus."""
+    agent = create_dossier_agent(sid, model, vision_model=vision_model)
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 400}
-    for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid)}]}, config=config,
+    for chunk in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]}, config=config,
                               stream_mode="updates", subgraphs=True):
         for ev in describe(chunk):
             on_event(ev)
@@ -124,8 +149,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sid")
     ap.add_argument("--model", default=None)
+    ap.add_argument("--goal", default=None, help="route-scoped quick survey toward this room first")
     a = ap.parse_args()
-    out = run(a.sid, llm.model(a.model) if a.model else None)
+    focus = None
+    if a.goal:
+        from .tools import route_focus
+        focus = route_focus(a.sid, a.goal)["focus"]
+    out = run(a.sid, llm.model(a.model) if a.model else None, focus=focus, goal=a.goal)
     print(f"\ndossier in {out}")
     ann = out / "annotations.json"
     if ann.exists():

@@ -47,3 +47,6 @@ At most 2 looks per overhang candidate, 2 per glass suspect, 4 per sweep pano, a
 - `confidence`: 0.9+ clearly seen and clearly in the walking path; 0.6-0.8 seen but path or height uncertain; below 0.5 means don't confirm it, put it in `rejected` with the reason "uncertain".
 
 Reply to the lead with: counts (candidates, confirmed, rejected, unchecked), the file path, and anything that changes routing (steps, closed doors, possible doors).
+
+## Route-scoped survey
+If the lead gives you a list of pano ids, pass them as `panos="id1,id2,..."` to `overhang_candidates` and `glass_suspects` so only candidates within 3 m of that route come back, and do your sweep looks only at those panos.

@@ -6,7 +6,7 @@ floors are joined through rooms labelled stairs or elevator.
 """
 from dataclasses import dataclass, field
 
-from .geom import dist, point_in_poly, project, segments_cross
+from .geom import dist, point_in_poly, poly_len, project, segments_cross
 
 PASSABLE = {"opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage"}
 STAIRS = ("stair", "staircase", "stairwell", "steps")
@@ -16,6 +16,10 @@ MAX_LINK_LONELY = 8.0
 K_NEAREST = 6
 VERTICAL_XY = 5.0
 BRIDGE = 4.0        # bridge disconnected pieces across one wall, flagged uncertain
+DOOR_APPROACH = 0.5  # cross a doorway square-on: a point this far before and after its middle
+CLEAR_M = 0.35       # keep the walking line this far off blocking walls
+DOOR_ADA_M = 0.815   # 32 in clear width (ada 404.2.3); narrower is a hard stop for wheelchairs
+DOOR_NARROW_M = 0.9  # narrower than this gets called out as a narrow doorway
 
 
 @dataclass
@@ -43,6 +47,10 @@ class Edge:
     length: float
     tags: set = field(default_factory=set)
     hazards: list = field(default_factory=list)
+    via: list = field(default_factory=list)    # waypoints between a and b, in a->b order
+    doors: list = field(default_factory=list)  # [{x, y, width}] doorways this link goes through, a->b order
+    min_clear: float | None = None             # closest approach to a blocking wall, metres
+    info: dict = field(default_factory=dict)   # e.g. a portal's kind, note and target map
 
     def other(self, n):
         return self.b if n == self.a else self.a
@@ -78,6 +86,28 @@ class WalkGraph:
 
     def edge(self, a, b):
         return self.adj[a].get(b)
+
+    def edge_points(self, a, b):
+        """the walking polyline from node a to node b, door and clearance waypoints included."""
+        e = self.adj[a][b]
+        pts = [self.nodes[e.a].xy, *[tuple(p) for p in e.via], self.nodes[e.b].xy]
+        return pts if a == e.a else pts[::-1]
+
+    def edge_doors(self, a, b):
+        e = self.adj[a][b]
+        return e.doors if a == e.a else e.doors[::-1]
+
+    def frame(self, floor):
+        """coordinate frame of a floor; floors of different scans can't be compared metrically."""
+        f = next((f for f in self.floors if f["id"] == floor), None)
+        return (f or {}).get("frame", "")
+
+    def room_at(self, x, y, floor):
+        """smallest labelled room polygon containing the point, or None."""
+        hits = [(k, r) for k, r in self.rooms.items()
+                if r["floor"] == floor and r["poly"] and len(r["poly"]) >= 3 and point_in_poly((x, y), r["poly"])]
+        hits.sort(key=lambda kr: (kr[1]["label"] in (None, "Void"), _area(kr[1]["poly"])))
+        return hits[0][0] if hits else None
 
     def walls(self, floor):
         f = next((f for f in self.floors if f["id"] == floor), None)
@@ -119,7 +149,8 @@ class WalkGraph:
                        "room": n.room, "room_label": n.room_label, "tags": sorted(n.tags),
                        "landmarks": n.landmarks} for n in self.nodes.values()],
             "edges": [{"a": e.a, "b": e.b, "length": round(e.length, 3), "tags": sorted(e.tags),
-                       "hazards": e.hazards} for e in self.edges()],
+                       "hazards": e.hazards, "via": [list(p) for p in e.via], "doors": e.doors}
+                      for e in self.edges()],
             "warnings": self.warnings,
         }
 
@@ -217,6 +248,7 @@ def build(model, annotations=None):
                 g.link(a, b, ["sdk"])
     _link_floors(g, [f["id"] for f in g.floors])
     _bridge(g)
+    shape_edges(g)
     if annotations:
         apply_annotations(g, annotations)
     return g
@@ -299,6 +331,112 @@ def _bridge(g):
         g.warnings.append(f"bridged {a.label}-{b.label} across a wall (no clear line of sight)")
 
 
+def _seg_clear(p, q, walls, skip_pts, step=0.2, end_skip=0.25, door_skip=0.6):
+    """(closest distance to a blocking wall along pq, sample point, wall). ignores the ends (panos) and
+    the stretch right at a doorway, where the jambs are close by design."""
+    L = dist(p, q)
+    n = max(1, int(L / step))
+    best = (float("inf"), None, None)
+    for i in range(n + 1):
+        t = i / n
+        s = (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+        if t * L < end_skip and p in skip_pts["ends"] or (1 - t) * L < end_skip and q in skip_pts["ends"]:
+            continue
+        if any(dist(s, d) < door_skip for d in skip_pts["doors"]):
+            continue
+        for w in walls:
+            d = project(s, w[0], w[1])[2]
+            if d < best[0]:
+                best = (d, s, w)
+    return best
+
+
+def _near_walls(g, floor, p, q, pad):
+    lo_x, hi_x = min(p[0], q[0]) - pad, max(p[0], q[0]) + pad
+    lo_y, hi_y = min(p[1], q[1]) - pad, max(p[1], q[1]) + pad
+    return [w for w in g.walls(floor) if w[2] not in PASSABLE
+            and max(w[0][0], w[1][0]) >= lo_x and min(w[0][0], w[1][0]) <= hi_x
+            and max(w[0][1], w[1][1]) >= lo_y and min(w[0][1], w[1][1]) <= hi_y]
+
+
+def _clear_path(g, floor, pts):
+    return all(not g.blocked_line(a, b, floor) for a, b in zip(pts, pts[1:]))
+
+
+def _door_via(g, floor, a, b):
+    """waypoints that take the line a->b through the middle of each doorway it crosses, square-on."""
+    crossings = sorted(g.door_crossings(a, b, floor), key=lambda w: project(((w[0][0] + w[1][0]) / 2,
+                                                                             (w[0][1] + w[1][1]) / 2), a, b)[0])
+    via, doors = [], []
+    for w in crossings:
+        mid = ((w[0][0] + w[1][0]) / 2, (w[0][1] + w[1][1]) / 2)
+        width = dist(w[0], w[1])
+        # shared walls show up once per room; one doorway, one set of waypoints
+        if width < 1e-6 or any(dist(mid, (d["x"], d["y"])) < 0.1 for d in doors):
+            continue
+        doors.append({"x": round(mid[0], 3), "y": round(mid[1], 3), "width": round(width, 3)})
+        ux, uy = -(w[1][1] - w[0][1]) / width, (w[1][0] - w[0][0]) / width  # wall normal
+        if ux * (b[0] - a[0]) + uy * (b[1] - a[1]) < 0:
+            ux, uy = -ux, -uy
+        pre = (mid[0] - ux * DOOR_APPROACH, mid[1] - uy * DOOR_APPROACH)
+        post = (mid[0] + ux * DOOR_APPROACH, mid[1] + uy * DOOR_APPROACH)
+        prev = via[-1] if via else a
+        pts = ([pre] if dist(prev, mid) > DOOR_APPROACH + 0.2 else []) + [mid] +               ([post] if dist(mid, b) > DOOR_APPROACH + 0.2 else [])
+        via += pts
+    # keep the square-on approach only if it stays clear; else just the middle; else the straight line
+    for cand in (via, [p for p in via if any(abs(p[0] - d["x"]) < 1e-9 and abs(p[1] - d["y"]) < 1e-9
+                                             for d in doors)], []):
+        if _clear_path(g, floor, [a, *cand, b]):
+            return cand, doors
+    return [], doors
+
+
+def shape_edges(g):
+    """give every walking link a precise polyline: through doorway middles, off the walls."""
+    for e in g.edges():
+        na, nb = g.nodes[e.a], g.nodes[e.b]
+        if na.floor != nb.floor or "vertical" in e.tags or "portal" in e.tags:
+            continue
+        floor = na.floor
+        via, doors = _door_via(g, floor, na.xy, nb.xy)
+        pts = [na.xy, *via, nb.xy]
+        skip = {"ends": {na.xy, nb.xy}, "doors": [(d["x"], d["y"]) for d in doors]}
+        out, worst = [pts[0]], float("inf")
+        for p, q in zip(pts, pts[1:]):
+            walls = _near_walls(g, floor, p, q, CLEAR_M + 0.1)
+            d, s, w = _seg_clear(p, q, walls, skip) if walls else (float("inf"), None, None)
+            if d < CLEAR_M and s is not None:
+                c = project(s, w[0], w[1])[1]
+                ln = dist(s, c)
+                if ln > 1e-6:
+                    push = CLEAR_M - d + 0.05
+                    s2 = (s[0] + (s[0] - c[0]) / ln * push, s[1] + (s[1] - c[1]) / ln * push)
+                    w1 = _near_walls(g, floor, p, s2, CLEAR_M + 0.1)
+                    w2 = _near_walls(g, floor, s2, q, CLEAR_M + 0.1)
+                    d2 = min(_seg_clear(p, s2, w1, skip)[0] if w1 else float("inf"),
+                             _seg_clear(s2, q, w2, skip)[0] if w2 else float("inf"))
+                    if _clear_path(g, floor, [p, s2, q]) and d2 > d:
+                        out.append(s2)
+                        d = d2
+            worst = min(worst, d)
+            out.append(q)
+        e.via = [tuple(round(c, 3) for c in pt) for pt in out[1:-1]]
+        e.doors = doors
+        e.min_clear = None if worst == float("inf") else round(worst, 3)
+        e.length = poly_len(out)
+        if worst < CLEAR_M:
+            e.tags.add("tight")
+        if any(d["width"] < DOOR_ADA_M for d in doors):
+            e.tags.add("narrow_door")
+        if doors:
+            e.tags.add("door")
+
+
+def _poly_dist(g, e, xy):
+    pts = g.edge_points(e.a, e.b)
+    return min(project(xy, a, b)[2] for a, b in zip(pts, pts[1:]))
+
+
 def apply_annotations(g, ann):
     """the dossier format the offline agent writes:
     {"nodes": {pano_id: {"tags": [...], "landmarks": [{"text":..., "sense": "touch|sound|underfoot|air"}]}},
@@ -319,7 +457,7 @@ def apply_annotations(g, ann):
             na, nb = g.nodes[e.a], g.nodes[e.b]
             if na.floor != h.get("floor", na.floor) or "vertical" in e.tags:
                 continue
-            if project((h["x"], h["y"]), na.xy, nb.xy)[2] <= h.get("radius", 0.6):
+            if _poly_dist(g, e, (h["x"], h["y"])) <= h.get("radius", 0.6):
                 e.tags.add("hazard")
                 e.hazards.append(h)
         # edges the geometry candidate was found on, even if a bit farther than radius

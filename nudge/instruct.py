@@ -1,7 +1,8 @@
 """route geometry -> maneuvers a person can follow without seeing."""
-from .geom import heading, project, turn_angle
+from .geom import dist, heading, project, turn_angle
 
-STEP_M = 0.7
+DOOR_NARROW_M = 0.9  # matches walkgraph: narrower doorways get called out
+
 SIMPLIFY_M = 0.6   # pano jitter smaller than this is not a turn
 STRAIGHT_DEG = 25
 
@@ -17,15 +18,17 @@ CUES = {
     "arrive": [60, 60, 60, 60, 300],
     "hazard": [30, 30, 30, 30, 30, 30, 30, 30, 30],
     "off_route": [500],
+    "unmapped": [600, 400, 600, 400, 600],  # slow, both sides: stop, this isn't mapped
 }
 
 
-def feet(m):
-    return round(m * 3.281)
-
-
-def steps(m):
-    return max(1, round(m / STEP_M))
+def meters(m):
+    """spoken distance: half-metre steps up close, whole metres beyond 10."""
+    if m < 0.75:
+        return "less than a meter"
+    v = round(m * 2) / 2 if m < 10 else round(m)
+    v = int(v) if v == int(v) else v
+    return f"{v} meter" if v == 1 else f"{v} meters"
 
 
 def _simplify(ids, pts, eps):
@@ -70,8 +73,13 @@ def _leg_notes(g, ids):
     notes, hazards, seen_rooms = [], [], set()
     for a, b in zip(ids, ids[1:]):
         e = g.edge(a, b)
-        if "door" in e.tags and "through a doorway" not in notes:
-            notes.append("through a doorway")
+        doors = g.edge_doors(a, b) if hasattr(g, "edge_doors") else []
+        narrow = any(d["width"] < DOOR_NARROW_M for d in doors)
+        if "door" in e.tags or doors:
+            if narrow and "through a narrow doorway" not in notes:
+                notes = [n for n in notes if n != "through a doorway"] + ["through a narrow doorway"]
+            elif not narrow and not any(n.startswith("through a") for n in notes):
+                notes.append("through a doorway")
         nb = g.nodes[b]
         if "room_change" in e.tags and nb.room_label and nb.room_label not in ("Void",) \
                 and nb.room_label not in seen_rooms:
@@ -100,8 +108,11 @@ def maneuvers(g, route):
     legs, cur = [], [ids[0]]
     for a, b in zip(ids, ids[1:]):
         if "vertical" in g.edge(a, b).tags:
-            legs.append(("walk", cur))
-            legs.append(("floor", [a, b]))
+            if len(cur) == 1 and legs and legs[-1][0] == "floor" and legs[-1][1][-1] == a:
+                legs[-1][1].append(b)  # still riding: one floor change, not two
+            else:
+                legs.append(("walk", cur))
+                legs.append(("floor", [a, b]))
             cur = [b]
         else:
             cur.append(b)
@@ -120,18 +131,7 @@ def maneuvers(g, route):
     out = []
     for kind, leg in legs:
         if kind == "floor":
-            a, b = (g.nodes[x] for x in leg)
-            how = "elevator" if "elevator" in g.edge(*leg).tags else "stairs" if "stairs" in g.edge(*leg).tags else "way up"
-            up = "up" if b.z > a.z else "down"
-            fl = next((f["label"] for f in g.floors if f["id"] == b.floor), b.floor)
-            text = f"Take the elevator {up} to {fl}." if how == "elevator" else \
-                f"Take the stairs {up} to {fl}. Handrail recommended." if how == "stairs" else \
-                f"Go {up} to {fl}; the connection here is uncertain, ask for help if needed."
-            # distance stays 0: no walking. the vertical edge's metres go in vertical_m
-            out.append({"type": "floor", "node": leg[0], "to_node": leg[1], "along": along_at[leg[0]],
-                        "walk_along": walk_at[leg[0]], "distance": 0.0, "turn_deg": None,
-                        "vertical_m": g.edge(*leg).length, "rise_m": b.z - a.z, "to_floor": b.floor,
-                        "text": text, "cue": "floor", "via": how})
+            out.append(_floor_maneuver(g, leg, along_at, walk_at))
             continue
         if len(leg) < 2:
             continue
@@ -158,7 +158,7 @@ def maneuvers(g, route):
             if kind_ == "floor_next":
                 target = "elevator" if "elevator" in node.tags else "stairs" if "stairs" in node.tags else "connection"
                 notes = [x for x in notes if target not in x]
-            walk = f"Walk about {steps(d)} steps, {feet(d)} feet"
+            walk = f"Walk {meters(d)}"
             if notes:
                 walk += ", " + ", ".join(notes)
             lm = _landmark(node)
@@ -186,6 +186,99 @@ def maneuvers(g, route):
                 m["text"] = "Caution: " + "; ".join(warn) + ". " + m["text"]
             out.append(m)
     return out
+
+
+def _floor_maneuver(g, leg, along_at, walk_at):
+    """one floor change or map switch, possibly over several back-to-back vertical links."""
+    a, b = g.nodes[leg[0]], g.nodes[leg[-1]]
+    edges = [g.edge(x, y) for x, y in zip(leg, leg[1:])]
+    tags = set().union(*(e.tags for e in edges))
+    portal = None
+    for (x, y), e in zip(zip(leg, leg[1:]), edges):
+        if "portal" in e.tags:
+            portal = dict(e.info)
+            if x != e.a:  # walked b -> a: the other way
+                portal["direction"] = e.info.get("reverse_direction")
+            break
+    how = "elevator" if "elevator" in tags else "stairs" if "stairs" in tags else \
+        (portal or {}).get("kind") or "way up"
+    fl = next((f["label"] for f in g.floors if f["id"] == b.floor), b.floor)
+    # z is only comparable inside one scan; a portal says its own direction
+    frame = getattr(g, "frame", lambda f: "")
+    if frame(a.floor) == frame(b.floor):
+        rise = b.z - a.z
+    else:
+        rise = {"up": 1.0, "down": -1.0}.get((portal or {}).get("direction"), 0.0)
+    up = "up " if rise > 0 else "down " if rise < 0 else ""
+    if how == "elevator":
+        text = f"Take the elevator {up}to {fl}."
+    elif how == "stairs":
+        text = f"Take the stairs {up}to {fl}. Handrail recommended."
+    elif how in ("door", "entrance"):
+        text = f"Go through the {(portal or {}).get('note') or 'doors'} into {fl}."
+    else:
+        text = f"Go {up}to {fl}; the connection here is uncertain, ask for help if needed."
+    if portal and portal.get("note") and how in ("elevator", "stairs"):
+        text += f" {portal['note'][0].upper()}{portal['note'][1:].rstrip('.')}."
+    # distance stays 0: no walking. the vertical links' metres go in vertical_m
+    return {"type": "floor", "node": leg[0], "to_node": leg[-1], "along": along_at[leg[0]],
+            "walk_along": walk_at[leg[0]], "distance": 0.0, "turn_deg": None,
+            "vertical_m": sum(e.length for e in edges), "rise_m": rise, "to_floor": b.floor,
+            "text": text, "cue": "floor", "via": how, "portal": bool(portal)}
+
+
+def path(g, route):
+    """the exact walking polyline of a route: [(x, y, floor, along, edge_index, vertical)].
+    along matches maneuver 'along' (route metres incl. vertical links)."""
+    ids, out, acc = route.nodes, [], 0.0
+    if not ids:
+        return out
+    n0 = g.nodes[ids[0]]
+    out.append((n0.x, n0.y, n0.floor, 0.0, -1, False))
+    for i, (a, b) in enumerate(zip(ids, ids[1:])):
+        e = g.edge(a, b)
+        nb = g.nodes[b]
+        if "vertical" in e.tags or g.nodes[a].floor != nb.floor:
+            acc += e.length
+            out.append((nb.x, nb.y, nb.floor, acc, i, True))
+            continue
+        pts = g.edge_points(a, b) if hasattr(g, "edge_points") else [g.nodes[a].xy, nb.xy]
+        for p, q in zip(pts, pts[1:]):
+            acc += dist(p, q)
+            out.append((q[0], q[1], nb.floor, acc, i, False))
+    return out
+
+
+def door_points(g, route):
+    """every doorway the route goes through: [{along, walk_along, x, y, floor, width, edge_index, into}]."""
+    ids, out = route.nodes, []
+    acc = wacc = 0.0
+    for i, (a, b) in enumerate(zip(ids, ids[1:])):
+        e = g.edge(a, b)
+        if "vertical" in e.tags:
+            acc += e.length
+            continue
+        pts = g.edge_points(a, b) if hasattr(g, "edge_points") else [g.nodes[a].xy, g.nodes[b].xy]
+        doors = g.edge_doors(a, b) if hasattr(g, "edge_doors") else []
+        nb = g.nodes[b]
+        into = nb.room_label if nb.room_label and nb.room_label != "Void" else None
+        run, found = 0.0, set()
+        for p, q in zip(pts, pts[1:]):
+            run += dist(p, q)
+            for k, d in enumerate(doors):
+                if k not in found and abs(q[0] - d["x"]) < 1e-6 and abs(q[1] - d["y"]) < 1e-6:
+                    found.add(k)
+                    out.append({"along": acc + run, "walk_along": wacc + run, "x": d["x"], "y": d["y"],
+                                "floor": nb.floor, "width": d["width"], "edge_index": i, "into": into})
+        # a doorway the waypoints couldn't square up still counts, at its projection
+        for k, d in enumerate(doors):
+            if k not in found:
+                t = project((d["x"], d["y"]), g.nodes[a].xy, nb.xy)[0]
+                out.append({"along": acc + t * e.length, "walk_along": wacc + t * e.length, "x": d["x"],
+                            "y": d["y"], "floor": nb.floor, "width": d["width"], "edge_index": i, "into": into})
+        acc += e.length
+        wacc += e.length
+    return sorted(out, key=lambda d: d["along"])
 
 
 def orient(user_heading, route_heading):

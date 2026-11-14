@@ -13,9 +13,13 @@ from ..mp import ROOT
 
 load_dotenv(ROOT / ".env")
 
-# free on openrouter, with tool calling; the vision ones also take images (checked against /api/v1/models)
-FREE_TEXT = "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free"
-FREE_VISION = "openrouter:nvidia/nemotron-3.5-super-vl:free"
+# openrouter's free router picks a free model that supports what the request needs (tools, images).
+# it works with default account privacy settings. for steadier quality, allow free endpoints that may train
+# on inputs in openrouter privacy settings and set e.g.
+#   NUDGE_MODEL=openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
+#   NUDGE_VISION_MODEL=openrouter:nvidia/nemotron-3.5-super-vl:free
+FREE_TEXT = "openrouter:openrouter/free"
+FREE_VISION = "openrouter:openrouter/free"
 CLAUDE = "anthropic:claude-opus-5-5"
 
 

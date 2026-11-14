@@ -49,7 +49,7 @@ def test_start_trip_kicks_off_dossier_and_gives_first_step():
     assert started == ["synthetic"], "first visit surveys the building"
     assert "Route ready" in text and "Lobby" in text
     assert b.handle(U, "next")[0]
-    assert "feet to go" in b.handle(U, "where am i")[0]
+    assert "meters to go" in b.handle(U, "where am i")[0]
 
 
 def test_unknown_place_lists_rooms():

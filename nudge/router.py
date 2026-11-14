@@ -21,15 +21,18 @@ class Profile:
 
 PROFILES = {
     "default": Profile("default", avoid={"closed"},
-                       penalty={"uncertain": 15, "vertical_unknown": 30, "hazard": 5, "narrow": 2, "glass_wall": 2}),
+                       penalty={"uncertain": 15, "vertical_unknown": 30, "hazard": 5, "narrow": 2, "glass_wall": 2,
+                                "tight": 2, "narrow_door": 2}),
     # blind cane user: fewer turns, hazards are expensive, unsure links are worse than a detour
     "blind": Profile("blind", avoid={"closed"},
                      penalty={"hazard": 40, "uncertain": 40, "vertical_unknown": 60, "stairs": 8, "door": 1.5,
-                              "room_change": 0.5, "glass_wall": 15, "narrow": 4, "step": 10},
+                              "room_change": 0.5, "glass_wall": 15, "narrow": 4, "step": 10, "tight": 6,
+                              "narrow_door": 3},
                      turn_cost=2.0),
-    "wheelchair": Profile("wheelchair", avoid={"stairs", "closed", "step"},
+    # narrow_door: under 32 in clear width (ada 404.2.3), a hard stop
+    "wheelchair": Profile("wheelchair", avoid={"stairs", "closed", "step", "narrow_door"},
                           penalty={"hazard": 10, "uncertain": 50, "vertical_unknown": 200, "door": 3, "narrow": 25,
-                                   "glass_wall": 3}),
+                                   "glass_wall": 3, "tight": 15}),
 }
 
 
@@ -50,8 +53,9 @@ class NoRoute(Exception):
     pass
 
 
-def resolve_goal(g, goal):
-    """a pano id, a pano label, a room id, or a room label ('Kitchen'). returns a set of node ids."""
+def resolve_goal(g, goal, catalog=True):
+    """a pano id, a pano label, a room id, or a room label ('Kitchen'); with catalog, also what people call
+    places (nudge.places). returns a set of node ids."""
     if isinstance(goal, (set, list, tuple)):
         return set(goal)
     if goal in g.nodes:
@@ -69,6 +73,15 @@ def resolve_goal(g, goal):
     if not by_room_label:
         by_room_label = {n.id for n in g.nodes.values() if any(low in str(l.get("text", "")).lower()
                                                                  for l in n.landmarks)}
+    if not by_room_label and catalog:
+        # what people call places ("the kitchenette", "somewhere to get water"): the place catalog
+        from . import places
+        res = places.resolve(g, goal)
+        hits = [res["best"]] if res.get("best") else [o for o in res.get("options") or []]
+        if res.get("ambiguous"):
+            hits = [p for p in places.catalog_for_graph(g)["places"]
+                    if p["id"] in {o["id"] for o in res.get("options") or []}]
+        by_room_label = {n for p in hits for n in places.goal_nodes(p) if n in g.nodes}
     return by_room_label
 
 
@@ -89,9 +102,13 @@ def plan(g, start, goal, profile="default", blocked_edges=(), blocked_nodes=()):
         raise NoRoute(f"no place matches {goal!r}")
     goal_nodes = [g.nodes[x] for x in goals]
 
+    frame = getattr(g, "frame", lambda f: "")
+
     def h(nid):
+        # across separate scans there's no shared frame, so no distance estimate: stay admissible
         n = g.nodes[nid]
-        return min(dist(n.xy, q.xy) + FLOOR_H * (n.floor != q.floor) * 0.5 for q in goal_nodes)
+        return min((dist(n.xy, q.xy) + FLOOR_H * (n.floor != q.floor) * 0.5) if frame(n.floor) == frame(q.floor)
+                   else 0.0 for q in goal_nodes)
 
     # state is (node, previous node) so turning can cost something
     tie = itertools.count()

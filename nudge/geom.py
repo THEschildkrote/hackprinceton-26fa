@@ -48,6 +48,10 @@ def project(p, a, b):
     return t, c, dist(p, c)
 
 
+def poly_len(pts):
+    return sum(dist(a, b) for a, b in zip(pts, pts[1:]))
+
+
 def heading(a, b):
     """radians, ccw from +x."""
     return math.atan2(b[1] - a[1], b[0] - a[0])

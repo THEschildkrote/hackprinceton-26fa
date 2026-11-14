@@ -104,7 +104,7 @@ def script():
     return scripted(
         ("compare_options", {"block_node": "E1"}, ""),
         ("commit_reroute", {"block_node": "E1", "reason": "The elevator is out of service."},
-         "The elevator is out. The stairs are 20 feet away. Shall I switch your route to the stairs?"),
+         "The elevator is out. The stairs are 6 meters away. Shall I switch your route to the stairs?"),
         "Okay. Your new route uses the stairs.",
     )
 

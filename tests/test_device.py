@@ -142,8 +142,9 @@ def test_live_to_elevator_counts_walking_metres(syn):
     nav.start(o4.x, o4.y, "f1", heading=math.pi / 2)
     lv = nav.live()
     assert lv["next"]["type"] == "walk"
-    # O4 (12, 4.5) -> E1 (13, 7)
-    assert lv["distance_to_next_m"] == round(math.hypot(1, 2.5), 1)
+    # O4 (12, 4.5) -> E1 (13, 7), squared up through the middle of the 2 m opening at y=6:
+    # (12, 4.5) -> (13, 5.5) -> (13, 6) -> (13, 6.5) -> (13, 7)
+    assert lv["distance_to_next_m"] == round(math.hypot(1, 1) + 1.5, 1)
 
 
 # packets and ascii
@@ -195,8 +196,9 @@ def test_live_packets_over_a_walk(syn):
         if p["deg_next"] is not None:
             assert -180 <= p["deg_next"] <= 180
             if f != prev_floor:
-                # stepping out of the elevator still facing in: the route leaves the way we came
-                assert abs(p["deg_next"]) == 180
+                # stepping out of the elevator still facing in: the route leaves the way we came,
+                # squared up through the middle of the opening, so "turn around", not exactly 180
+                assert abs(p["deg_next"]) >= 135
             else:
                 # walking exactly on the route, along its direction: never told to turn hard
                 assert abs(p["deg_next"]) <= 90

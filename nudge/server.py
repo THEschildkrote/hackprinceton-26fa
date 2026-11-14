@@ -17,6 +17,10 @@ from .navigator import Navigator, vibration
 from .router import PROFILES, NoRoute, plan
 
 app = FastAPI(title="nudge debug")
+# the expo web build and companion pages may be served from another origin
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 _graphs, _sessions = {}, {}
 sessions = _sessions  # session id -> Navigator; the device router reads it via get_navigator
 _session_sid = {}     # session id -> building sid
@@ -73,6 +77,7 @@ class StartReq(BaseModel):
     y: float
     floor: str
     heading: float | None = None
+    building: bool = False  # route across every joined scan of this building
 
 
 class UpdateReq(BaseModel):
@@ -81,6 +86,7 @@ class UpdateReq(BaseModel):
     y: float
     floor: str
     heading: float | None = None
+    sid: str | None = None  # which scan the position is in (multi-scan buildings)
 
 
 class BlockReq(BaseModel):
@@ -91,6 +97,7 @@ class BlockReq(BaseModel):
     a: str
     b: str | None = None
     heading: float | None = None
+    sid: str | None = None
 
 
 @app.get("/api/profiles")
@@ -157,26 +164,48 @@ def _nav(session):
 
 @app.post("/api/nav/start")
 def nav_start(req: StartReq):
-    g = graph_for(req.sid)
-    nav = Navigator(g, req.to, req.profile)
+    if req.building:
+        from .building import building_graph
+        try:
+            g = building_graph(req.sid)
+        except Exception as ex:
+            raise HTTPException(502, f"could not join the scans of {req.sid}: {ex}")
+    else:
+        g = graph_for(req.sid)
+    goal, place = req.to, None
+    from .router import resolve_goal
+    if not resolve_goal(g, goal, catalog=False):
+        from . import places
+        r = places.resolve(g, goal, here=(req.x, req.y, req.floor), profile=req.profile)
+        if r["ambiguous"]:
+            raise HTTPException(409, {"question": r["question"], "options": r.get("options")})
+        if not r["best"]:
+            raise HTTPException(404, {"message": r["message"], "suggestions": r.get("suggestions")})
+        goal, place = r["best"]["name"], places._summary(r["best"])
+    nav = Navigator(g, goal, req.profile)
     sid = uuid.uuid4().hex[:10]
     _sessions[sid] = nav
     _session_sid[sid] = req.sid
-    ev = nav.start(req.x, req.y, req.floor, req.heading)
-    return {"session": sid, "events": _events(ev), "state": _state(nav), "device": _device(nav)}
+    ev = nav.start(req.x, req.y, req.floor, req.heading, sid=req.sid if req.building else None)
+    return {"session": sid, "events": _events(ev), "state": _state(nav), "device": _device(nav), "place": place}
 
 
 @app.post("/api/nav/update")
 def nav_update(req: UpdateReq):
     nav = _nav(req.session)
-    ev = nav.update(req.x, req.y, req.floor, req.heading)
-    return {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
+    ev = nav.update(req.x, req.y, req.floor, req.heading, sid=req.sid)
+    out = {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
+    if any(e.get("type") == "unmapped" for e in ev):
+        # off the map: the client can hand this to the explorer agent (POST /api/nav/explore)
+        why = next(e.get("why") for e in ev if e.get("type") == "unmapped")
+        out["explore_hint"] = f"Traveller is off the map (why: {why})."
+    return out
 
 
 @app.post("/api/nav/block")
 def nav_block(req: BlockReq):
     nav = _nav(req.session)
-    ev = nav.block(req.x, req.y, req.floor, req.a, req.b, req.heading)
+    ev = nav.block(req.x, req.y, req.floor, req.a, req.b, req.heading, sid=req.sid)
     return {"events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
 
@@ -289,7 +318,7 @@ def dossier_demo(sid: str):
     return _start_run(sid, "demo", _demo)
 
 
-def _stream_agent(sid, run, model=None):
+def _stream_agent(sid, run, model=None, focus=None, goal=None):
     """drive the real dossier agent and turn its stream into ui events."""
     from .agents.dossier import create_dossier_agent, kickoff
     agent = create_dossier_agent(sid, model)
@@ -297,7 +326,7 @@ def _stream_agent(sid, run, model=None):
     active = []  # subagents currently running, innermost last
     emit = run["events"].append
     emit({"kind": "start", "who": "lead", "text": f"dossier lead starts on {sid}"})
-    for ns, update in agent.stream({"messages": [{"role": "user", "content": kickoff(sid)}]}, config=config,
+    for ns, update in agent.stream({"messages": [{"role": "user", "content": kickoff(sid, focus, goal)}]}, config=config,
                                    stream_mode="updates", subgraphs=True):
         who = active[-1] if ns and active else "lead"
         for node, val in (update or {}).items():
@@ -561,9 +590,17 @@ def _fallback_block(nav, text):
     if target is None:
         return [], ["You're almost there; there's nothing ahead to avoid."]
     x, y, fl = _here(nav)
+    if target[1] is None:
+        # standing at the thing that's out: replan from the route point before it, the way you'd turn back
+        from .navigator import snap
+        here, _ = snap(g, x, y, fl)
+        if here == target[0] and target[0] in r.nodes and r.nodes.index(target[0]) > 0:
+            prev = g.nodes[r.nodes[r.nodes.index(target[0]) - 1]]
+            if prev.floor == fl:
+                x, y = prev.x, prev.y
     ev = nav.block(x, y, fl, target[0], target[1], nav.heading,
                    why=f"Okay, I'll avoid {what}.")
-    return ev, [e["text"] for e in ev if e.get("text")]
+    return ev, []
 
 
 @app.post("/api/nav/exception")
@@ -573,22 +610,23 @@ def nav_exception(req: ExceptionReq):
         raise HTTPException(409, "no active route")
     from .agents import llm
     if llm.has_credentials(llm.spec()):
-        from .agents.exception import create_exception_agent, handle_event, new_thread
-        ctx = _exc.get(req.session)
-        if not ctx:
-            ctx = _exc[req.session] = {"agent": create_exception_agent(nav, nav.g, f"travels as: {nav.profile}"),
-                                       "thread": new_thread()}
         try:
+            from .agents.exception import create_exception_agent, handle_event, new_thread
+            ctx = _exc.get(req.session)
+            if not ctx:
+                ctx = _exc[req.session] = {"agent": create_exception_agent(nav, nav.g, f"travels as: {nav.profile}"),
+                                           "thread": new_thread()}
             r = handle_event(ctx["agent"], ctx["thread"], req.text)
         except Exception as ex:
+            _exc.pop(req.session, None)
             ev, say = _fallback_block(nav, req.text)
-            return {"mode": "fallback", "say": [f"The assistant isn't reachable ({type(ex).__name__})."] + say,
-                    "pending": None, "events": _events(ev), "state": _state(nav), "device": _device(nav)}
-        return {"mode": "agent", "say": r.get("say") or [], "pending": r.get("pending"), "events": [],
-                "state": _state(nav), "device": _device(nav)}
+            return {"mode": "fallback", "reason": f"model call failed ({type(ex).__name__}: {str(ex)[:120]})",
+                    "say": say, "pending": None, "events": _events(ev), "state": _state(nav), "device": _device(nav)}
+        return {"mode": "agent", "reason": f"exception agent on {llm.spec()}", "say": r.get("say") or [],
+                "pending": r.get("pending"), "events": [], "state": _state(nav), "device": _device(nav)}
     ev, say = _fallback_block(nav, req.text)
-    return {"mode": "fallback", "say": say, "pending": None, "events": _events(ev), "state": _state(nav),
-            "device": _device(nav)}
+    return {"mode": "fallback", "reason": "no model credentials", "say": say, "pending": None,
+            "events": _events(ev), "state": _state(nav), "device": _device(nav)}
 
 
 @app.post("/api/nav/exception/decide")
@@ -602,6 +640,193 @@ def nav_exception_decide(req: DecideReq):
     r = approve(ctx["agent"], ctx["thread"], decision)
     return {"mode": "agent", "say": r.get("say") or [], "pending": r.get("pending"), "state": _state(nav),
             "device": _device(nav)}
+
+
+# task a: explorer agent (off the map / unseen building), multi-scan buildings, route-scoped quick survey
+
+_explorers = {}  # session -> (agent, thread)
+
+
+class ExploreReq(BaseModel):
+    session: str
+    text: str
+
+
+class ExploreDecideReq(BaseModel):
+    session: str
+    decision: str = "approve"
+
+
+@app.post("/api/nav/explore")
+def nav_explore(req: ExploreReq):
+    nav = _nav(req.session)
+    if not _has_llm_key():
+        raise HTTPException(400, "no model credentials for the explorer agent (OPENROUTER_API_KEY or ANTHROPIC_API_KEY)")
+    from .agents.exception import handle_event, new_thread
+    from .agents.explorer import create_explorer_agent
+    if req.session not in _explorers:
+        _explorers[req.session] = (create_explorer_agent(nav, nav.g, sid=_session_sid.get(req.session)), new_thread())
+    agent, thread = _explorers[req.session]
+    r = handle_event(agent, thread, req.text)
+    return {**r, "state": _state(nav), "device": _device(nav)}
+
+
+@app.post("/api/nav/explore/decide")
+def nav_explore_decide(req: ExploreDecideReq):
+    nav = _nav(req.session)
+    if req.session not in _explorers:
+        raise HTTPException(404, "no explorer conversation for this session")
+    from .agents.exception import approve
+    agent, thread = _explorers[req.session]
+    r = approve(agent, thread, req.decision)
+    return {**r, "state": _state(nav), "device": _device(nav)}
+
+
+@app.get("/api/building/{sid}")
+def building_info(sid: str):
+    from . import building
+    sibs = building.siblings(sid)
+    sids = [x["sid"] if isinstance(x, dict) else x for x in sibs] or [sid]
+    out = {"models": sibs, "portals": {x: building.read_portals(x) for x in sids}}
+    try:
+        graphs = {x: building.scan_graph(x) for x in sids}
+        out["candidates"] = building.candidates_portals(sids, graphs)
+    except Exception as ex:
+        out["candidates_error"] = str(ex)
+    return out
+
+
+class QuickReq(BaseModel):
+    goal: str
+    profile: str = "blind"
+
+
+@app.post("/api/dossier/{sid}/quick")
+def dossier_quick(sid: str, req: QuickReq):
+    if not _has_llm_key():
+        raise HTTPException(400, "no model credentials: put OPENROUTER_API_KEY (free models) or ANTHROPIC_API_KEY in .env.")
+    from .agents.tools import route_focus
+    try:
+        rf = route_focus(sid, req.goal, req.profile)
+    except NoRoute as ex:
+        raise HTTPException(404, str(ex))
+    run = _start_run(sid, "quick", lambda s, run: _stream_agent(s, run, focus=rf["focus"], goal=req.goal))
+    return {**run, "focus": rf["focus"], "route_m": rf["length_m"]}
+
+
+# outdoor leg: vexcel outside, matterport inside, joined at the entrance
+
+_d2d = {}  # session -> DoorToDoorNavigator
+
+
+def _site(sid):
+    from . import handoff
+    try:
+        return handoff.load_site(sid)
+    except Exception as ex:
+        raise HTTPException(502, f"could not build the outdoor site for {sid} (needs Vexcel/Matterport keys): {ex}")
+
+
+@app.get("/api/outdoor/{sid}/site")
+def outdoor_site(sid: str):
+    site = _site(sid)
+    return {"sid": sid, "portals": site.portals, "warnings": site.warnings, "georef": site.geo.to_dict(),
+            "outdoor_nodes": len(site.og.nodes)}
+
+
+class OutdoorPlanReq(BaseModel):
+    sid: str
+    lat: float
+    lon: float
+    to: str
+    profile: str = "blind"
+
+
+@app.post("/api/outdoor/plan")
+def outdoor_plan(req: OutdoorPlanReq):
+    from .handoff import plan_door_to_door
+    site = _site(req.sid)
+    try:
+        return plan_door_to_door((req.lat, req.lon), req.sid, req.to, req.profile, site=site)
+    except NoRoute as ex:
+        raise HTTPException(404, str(ex))
+
+
+class OutdoorStartReq(BaseModel):
+    sid: str
+    to: str
+    profile: str = "blind"
+    lat: float
+    lon: float
+    compass_deg: float | None = None
+
+
+class OutdoorUpdateReq(BaseModel):
+    session: str
+    lat: float | None = None
+    lon: float | None = None
+    x: float | None = None
+    y: float | None = None
+    floor: str | None = None
+    compass_deg: float | None = None
+
+
+@app.post("/api/outdoor/nav/start")
+def outdoor_nav_start(req: OutdoorStartReq):
+    from .handoff import DoorToDoorNavigator
+    d = DoorToDoorNavigator(_site(req.sid), req.to, req.profile)
+    session = uuid.uuid4().hex[:10]
+    _d2d[session] = d
+    return {"session": session, "phase": d.phase, "events": _events(d.start(req.lat, req.lon, req.compass_deg))}
+
+
+@app.post("/api/outdoor/nav/update")
+def outdoor_nav_update(req: OutdoorUpdateReq):
+    d = _d2d.get(req.session)
+    if not d:
+        raise HTTPException(404, "unknown session")
+    ev = d.update(req.lat, req.lon, req.x, req.y, req.floor, req.compass_deg)
+    nav = d.inside if d.phase == "indoor" else d.outside
+    if d.phase == "indoor":
+        _sessions[req.session] = d.inside  # the band relay follows the indoor leg too
+    return {"phase": d.phase, "events": _events(ev), "done": d.done, "device": _device(nav)}
+
+
+
+# place catalog: what each section is called and what it serves (agents name, the scan places)
+
+@app.get("/api/places/{sid}")
+def places_catalog(sid: str, building: bool = False):
+    from . import places
+    try:
+        cat = places.load(sid, building)
+    except Exception as ex:
+        raise HTTPException(502, f"could not load places for {sid}: {ex}")
+    return cat
+
+
+@app.get("/api/places/{sid}/resolve")
+def places_resolve(sid: str, q: str, x: float | None = None, y: float | None = None, floor: str | None = None,
+                   profile: str = "blind"):
+    from . import places
+    g = graph_for(sid)
+    here = (x, y, floor) if x is not None and y is not None and floor else None
+    r = places.resolve(g, q, here=here, profile=profile)
+    if r.get("best"):
+        r["best"] = places._summary(r["best"]) | {"goal_nodes": places.goal_nodes(r["best"])}
+    return r
+
+
+@app.get("/api/places/{sid}/where")
+def places_where(sid: str, x: float, y: float, floor: str):
+    from . import places
+    return places.where_am_i(graph_for(sid), x, y, floor)
+
+
+# haptic band relay (web/companion.html, mobile app)
+from .device_api import make_router  # noqa: E402
+
+app.include_router(make_router(get_navigator))
 
 
 @app.get("/")

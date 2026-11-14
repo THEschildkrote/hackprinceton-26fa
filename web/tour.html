@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nudge Tour</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dddcd6;
+    --wall: #2b2b2e; --door: #0f8b8d; --room: #ecebe4; --route: #e8590c; --walker: #1c64f2;
+    --hazard: #d62828; --ok: #2b8a3e; --warn: #b35c00; --code: #f0efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #a0a0a8; --line: #333338;
+      --wall: #e4e4e8; --door: #3cc6c8; --room: #26262b; --route: #ff8a3d; --walker: #6aa2ff;
+      --hazard: #ff5a5a; --ok: #5fd07a; --warn: #ffb35c; --code: #26262b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #a0a0a8; --line: #333338;
+    --wall: #e4e4e8; --door: #3cc6c8; --room: #26262b; --route: #ff8a3d; --walker: #6aa2ff;
+    --hazard: #ff5a5a; --ok: #5fd07a; --warn: #ffb35c; --code: #26262b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a { color: var(--muted); font-size: 13px; margin-left: auto; }
+  main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  #showcase { width: 100%; aspect-ratio: 16 / 10; border: 0; border-radius: 10px; background: #000; display: none; }
+  #fp { position: relative; display: none; }
+  #view { width: 100%; aspect-ratio: 1 / 1; max-height: 48vh; object-fit: cover; border-radius: 10px; background: var(--code); display: block; }
+  #viewtag { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+  .planwrap { position: relative; }
+  #plan { width: 100%; height: 46vh; min-height: 260px; display: block; touch-action: none; cursor: crosshair; }
+  .planbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .pad { display: none; gap: 6px; justify-content: center; margin-top: 8px; }
+  @media (pointer: coarse) { .pad { display: flex; } }
+  .pad button { min-width: 56px; min-height: 48px; font-size: 18px; }
+  #calib { position: absolute; left: 8px; bottom: 8px; font: 11px/1.3 ui-monospace, Menlo, monospace; background: var(--code); color: var(--muted); padding: 4px 6px; border-radius: 4px; max-width: 70%; }
+  .panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 2px; }
+  select, input[type=text], button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--walker); color: #fff; border-color: transparent; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+  .row > div { flex: 1 1 130px; min-width: 0; }
+  .row select { width: 100%; }
+  #instr { font-size: 22px; line-height: 1.3; font-weight: 600; min-height: 3.2em; }
+  #instr.hazard { color: var(--hazard); }
+  .meta { color: var(--muted); font-size: 13px; }
+  .device { font: 15px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--code); padding: 8px 10px; border-radius: 6px; overflow-wrap: anywhere; }
+  .device small { display: block; font: 12px/1.4 system-ui, sans-serif; color: var(--muted); margin-top: 2px; }
+  #log { max-height: 180px; overflow: auto; font-size: 13px; padding-left: 18px; margin: 0; }
+  #log li { margin: 2px 0; }
+  #log .reroute, #log .no_route { color: var(--warn); }
+  #log .hazard { color: var(--hazard); }
+  #log .arrive { color: var(--ok); font-weight: 600; }
+  #hazards { margin: 0; padding-left: 18px; font-size: 13px; }
+  #pending { display: none; border: 2px solid var(--warn); }
+  .kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  #floorbtn { display: none; }
+  .sr { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nudge tour</h1>
+  <span class="sub" id="mode">loading…</span>
+  <a href="/debug.html">debug view</a>
+</header>
+<main>
+  <section class="stage">
+    <iframe id="showcase" title="Matterport 3D tour" allow="xr-spatial-tracking; fullscreen"></iframe>
+    <div id="fp" class="card">
+      <img id="view" alt="View from the nearest scan position">
+      <span id="viewtag"></span>
+    </div>
+    <div class="card planwrap">
+      <div class="planbar">
+        <label for="floorsel" class="sr">Floor</label>
+        <select id="floorsel" aria-label="Floor shown on the plan"></select>
+        <span class="meta"><span class="kbd">W</span>/<span class="kbd">↑</span> walk · <span class="kbd">A</span>/<span class="kbd">D</span> turn · <span class="kbd">S</span> back · <span class="kbd">E</span> elevator/stairs · click the plan to walk there</span>
+        <button id="floorbtn" type="button"></button>
+      </div>
+      <svg id="plan" role="img" aria-label="Floor plan with your position and route"></svg>
+      <div id="calib" hidden></div>
+      <div class="pad" aria-label="Movement buttons">
+        <button type="button" data-k="a" aria-label="Turn left">⟲</button>
+        <button type="button" data-k="w" aria-label="Walk forward">↑</button>
+        <button type="button" data-k="s" aria-label="Step back">↓</button>
+        <button type="button" data-k="d" aria-label="Turn right">⟳</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="card">
+      <div class="row">
+        <div><label for="startsel">Start at</label><select id="startsel"></select></div>
+        <div><label for="dest">Go to</label><select id="dest"></select></div>
+        <div><label for="profile">I travel</label>
+          <select id="profile">
+            <option value="blind">with a cane (blind)</option>
+            <option value="wheelchair">in a wheelchair</option>
+            <option value="default">default</option>
+          </select></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="go" class="primary" type="button">Start guidance</button>
+        <button id="repeat" type="button" disabled>Repeat</button>
+        <label style="margin:0;display:flex;gap:6px;align-items:center"><input id="mute" type="checkbox"> mute voice</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="meta" id="progress">Not navigating.</div>
+      <div id="instr" aria-live="assertive" aria-atomic="true">Pick where you're going, then start.</div>
+    </div>
+
+    <div class="card">
+      <label>What the haptic band receives</label>
+      <div class="device" id="device">—<small>start guidance to see live packets</small></div>
+    </div>
+
+    <div class="card">
+      <label>Something's wrong?</label>
+      <div class="row">
+        <button type="button" data-exc="The elevator is out of service.">Elevator is out</button>
+        <button type="button" data-exc="The door ahead is locked.">Door is locked</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1 1 200px"><label for="exctext" class="sr">Describe the problem</label>
+          <input id="exctext" type="text" placeholder="e.g. the hallway is blocked by a cart" style="width:100%"></div>
+        <button id="excsend" type="button">Tell Nudge</button>
+      </div>
+      <div class="meta" id="excmode" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" id="pending" role="alertdialog" aria-labelledby="pendtitle">
+      <strong id="pendtitle">Change the route?</strong>
+      <div id="pendtext" class="meta" style="margin:6px 0"></div>
+      <div class="row"><button id="approve" class="primary" type="button">Yes, take it</button><button id="reject" type="button">No, keep my route</button></div>
+    </div>
+
+    <div class="card">
+      <label>Hazards from the dossier</label>
+      <ul id="hazards"><li class="meta">loading…</li></ul>
+    </div>
+
+    <div class="card">
+      <label>Spoken log</label>
+      <ol id="log"></ol>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const P = new URLSearchParams(location.search);
+const SID = P.get("sid") || "synthetic";
+const PASSABLE = new Set(["opening", "door", "doorway", "entrance", "entry", "archway", "open", "passage"]);
+const STEP = 0.35, TURN = Math.PI / 12;
+
+let G = null, CFG = {}, hazards = [], session = null, lastState = null;
+let walker = { x: 0, y: 0, floor: null, h: 0 };
+let viewFloor = null, sdk = null, xform = null, walkTimer = null;
+let busy = false, queued = false;
+
+// ---------- api ----------
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+// ---------- speech + haptics ----------
+function say(text, kind = "") {
+  if (!text) return;
+  const li = document.createElement("li");
+  li.textContent = text; li.className = kind;
+  $("log").appendChild(li); $("log").scrollTop = $("log").scrollHeight;
+  if ($("mute").checked || !("speechSynthesis" in window)) return;
+  if (speechSynthesis.pending && kind !== "arrive") speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+function buzz(pattern) { if (pattern && navigator.vibrate) navigator.vibrate(pattern); }
+
+function handle(resp) {
+  for (const e of resp.events || []) {
+    if (e.text) say(e.text, e.type);
+    buzz(e.vibrate);
+    if (e.type === "hazard") flashInstr(e.text, true);
+  }
+  if (resp.state) { lastState = resp.state; showState(); }
+  if (resp.device) showDevice(resp.device);
+}
+
+function flashInstr(text, hazard) {
+  $("instr").textContent = text;
+  $("instr").classList.toggle("hazard", !!hazard);
+}
+
+function showState() {
+  const st = lastState;
+  if (!st || !st.route) return;
+  if (st.done) {
+    flashInstr("You have arrived.", false);
+    $("progress").textContent = "Arrived.";
+  } else {
+    $("progress").textContent = `${st.remaining.toFixed(0)} m to go · ${st.reroutes} reroute${st.reroutes === 1 ? "" : "s"}` +
+      (st.distance_to_next_m != null ? ` · next in ${st.distance_to_next_m.toFixed(1)} m` : "");
+    if (st.next && !$("instr").classList.contains("hazard")) flashInstr(st.next.text, false);
+  }
+  drawPlan();
+}
+
+const ACT = { D: "depart", T: "turn", B: "bear", U: "turn around", S: "go straight", W: "walk to the connection", F: "change floors", A: "arrive" };
+function showDevice(d) {
+  if (!d || !d.line) { $("device").innerHTML = "—<small>" + (d && d.error ? d.error : "no packet") + "</small>"; return; }
+  const [, m, deg, ad, flags] = d.line.split(",");
+  const act = ACT[ad[0]] || "", side = ad[1] === "L" ? " left" : ad[1] === "R" ? " right" : "";
+  const steer = deg === "" ? "" : Number(deg) === 0 ? " · on course" :
+    ` · steer ${Math.abs(Number(deg))}° ${Number(deg) > 0 ? "left" : "right"}`;
+  const fl = Number(flags);
+  const extra = (fl & 1 ? " · OFF ROUTE" : "") + (fl & 2 ? " · ARRIVED" : "");
+  $("device").innerHTML = "";
+  $("device").append(d.line);
+  const small = document.createElement("small");
+  small.textContent = `${m} m to ${act}${act === "turn" || act === "bear" ? side : ""}${steer}${extra} · ${new TextEncoder().encode(d.line).length} bytes`;
+  $("device").appendChild(small);
+}
+
+// ---------- graph + plan ----------
+const floorById = (id) => G.floors.find((f) => f.id === id);
+function wallsOf(floor) { return (floorById(floor) || { walls: [] }).walls; }
+
+function orient(a, b, c) { const v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); return Math.abs(v) < 1e-12 ? 0 : v > 0 ? 1 : -1; }
+function cross(p1, p2, q1, q2) {
+  const o1 = orient(p1, p2, q1), o2 = orient(p1, p2, q2), o3 = orient(q1, q2, p1), o4 = orient(q1, q2, p2);
+  return o1 !== o2 && o3 !== o4;
+}
+function blocked(a, b, floor) {
+  return wallsOf(floor).some(([p, q, t]) => !PASSABLE.has(t) && cross(a, b, p, q));
+}
+
+function bbox(floor) {
+  const pts = [];
+  for (const [a, b] of wallsOf(floor)) pts.push(a, b);
+  for (const n of G.nodes) if (n.floor === floor) pts.push([n.x, n.y]);
+  if (!pts.length) return [0, 0, 10, 10];
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const pad = 1;
+  return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+}
+
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function drawPlan() {
+  if (!G) return;
+  const svg = $("plan"), f = viewFloor;
+  svg.innerHTML = "";
+  const [x0, y0, x1, y1] = bbox(f);
+  // model y is up; flip with a group transform
+  svg.setAttribute("viewBox", `${x0} ${-y1} ${x1 - x0} ${y1 - y0}`);
+  const g = el("g", { transform: "scale(1,-1)" }, svg);
+  const css = getComputedStyle(document.documentElement);
+  const c = (v) => css.getPropertyValue(v).trim();
+  for (const [rid, r] of Object.entries(G.rooms || {})) {
+    if (r.floor !== f || !r.poly || r.poly.length < 3 || r.label === "Void") continue;
+    el("polygon", { points: r.poly.map((p) => p.join(",")).join(" "), fill: c("--room"), stroke: "none" }, g);
+  }
+  for (const [a, b, t] of wallsOf(f)) {
+    const pass = PASSABLE.has(t);
+    el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: pass ? c("--door") : c("--wall"),
+      "stroke-width": pass ? 0.06 : 0.12, "stroke-dasharray": pass ? "0.15 0.1" : "", "stroke-linecap": "round" }, g);
+  }
+  for (const n of G.nodes) if (n.floor === f)
+    el("circle", { cx: n.x, cy: n.y, r: 0.07, fill: c("--muted"), opacity: 0.5 }, g);
+  // route on this floor
+  const pts = (lastState && lastState.route ? lastState.route.points : []).filter((p) => p[2] === f);
+  if (pts.length > 1)
+    el("polyline", { points: pts.map((p) => `${p[0]},${p[1]}`).join(" "), fill: "none", stroke: c("--route"),
+      "stroke-width": 0.14, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: 0.9 }, g);
+  for (const h of hazards) if (h.floor === f) {
+    const ring = el("circle", { cx: h.x, cy: h.y, r: h.radius || 0.6, fill: "none", stroke: c("--hazard"), "stroke-width": 0.08 }, g);
+    el("title", {}, ring).textContent = h.note || h.kind;
+  }
+  // labels (unflipped)
+  for (const [rid, r] of Object.entries(G.rooms || {})) {
+    if (r.floor !== f || !r.poly || r.poly.length < 3 || r.label === "Void") continue;
+    const cx = r.poly.reduce((s, p) => s + p[0], 0) / r.poly.length, cy = r.poly.reduce((s, p) => s + p[1], 0) / r.poly.length;
+    const t = el("text", { x: cx, y: -cy, "font-size": 0.45, "text-anchor": "middle", fill: c("--muted") }, svg);
+    t.textContent = r.label;
+  }
+  // walker
+  if (walker.floor === f) {
+    const L = 0.45, W = 0.28, h = walker.h;
+    const tip = [walker.x + L * Math.cos(h), walker.y + L * Math.sin(h)];
+    const l = [walker.x + W * Math.cos(h + 2.4), walker.y + W * Math.sin(h + 2.4)];
+    const r = [walker.x + W * Math.cos(h - 2.4), walker.y + W * Math.sin(h - 2.4)];
+    el("polygon", { points: [tip, l, r].map((p) => p.join(",")).join(" "), fill: c("--walker"), stroke: "#fff", "stroke-width": 0.04 }, g);
+  }
+}
+
+function fillFloors() {
+  $("floorsel").innerHTML = "";
+  for (const f of G.floors) {
+    const o = document.createElement("option"); o.value = f.id; o.textContent = f.label; $("floorsel").appendChild(o);
+  }
+  $("floorsel").value = viewFloor;
+}
+
+function roomLabels() {
+  const seen = new Map();
+  for (const n of G.nodes) if (n.room_label && n.room_label !== "Void" && !seen.has(n.room_label)) seen.set(n.room_label, n);
+  return [...seen.keys()].sort();
+}
+
+function repNode(label) {
+  const ns = G.nodes.filter((n) => n.room_label === label);
+  if (!ns.length) return null;
+  const cx = ns.reduce((s, n) => s + n.x, 0) / ns.length, cy = ns.reduce((s, n) => s + n.y, 0) / ns.length;
+  return ns.reduce((b, n) => (Math.hypot(n.x - cx, n.y - cy) < Math.hypot(b.x - cx, b.y - cy) ? n : b));
+}
+
+function placeAt(node) {
+  walker.x = node.x; walker.y = node.y; walker.floor = node.floor;
+  viewFloor = node.floor; $("floorsel").value = viewFloor;
+  drawPlan(); refreshView();
+}
+
+// ---------- first-person movement ----------
+function verticalHere() {
+  // a stairs/elevator link within reach of the walker
+  let best = null;
+  for (const e of G.edges) {
+    if (!e.tags.includes("vertical")) continue;
+    for (const [a, b] of [[e.a, e.b], [e.b, e.a]]) {
+      const na = G.nodes.find((n) => n.id === a), nb = G.nodes.find((n) => n.id === b);
+      if (!na || !nb || na.floor !== walker.floor) continue;
+      const d = Math.hypot(na.x - walker.x, na.y - walker.y);
+      if (d < 1.6 && (!best || d < best.d)) best = { d, to: nb, via: e.tags.includes("elevator") ? "elevator" : e.tags.includes("stairs") ? "stairs" : "connection", up: nb.z > na.z };
+    }
+  }
+  return best;
+}
+
+function updateFloorBtn() {
+  const v = sdk ? null : verticalHere();
+  const b = $("floorbtn");
+  if (!v) { b.style.display = "none"; return; }
+  const fl = floorById(v.to.floor);
+  b.textContent = `Take the ${v.via} ${v.up ? "up" : "down"} to ${fl ? fl.label : v.to.floor} (E)`;
+  b.style.display = "inline-block";
+}
+
+function useVertical() {
+  const v = verticalHere();
+  if (!v) return;
+  walker.x = v.to.x; walker.y = v.to.y; walker.floor = v.to.floor;
+  viewFloor = walker.floor; $("floorsel").value = viewFloor;
+  moved();
+}
+
+function step(dist) {
+  const nx = walker.x + dist * Math.cos(walker.h), ny = walker.y + dist * Math.sin(walker.h);
+  if (blocked([walker.x, walker.y], [nx, ny], walker.floor)) { buzz([30, 30, 30]); return false; }
+  walker.x = nx; walker.y = ny;
+  moved();
+  return true;
+}
+
+function turn(a) { walker.h = Math.atan2(Math.sin(walker.h + a), Math.cos(walker.h + a)); moved(); }
+
+function moved() {
+  if (walker.floor !== viewFloor) { viewFloor = walker.floor; $("floorsel").value = viewFloor; }
+  drawPlan(); updateFloorBtn(); refreshView(); sendUpdate();
+}
+
+function walkTo(tx, ty) {
+  clearInterval(walkTimer);
+  walkTimer = setInterval(() => {
+    const d = Math.hypot(tx - walker.x, ty - walker.y);
+    if (d < 0.2) return clearInterval(walkTimer);
+    walker.h = Math.atan2(ty - walker.y, tx - walker.x);
+    if (!step(Math.min(STEP, d))) clearInterval(walkTimer);
+  }, 140);
+}
+
+function planPoint(ev) {
+  const svg = $("plan"), pt = svg.createSVGPoint();
+  pt.x = ev.clientX; pt.y = ev.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return [p.x, -p.y];
+}
+
+// ---------- first-person view ----------
+let viewTimer = null, viewKey = "";
+function refreshView() {
+  if (sdk || !G) return;
+  clearTimeout(viewTimer);
+  viewTimer = setTimeout(() => {
+    const yaw = Math.round((walker.h * 180 / Math.PI) / 5) * 5;
+    const key = `${walker.floor}|${walker.x.toFixed(1)}|${walker.y.toFixed(1)}|${yaw}`;
+    if (key === viewKey) return;
+    viewKey = key;
+    const q = new URLSearchParams({ x: walker.x, y: walker.y, floor: walker.floor, yaw, size: 640 });
+    const img = new Image();
+    img.onload = () => { $("view").src = img.src; };
+    img.src = `/api/look/${encodeURIComponent(SID)}?${q}`;
+    const near = G.nodes.filter((n) => n.floor === walker.floor)
+      .reduce((b, n) => (!b || Math.hypot(n.x - walker.x, n.y - walker.y) < Math.hypot(b.x - walker.x, b.y - walker.y) ? n : b), null);
+    $("viewtag").textContent = near ? `${near.room_label || ""} · pano ${near.label} · ${yaw}°` : "";
+  }, 300);
+}
+
+// ---------- navigation ----------
+async function start() {
+  const dest = $("dest").value;
+  if (!dest) return;
+  $("log").innerHTML = "";
+  try {
+    const r = await api("/api/nav/start", { sid: SID, to: dest, profile: $("profile").value,
+      x: walker.x, y: walker.y, floor: walker.floor, heading: walker.h });
+    session = r.session;
+    $("repeat").disabled = false;
+    handle(r);
+  } catch (e) { flashInstr(`Couldn't start: ${e.message}`, true); }
+}
+
+async function sendUpdate() {
+  if (!session) return;
+  if (busy) { queued = true; return; }
+  busy = true;
+  try {
+    handle(await api("/api/nav/update", { session, x: walker.x, y: walker.y, floor: walker.floor, heading: walker.h }));
+  } catch (e) { console.warn(e); }
+  busy = false;
+  if (queued) { queued = false; sendUpdate(); }
+}
+
+async function exception(text) {
+  if (!session || !text) { flashInstr("Start guidance first.", true); return; }
+  $("excmode").textContent = "thinking…";
+  try {
+    const r = await api("/api/nav/exception", { session, text });
+    $("excmode").textContent = r.mode === "agent" ? `answered by the Deep Agents exception agent · ${r.reason || ""}` :
+      `blocked it deterministically and rerouted · ${r.reason || "no model"}`;
+    for (const s of r.say || []) say(s, "reroute");
+    handle(r);
+    showPending(r.pending);
+  } catch (e) { $("excmode").textContent = e.message; }
+}
+
+function showPending(p) {
+  $("pending").style.display = p ? "block" : "none";
+  if (p) {
+    const args = p.args || {};
+    $("pendtext").textContent = p.description || args.reason || JSON.stringify(args);
+    $("approve").focus();
+  }
+}
+
+async function decide(decision) {
+  showPending(null);
+  try {
+    const r = await api("/api/nav/exception/decide", { session, decision });
+    for (const s of r.say || []) say(s, "reroute");
+    handle(r);
+    showPending(r.pending);
+  } catch (e) { $("excmode").textContent = e.message; }
+}
+
+// ---------- matterport showcase sdk ----------
+function loadScript(src) {
+  return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
+}
+
+// horizontal axis maps from sdk (x, y-up, z) to a model-like (u, v); z-up model frame
+const AXES = [
+  (p) => [p.x, -p.z], (p) => [p.x, p.z], (p) => [-p.x, p.z], (p) => [-p.x, -p.z],
+  (p) => [p.z, p.x], (p) => [-p.z, p.x], (p) => [p.z, -p.x], (p) => [-p.z, -p.x],
+];
+
+function kabsch(pairs, A) {
+  // best rotation + translation taking A(p) onto model (x, y), least squares
+  const uv = pairs.map(([p]) => A(p)), xy = pairs.map(([, n]) => [n.x, n.y]);
+  const n = pairs.length;
+  const cu = [uv.reduce((s, q) => s + q[0], 0) / n, uv.reduce((s, q) => s + q[1], 0) / n];
+  const cx = [xy.reduce((s, q) => s + q[0], 0) / n, xy.reduce((s, q) => s + q[1], 0) / n];
+  let H = 0, K = 0;
+  for (let i = 0; i < n; i++) {
+    const u = uv[i][0] - cu[0], v = uv[i][1] - cu[1], x = xy[i][0] - cx[0], y = xy[i][1] - cx[1];
+    H += u * x + v * y; K += u * y - v * x;
+  }
+  const th = Math.atan2(K, H), c = Math.cos(th), s = Math.sin(th);
+  const tx = cx[0] - (c * cu[0] - s * cu[1]), ty = cx[1] - (s * cu[0] + c * cu[1]);
+  let e = 0, dz = 0;
+  for (let i = 0; i < n; i++) {
+    const X = c * uv[i][0] - s * uv[i][1] + tx, Y = s * uv[i][0] + c * uv[i][1] + ty;
+    e += (X - xy[i][0]) ** 2 + (Y - xy[i][1]) ** 2;
+    dz += pairs[i][1].z - pairs[i][0].y;
+  }
+  return { A, c, s, tx, ty, dz: dz / n, rms: Math.sqrt(e / n), n };
+}
+
+function apply(T, p) {
+  const [u, v] = T.A(p);
+  return { x: T.c * u - T.s * v + T.tx, y: T.s * u + T.c * v + T.ty, z: p.y + T.dz };
+}
+
+function sweepId(key, s) { return [s.id, s.sid, s.uuid, key].find((k) => k && G.nodes.some((n) => n.id === k)); }
+
+function calibrate(sweeps) {
+  const list = Object.entries(sweeps).map(([k, s]) => ({ key: k, s, p: s.position }));
+  const byId = new Map(G.nodes.map((n) => [n.id, n]));
+  const pairs = list.map(({ key, s, p }) => [p, byId.get(sweepId(key, s))]).filter(([p, n]) => p && n);
+  let best = null, method = "ids";
+  if (pairs.length >= 3) {
+    for (const A of AXES) { const T = kabsch(pairs, A); if (!best || T.rms < best.rms) best = T; }
+  } else {
+    // ids don't match: nearest-position icp from each axis map
+    method = "nearest";
+    const pts = list.map((l) => l.p).filter(Boolean);
+    for (const A of AXES) {
+      let T = { A, c: 1, s: 0, tx: 0, ty: 0, dz: 0 };
+      const cu = pts.reduce((a, p) => [a[0] + A(p)[0] / pts.length, a[1] + A(p)[1] / pts.length], [0, 0]);
+      const cn = G.nodes.reduce((a, n) => [a[0] + n.x / G.nodes.length, a[1] + n.y / G.nodes.length], [0, 0]);
+      T.tx = cn[0] - cu[0]; T.ty = cn[1] - cu[1];
+      for (let it = 0; it < 8; it++) {
+        const pr = pts.map((p) => {
+          const q = apply(T, p);
+          return [p, G.nodes.reduce((b, n) => (!b || Math.hypot(n.x - q.x, n.y - q.y) < Math.hypot(b.x - q.x, b.y - q.y) ? n : b), null)];
+        });
+        T = kabsch(pr, A);
+      }
+      if (!best || T.rms < best.rms) best = T;
+    }
+  }
+  xform = best ? Object.assign(best, { method }) : null;
+  const box = $("calib");
+  box.hidden = false;
+  box.textContent = xform ? `sdk→model: ${method}, ${xform.n} sweeps, axes #${AXES.indexOf(xform.A)}, ` +
+    `rot ${(Math.atan2(xform.s, xform.c) * 180 / Math.PI).toFixed(1)}°, rms ${xform.rms.toFixed(3)} m` : "calibration failed";
+}
+
+function fromSdk(position, sweepKey, sweep) {
+  const id = sweep ? sweepId(sweepKey, sweep) : null;
+  const n = id && G.nodes.find((q) => q.id === id);
+  if (n) return { x: n.x, y: n.y, floor: n.floor };
+  if (!xform || !position) return null;
+  const q = apply(xform, position);
+  const near = G.nodes.reduce((b, m) => {
+    const d = Math.hypot(m.x - q.x, m.y - q.y) + 2 * Math.abs((m.z ?? q.z) - q.z);
+    return !b || d < b.d ? { d, m } : b;
+  }, null);
+  return { x: q.x, y: q.y, floor: near ? near.m.floor : walker.floor };
+}
+
+function headingFromSdk(rot) {
+  if (!xform || !rot) return walker.h;
+  const ry = rot.y * Math.PI / 180;
+  const f = { x: -Math.sin(ry), y: 0, z: -Math.cos(ry) };  // three.js cameras look down -z
+  const [u, v] = xform.A(f);
+  return Math.atan2(xform.s * u + xform.c * v, xform.c * u - xform.s * v);
+}
+
+async function connectSdk(key) {
+  const frame = $("showcase");
+  frame.style.display = "block";
+  frame.src = `https://my.matterport.com/show?m=${encodeURIComponent(SID)}&play=1&qs=1&applicationKey=${encodeURIComponent(key)}`;
+  await loadScript(`https://static.matterport.com/showcase-sdk/bootstrap/3.1.0-0-g1cd7e0997a/sdk.js?applicationKey=${encodeURIComponent(key)}`);
+  await new Promise((ok) => frame.addEventListener("load", ok, { once: true }));
+  try { sdk = await window.MP_SDK.connect(frame, key); }
+  catch (e) { sdk = await window.MP_SDK.connect(frame.contentWindow, key); }
+  $("mode").textContent = `Matterport tour · ${SID} · SDK connected`;
+  sdk.Sweep.data.subscribe({ onCollectionUpdated(coll) { calibrate(coll); } });
+  let lastPose = 0;
+  sdk.Sweep.current.subscribe((sw) => {
+    if (!sw || !(sw.sid || sw.id)) return;
+    const p = fromSdk(sw.position, sw.sid || sw.id, sw);
+    if (!p) return;
+    Object.assign(walker, p);
+    moved();
+  });
+  sdk.Camera.pose.subscribe((pose) => {
+    const now = Date.now();
+    if (now - lastPose < 400) return;
+    lastPose = now;
+    walker.h = headingFromSdk(pose.rotation);
+    const p = fromSdk(pose.position, pose.sweep, null);
+    if (p) Object.assign(walker, p);
+    moved();
+  });
+}
+
+// ---------- boot ----------
+async function boot() {
+  try { CFG = await api("/api/config"); } catch (e) { CFG = {}; }
+  G = await api(`/api/graph/${encodeURIComponent(SID)}`);
+  try {
+    const d = await api(`/api/dossier/${encodeURIComponent(SID)}`);
+    const ann = d.annotations_json && !d.annotations_json.error ? d.annotations_json : null;
+    hazards = (ann && ann.hazards) || [];
+  } catch (e) { hazards = []; }
+  $("hazards").innerHTML = hazards.length ? "" : "<li class='meta'>No dossier yet for this building.</li>";
+  for (const h of hazards) {
+    const li = document.createElement("li");
+    const fl = floorById(h.floor);
+    li.textContent = `${h.note || h.kind} (${fl ? fl.label : h.floor})`;
+    $("hazards").appendChild(li);
+  }
+
+  const labels = roomLabels();
+  for (const sel of ["startsel", "dest"]) {
+    $(sel).innerHTML = "";
+    for (const l of labels) { const o = document.createElement("option"); o.value = o.textContent = l; $(sel).appendChild(o); }
+  }
+  const from = P.get("from");
+  const fromNode = from && G.nodes.find((n) => n.label === from || n.id === from);
+  const lobby = labels.find((l) => /lobby|entr|foyer|reception/i.test(l)) || labels[0];
+  $("startsel").value = fromNode && fromNode.room_label ? fromNode.room_label : lobby;
+  $("dest").value = P.get("to") || labels.find((l) => l !== $("startsel").value) || labels[0];
+  viewFloor = (fromNode || repNode($("startsel").value) || G.nodes[0]).floor;
+  fillFloors();
+  placeAt(fromNode || repNode($("startsel").value) || G.nodes[0]);
+
+  const key = CFG.matterport_sdk_key;
+  if (key && SID !== "synthetic") {
+    $("mode").textContent = `Matterport tour · ${SID} · connecting…`;
+    connectSdk(key).catch((e) => { $("mode").textContent = `SDK failed (${e.message}); first-person fallback`; sdk = null; $("fp").style.display = "block"; refreshView(); });
+  } else {
+    $("fp").style.display = "block";
+    $("mode").textContent = `first-person fallback · ${SID === "synthetic" ? "synthetic building" : SID + " (no SDK key)"}`;
+  }
+  updateFloorBtn();
+}
+
+// ---------- wiring ----------
+$("go").onclick = start;
+$("repeat").onclick = () => { if (lastState && lastState.next) say(lastState.next.text); };
+$("startsel").onchange = () => { const n = repNode($("startsel").value); if (n && !session) placeAt(n); };
+$("floorsel").onchange = () => { viewFloor = $("floorsel").value; drawPlan(); };
+$("floorbtn").onclick = useVertical;
+$("approve").onclick = () => decide("approve");
+$("reject").onclick = () => decide("reject");
+$("excsend").onclick = () => { exception($("exctext").value.trim()); $("exctext").value = ""; };
+$("exctext").addEventListener("keydown", (e) => { if (e.key === "Enter") $("excsend").click(); });
+document.querySelectorAll("[data-exc]").forEach((b) => (b.onclick = () => exception(b.dataset.exc)));
+document.querySelectorAll(".pad button").forEach((b) => (b.onclick = () => key(b.dataset.k)));
+
+function key(k) {
+  if (sdk) return;
+  clearInterval(walkTimer);
+  if (k === "w" || k === "arrowup") step(STEP);
+  else if (k === "s" || k === "arrowdown") step(-STEP);
+  else if (k === "a" || k === "arrowleft") turn(TURN);
+  else if (k === "d" || k === "arrowright") turn(-TURN);
+  else if (k === "e") useVertical();
+  else return false;
+  return true;
+}
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (key(e.key.toLowerCase())) e.preventDefault();
+});
+$("plan").addEventListener("click", (ev) => {
+  if (sdk || !G) return;
+  const [x, y] = planPoint(ev);
+  if (!session) {  // before starting, a click sets where you stand
+    if (viewFloor !== walker.floor) walker.floor = viewFloor;
+    walker.x = x; walker.y = y; moved(); return;
+  }
+  if (viewFloor === walker.floor) walkTo(x, y);
+});
+window.addEventListener("resize", drawPlan);
+boot().catch((e) => { $("mode").textContent = `failed to load: ${e.message}`; console.error(e); });
+</script>
+</body>
+</html>

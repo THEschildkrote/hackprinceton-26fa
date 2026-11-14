@@ -54,6 +54,9 @@ def load(sid, refresh=False):
     if sid == "synthetic":
         from tests.synthetic import building
         return building()
+    if sid == "synthetic-lobby":  # a second scan of the synthetic building (multi-model tests and demo)
+        from tests.synthetic_building import lobby
+        return lobby()
     path = CACHE / f"{sid}.json"
     if path.exists() and not refresh:
         return json.loads(path.read_text(encoding="utf-8"))

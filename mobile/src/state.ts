@@ -1,0 +1,48 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import type { Api, NavState } from "./lib/api";
+
+export interface Settings {
+  server: string;
+  rate: number;        // speech rate, 1 = normal
+  haptics: boolean;
+  recent: string[];    // building sids
+}
+
+// web: same origin as the page (served next to the api or behind a proxy), or localhost:8765 from the expo dev
+// server. phone: the laptop's lan ip, set in settings.
+function defaultServer() {
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.location) {
+    const dev = ["8081", "19006"].includes(window.location.port);
+    return dev ? "http://localhost:8765" : window.location.origin;
+  }
+  return "http://192.168.1.10:8765";
+}
+export const DEFAULT_SERVER = defaultServer();
+
+export const DEFAULTS: Settings = { server: DEFAULT_SERVER, rate: 1.0, haptics: true, recent: ["synthetic"] };
+
+const KEY = "nudge.settings.v1";
+
+export async function loadSettings(): Promise<Settings> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY);
+    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS;
+  } catch {
+    return DEFAULTS;
+  }
+}
+
+export async function saveSettings(s: Settings) {
+  try { await AsyncStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage is a convenience */ }
+}
+
+export interface Trip {
+  api: Api;
+  sid: string;
+  goal: string;
+  profile: string;
+  session: string;
+  state: NavState;
+  start: { x: number; y: number; floor: string };
+}

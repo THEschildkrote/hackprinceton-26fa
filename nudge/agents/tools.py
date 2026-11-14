@@ -50,7 +50,9 @@ def _graph_cached(sid, ann_key):
 
 def graph(sid, annotated=True):
     ann = read_annotations(sid)[0] if annotated else None
-    return _graph_cached(sid, json.dumps(ann, sort_keys=True) if ann else "")
+    g = _graph_cached(sid, json.dumps(ann, sort_keys=True) if ann else "")
+    g.sid = sid  # lets the place catalog find this scan's /dossier/places.json
+    return g
 
 
 def _j(x):
@@ -180,29 +182,47 @@ def look(sid: str, pano_id: str, yaw_deg: float, pitch_deg: float = 0.0, fov_deg
     return _img_blocks(jpeg, meta)
 
 
+def _focus(sid, items, panos, radius=3.0):
+    """keep candidates near the listed panos (a route-scoped survey). empty panos = keep all."""
+    ids = [x.strip() for x in (panos or "").split(",") if x.strip()]
+    if not ids:
+        return items
+    g = graph(sid, annotated=False)
+    pts = [g.nodes[i].xy for i in ids if i in g.nodes]
+    keep = []
+    for c in items:
+        xy = (c["x"], c["y"]) if "x" in c else (((c["a"][0] + c["b"][0]) / 2, (c["a"][1] + c["b"][1]) / 2)
+                                                 if "a" in c else None)
+        if c.get("nearest_pano") in ids or (xy and any(math.hypot(xy[0] - p[0], xy[1] - p[1]) <= radius for p in pts)):
+            keep.append(c)
+    return keep
+
+
 @tool(parse_docstring=True)
-def overhang_candidates(sid: str, floor: str) -> str:
+def overhang_candidates(sid: str, floor: str, panos: str = "") -> str:
     """Point-cloud candidates for protruding objects 27-80 in above the floor that a cane would miss.
     Each has nearest_pano and bearing_deg so you can confirm it with look().
 
     Args:
         sid: Matterport model id.
         floor: Floor id.
+        panos: Optional comma-separated pano ids; only candidates within 3 m of them (route-scoped survey).
     """
     from .. import perceive
-    return _j(perceive.overhang_candidates(sid, floor))
+    return _j(_focus(sid, perceive.overhang_candidates(sid, floor), panos))
 
 
 @tool(parse_docstring=True)
-def glass_suspects(sid: str, floor: str) -> str:
+def glass_suspects(sid: str, floor: str, panos: str = "") -> str:
     """Wall segments with unusually little point-cloud support: likely glass. Confirm with look().
 
     Args:
         sid: Matterport model id.
         floor: Floor id.
+        panos: Optional comma-separated pano ids; only suspects within 3 m of them (route-scoped survey).
     """
     from .. import perceive
-    return _j(perceive.glass_suspects(sid, floor))
+    return _j(_focus(sid, perceive.glass_suspects(sid, floor), panos))
 
 
 @tool(parse_docstring=True, response_format="content")
@@ -372,7 +392,172 @@ def validate_annotations(sid: str) -> str:
     return _j(validate(sid))
 
 
-LEAD_TOOLS = [building_overview, list_panos, audit_routes, validate_annotations]
+def focus_panos(g, route, radius=3.0):
+    """panos within radius metres of a route's walking line: what a first visitor needs surveyed first."""
+    from ..instruct import path as walk_path
+    from ..geom import project
+    pts = walk_path(g, route)
+    segs = [(p, q) for p, q in zip(pts, pts[1:]) if not q[5] and p[2] == q[2]]
+    out = []
+    for n in g.nodes.values():
+        on_route = n.id in route.nodes
+        near = any(p[2] == n.floor and project(n.xy, p[:2], q[:2])[2] <= radius for p, q in segs)
+        if on_route or near:
+            out.append(n.id)
+    return out
+
+
+def route_focus(sid, goal, profile="blind"):
+    """the route a first visitor will walk (entrance to goal) and the panos to survey first."""
+    g = graph(sid, annotated=False)
+    entry, _ = key_places(g)
+    r = plan(g, entry.id, goal, profile)
+    return {"start": entry.id, "goal": goal, "route": r.nodes, "length_m": round(r.length, 1),
+            "focus": focus_panos(g, r)}
+
+
+@tool(parse_docstring=True)
+def building_models(sid: str) -> str:
+    """Other Matterport scans of the same building (same CoStar property id, else same address).
+    More than one means the building is several maps that must be joined through portals.
+
+    Args:
+        sid: Matterport model id.
+    """
+    from .. import building
+    sibs = building.siblings(sid)
+    confirmed = []
+    for x in sibs:
+        confirmed += building.read_portals(x["sid"])
+    return _j({"sid": sid, "models": sibs, "count": len(sibs), "confirmed_portals": len(confirmed)})
+
+
+@tool(parse_docstring=True)
+def portal_candidates(sid: str) -> str:
+    """Candidate links between this building's scans: elevators, stairs and entrances that may be the same
+    place seen from two scans. Each has a, b ("sid:pano"), kind, direction, score and why.
+    Confirm each with look() at both ends before writing it to /dossier/portals.json.
+
+    Args:
+        sid: Matterport model id (any scan of the building).
+    """
+    from .. import building
+    sids = [x["sid"] for x in building.siblings(sid)]
+    if len(sids) < 2:
+        return _j({"sid": sid, "candidates": [], "note": "only one scan of this building; no portals needed"})
+    graphs = {s: graph(s, annotated=False) for s in sids}
+    return _j({"sid": sid, "models": sids, "candidates": building.candidates_portals(sids, graphs)})
+
+
+def validate_portal_file(sid):
+    from .. import building
+    p = dossier_dir(sid) / "portals.json"
+    if not p.exists():
+        return {"ok": False, "errors": ["no /dossier/portals.json yet"]}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as ex:
+        return {"ok": False, "errors": [f"portals.json is not valid json: {ex}"]}
+    sids = {x["sid"] for x in building.siblings(sid)}
+    errors = []
+    for i, x in enumerate(data.get("portals") or []):
+        for k in ("a", "b", "kind"):
+            if k not in x:
+                errors.append(f"portals[{i}]: missing {k}")
+        if x.get("kind") not in building.KINDS:
+            errors.append(f"portals[{i}]: kind {x.get('kind')!r} not in {sorted(building.KINDS)}")
+        for end in ("a", "b"):
+            ref = str(x.get(end, ""))
+            s_, _, pano = ref.partition(":")
+            if s_ not in sids:
+                errors.append(f"portals[{i}].{end}: {s_!r} is not a scan of this building")
+            elif pano not in graph(s_, annotated=False).nodes:
+                errors.append(f"portals[{i}].{end}: {pano!r} is not a pano in {s_}")
+        if x.get("confirmed", True) and not (x.get("evidence") or {}):
+            errors.append(f"portals[{i}]: confirmed without evidence; look() at both ends first")
+    if errors:
+        return {"ok": False, "errors": errors[:40]}
+    g = building.building_graph(sid)
+    reached = sorted({n.split(":")[0] for n in g.nodes})
+    rooms = sorted({f"{n.room_label} ({n.id.split(':')[0]})" for n in g.nodes.values()
+                    if n.room_label and n.room_label != "Void"})
+    entry = next((n for n in g.nodes.values() if n.id.startswith(sid + ":")), None)
+    unreachable = []
+    if entry:
+        for label in rooms:
+            room, s_ = label.rsplit(" (", 1)
+            goal = {n.id for n in g.nodes.values() if n.room_label == room and n.id.startswith(s_[:-1] + ":")}
+            try:
+                plan(g, entry.id, goal, "blind")
+            except NoRoute:
+                unreachable.append(label)
+    return {"ok": True, "portals": len(data.get("portals") or []), "scans_joined": reached,
+            "unreachable_from_" + sid: unreachable}
+
+
+@tool(parse_docstring=True)
+def validate_portals(sid: str) -> str:
+    """Check /dossier/portals.json: ids exist, kinds are valid, confirmations have evidence, and every room
+    in the joined scans is reachable from this scan.
+
+    Args:
+        sid: Matterport model id.
+    """
+    return _j(validate_portal_file(sid))
+
+
+@tool(parse_docstring=True)
+def place_seed(sid: str, floor: str = "") -> str:
+    """The draft place catalog from the scan: one place per room (polygon, panos, entry panos, a guess at what it
+    serves), floors, CoStar tenants, and entrances when the site is loaded. Unnamed or low-confidence rooms are the
+    ones to look at and name. Write your catalog to /dossier/places.json using these ids.
+
+    Args:
+        sid: Matterport model id.
+        floor: Optional floor id filter.
+    """
+    from .. import places
+    g = graph(sid)
+    cat = places.seed_from_graph(g, sid, costar=places._costar(sid))
+    out = []
+    for p in cat["places"]:
+        if floor and p.get("floor") != floor:
+            continue
+        rep = None
+        if p["kind"] == "room" and p["panos"]:
+            pts = [g.nodes[i] for i in p["panos"]]
+            cx, cy = sum(n.x for n in pts) / len(pts), sum(n.y for n in pts) / len(pts)
+            rep = min(pts, key=lambda n: math.hypot(n.x - cx, n.y - cy)).id
+        out.append({k: p.get(k) for k in ("id", "name", "kind", "aliases", "serves", "floor", "entry_panos",
+                                          "confidence", "unnamed", "matterport_label", "location_known")}
+                   | {"panos": len(p.get("panos") or []), "central_pano": rep})
+    return _j({"sid": sid, "places": out, "meta": cat["meta"]})
+
+
+@tool(parse_docstring=True)
+def validate_places(sid: str) -> str:
+    """Check /dossier/places.json: schema, ids that exist in the scan, feature anchors (pano + bearing), no authored
+    polygons, the serves vocabulary, and names or aliases that point at two different places.
+
+    Args:
+        sid: Matterport model id.
+    """
+    from .. import places
+    return _j(places.validate(sid))
+
+
+LEAD_TOOLS = [building_overview, list_panos, audit_routes, validate_annotations, building_models,
+              validate_portals, validate_places]
 SCOUT_TOOLS = [building_overview, list_panos, look, overhang_candidates, glass_suspects]
 LANDMARK_TOOLS = [building_overview, list_panos, look]
 SITE_TOOLS = [building_overview, aerial_view, costar_record, list_panos, look]
+
+
+def _outdoor_tools():
+    from ..handoff import OUTDOOR_TOOLS  # entrance candidates, facade views, confirm (pick only)
+    return list(OUTDOOR_TOOLS)
+
+
+SITE_TOOLS = SITE_TOOLS + _outdoor_tools()
+CARTOGRAPHER_TOOLS = [building_models, portal_candidates, list_panos, look, validate_portals]
+PLACE_TOOLS = [place_seed, list_panos, look, costar_record, validate_places]

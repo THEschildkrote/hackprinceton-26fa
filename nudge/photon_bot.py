@@ -18,15 +18,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from .agents.tools import dossier_dir, graph, key_places
-from .instruct import feet
+from .instruct import meters
 from .mp import ROOT, secret
 from .navigator import Navigator
-from .router import PROFILES, resolve_goal
+from .router import PROFILES
 
-HELP = ("I'm Nudge. Text me where you're going, like: take me to the kitchen at synthetic. "
+HELP = ("I'm Nudge. Text me where you're going, like: take me to the kitchen at synthetic, "
+        "or ask: where can I get water? "
         "Say wheelchair or blind to set how you travel. While walking, tell me what's wrong, "
         "like the elevator is out, and I'll find another way. Say next to repeat the step.")
 GO = re.compile(r"^(?:take me|go|navigate|get me|guide me|directions)\s+to\s+(?P<place>.+?)\s+(?:at|in)\s+(?P<bldg>.+)$", re.I)
+# questions about places: answered from the place catalog, no model call
+ASK = re.compile(r"^(?:how (?:do|can|would|should) i (?:get|go|walk) to|how to get to|where(?:'s| is| are| can i| do i)"
+                 r"|i need|i want to go to|is there|find)\b", re.I)
+AT = re.compile(r"^(?P<q>.+?)\s+(?:at|in)\s+(?P<bldg>.+)$", re.I)
 YES = {"yes", "y", "ok", "okay", "sure", "do it", "approve", "yep", "yeah"}
 NO = {"no", "n", "nope", "reject", "don't", "dont", "cancel"}
 
@@ -79,6 +84,13 @@ class Brain:
         m = GO.match(t)
         if m:
             return self._start(user, m["place"], m["bldg"])
+        if ASK.match(t) and low not in ("where am i", "where am i now"):
+            m2 = AT.match(t.rstrip("?"))
+            if m2 and find_building(m2["bldg"])[0]:
+                return self._start(user, m2["q"], m2["bldg"])
+            if s:
+                return self._goto(s, t)
+            return ["Which building? For example: how do I get to the kitchen at synthetic."]
         if not s:
             return [HELP]
         if s.pending and low in YES | NO:
@@ -86,16 +98,21 @@ class Brain:
         if low in ("next", "repeat", "again", "what now"):
             nxt = s.nav.state().get("next")
             return [nxt["text"] if nxt else "You have arrived."]
-        if low in ("where am i", "status"):
+        if low in ("where am i", "where am i now", "status"):
+            from .places import where_am_i
             st = s.nav.state()
-            return [f"About {feet(st['remaining'])} feet to go to the {s.goal}. Next: {st['next']['text'] if st['next'] else 'you are there'}"]
+            here = where_am_i(s.nav.g, *s.nav.pos)["text"] if s.nav.pos else ""
+            nxt = st["next"]["text"] if st["next"] else "you are there"
+            return [f"{here} {meters(st['remaining'])} to go to the {s.goal}. Next: {nxt}".strip()]
         if low in ("stop", "end", "quit", "cancel"):
             self.sessions.pop(user, None)
             return ["Navigation ended."]
         return self._exception(s, t)
 
     def _start(self, user, place, bldg):
-        place = re.sub(r"^(the|a|an|my)\s+", "", place.strip(), flags=re.I)
+        from . import places
+        query = place.strip()
+        place = re.sub(r"^(the|a|an|my)\s+", "", query, flags=re.I)
         sid, name = find_building(bldg)
         if not sid:
             return [f"I couldn't find {bldg}. Try the street address."]
@@ -104,10 +121,14 @@ class Brain:
             g = graph(sid)
         except Exception as ex:  # no keys, model not visible, etc.
             return [f"I found {name} but couldn't load its 3D scan: {ex}"]
-        if not resolve_goal(g, place):
-            rooms = sorted({n.room_label for n in g.nodes.values() if n.room_label and n.room_label != "Void"})
-            return [f"I don't see {place} in {name}. Places I know there: {', '.join(rooms[:12])}."]
         entry, _ = key_places(g)
+        r = places.resolve(g, query, here=(entry.x, entry.y, entry.floor), profile=profile)
+        if r["ambiguous"]:
+            return [r["question"]]
+        if not r["best"]:
+            return [r["message"].replace("I don't know a place called", f"I don't see", 1).replace(
+                ". Places I know:", f" in {name}. Places I know there:", 1)]
+        place = r["best"]["name"]
         nav = Navigator(g, place, profile)
         ev = nav.start(entry.x, entry.y, entry.floor)
         out = []
@@ -123,6 +144,22 @@ class Brain:
         out.append(f"Starting at the {entry.room_label or 'entrance'} of {name}.")
         out += [e["text"] for e in ev if e.get("text")]
         return out
+
+    def _goto(self, s, text):
+        """a place question mid-trip: resolve it from the catalog and re-route from where the traveller is."""
+        from . import places
+        here = s.nav.pos
+        r = places.resolve(s.nav.g, text, here=here, profile=s.profile)
+        if r["ambiguous"]:
+            return [r["question"]]
+        if not r["best"]:
+            return [r["message"]]
+        best = r["best"]
+        nav = Navigator(s.nav.g, best["name"], s.profile)
+        ev = nav.start(*here) if here else []
+        s.nav, s.goal, s.agent, s.pending = nav, best["name"], None, None
+        intro = f"The {best['name']}" + (f": {best['description']}" if best.get("description") else ".")
+        return [intro] + [e["text"] for e in ev if e.get("text")]
 
     def _ensure_agent(self, s):
         if s.agent is None and self.exception_factory:

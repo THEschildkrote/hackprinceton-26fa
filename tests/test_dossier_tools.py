@@ -90,4 +90,4 @@ def test_agent_wires_up():
     out = agent.invoke({"messages": [{"role": "user", "content": "hi"}]},
                        config={"configurable": {"thread_id": "t"}})
     assert out["messages"][-1].content == "done"
-    assert set(SUBAGENTS) == {"hazard-scout", "landmark-writer", "site-surveyor"}
+    assert set(SUBAGENTS) == {"place-indexer", "hazard-scout", "landmark-writer", "site-surveyor", "building-cartographer"}

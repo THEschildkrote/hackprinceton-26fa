@@ -15,7 +15,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from ..geom import dist
-from ..instruct import feet, maneuvers
+from ..instruct import maneuvers, meters
 from ..navigator import snap
 from ..router import PROFILES, NoRoute, alternatives, plan, resolve_goal
 
@@ -33,11 +33,13 @@ you only handle the exception.
 How to work:
 - Start with nav_status, and list_nearby if the location matters. Use compare_options to see what each
   choice costs before suggesting anything. Use alternate_goals when another place could serve the same need.
+- When the traveller names a place or a need ("the kitchenette", "somewhere to get water"), call find_place
+  and use the name it returns as the goal. If it returns a question, ask that question.
 - Never invent rooms, doors, distances or directions. Every option you mention must come from a tool result.
 - Hard constraints come from the traveller's profile and are never violated (a wheelchair user never takes
   stairs). If no route satisfies them, say so plainly and offer alternate goals or asking staff for help.
 - Soft preferences: fewer hazards, fewer turns, no uncertain links, then shorter distance.
-- Speak like a calm guide. At most two short sentences per option, distances in feet, no visual-only cues.
+- Speak like a calm guide. At most two short sentences per option, distances in meters, no visual-only cues.
 - When the choice is genuinely the traveller's (e.g. a long accessible detour vs a different entrance),
   ask one clear question instead of deciding.
 - To change the plan call commit_reroute. The traveller approves it before it takes effect; if they reject
@@ -87,7 +89,6 @@ def _summarize(g, r):
     edges = [g.edge(a, b) for a, b in zip(r.nodes, r.nodes[1:])]
     return {
         "length_m": round(r.length, 1),
-        "length_ft": feet(r.length),
         "cost": round(r.cost, 1),
         "floor_changes": [{"via": m.get("via"), "to": m.get("to_floor") or g.nodes[m["to_node"]].floor}
                           for m in ms if m["type"] == "floor"],
@@ -228,7 +229,7 @@ def make_tools(nav, g):
             try:
                 r = plan(g, start, goals, nav.profile, nav.blocked_edges, nav.blocked_nodes)
                 out.append({"room": n.room_label, "room_id": rid, "floor": n.floor,
-                            "length_m": round(r.length, 1), "length_ft": feet(r.length)})
+                            "length_m": round(r.length, 1), "spoken": meters(r.length)})
             except NoRoute as ex:
                 unreachable.append({"room": n.room_label, "room_id": rid, "why": str(ex)})
         out.sort(key=lambda o: o["length_m"])
@@ -275,7 +276,8 @@ def make_tools(nav, g):
         return _j({"ok": ok, "events": [e["text"] for e in ev],
                    "route": _summarize(g, nav.route) if ok and nav.route else None})
 
-    return [nav_status, list_nearby, compare_options, alternate_goals, commit_reroute]
+    from ..places import find_place_tool  # named places ("the kitchenette", "water") instead of raw ids
+    return [nav_status, list_nearby, compare_options, alternate_goals, find_place_tool(nav, g), commit_reroute]
 
 
 def create_exception_agent(nav, g, user_profile_text="", model=None, checkpointer=None):

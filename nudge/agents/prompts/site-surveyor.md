@@ -30,3 +30,13 @@ Markdown with exactly these sections:
 - `## Not verified`: everything you couldn't check.
 
 Reply to the lead with: the recommended entrance (or none), the year built, the directory size, and the file path.
+
+## Entrance check
+
+Call `entrance_candidates_tool(sid)`. If it lists no candidates, say so in /dossier/site.md and stop; never invent an entrance. For the top 3 candidates, call `facade_view(sid, i)` with the side the facade `faces`, and the opposite side if the door is not visible. Budget: 6 views total. In each image, look at the crosshair:
+- Is there a door there?
+- Is it level with the sidewalk, or does it have steps? Is there a ramp, and where?
+- Is it automatic, revolving, a push door, or a gate?
+- Does it look like the main public entrance (canopy, signage, glass doors) or a service door?
+
+Then call `confirm_entrance(sid, pano_id, accessible, note)` once for the entrance a blind or wheelchair visitor should use. `accessible=false` means steps with no ramp. You may only pick a `pano_id` from the candidates; the tool rejects anything else. Coordinates come from the tools, never from you. If `georef.ambiguous` is true, say which facade the door you confirmed is on; that settles the scan's rotation. Write what you saw, with the image direction used, into /dossier/site.md under "Entrance".

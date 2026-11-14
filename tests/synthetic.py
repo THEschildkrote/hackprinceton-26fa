@@ -40,16 +40,18 @@ class _Builder:
                 "rooms": self.rooms, "panoLocations": self.panos}
 
 
-def building(with_floor_ids=True):
+def building(with_floor_ids=True, kitchen_door_w=1.0):
+    """kitchen_door_w: clear width of the lobby-kitchen door (centred at x=6.5), to test narrow doors."""
+    ka, kb = 6.5 - kitchen_door_w / 2, 6.5 + kitchen_door_w / 2
     b = _Builder()
     b.floor("f1", 0)
     b.floor("f2", 1)
     # floor 1
-    b.room("f1", "Lobby", [(0, 0), (8, 0), (8, 2), (8, 3), (8, 6), (7, 6), (6, 6), (0, 6)], {2: "door", 5: "door"})
+    b.room("f1", "Lobby", [(0, 0), (8, 0), (8, 2), (8, 3), (8, 6), (kb, 6), (ka, 6), (0, 6)], {2: "door", 5: "door"})
     b.room("f1", "Office", [(8, 0), (16, 0), (16, 1), (16, 2), (16, 6), (14, 6), (12, 6), (8, 6), (8, 3), (8, 2)],
            {2: "opening", 5: "opening", 8: "door"})
     b.room("f1", "Elevator", [(12, 6), (14, 6), (14, 8), (12, 8)], {0: "opening"})
-    b.room("f1", "Kitchen", [(0, 6), (6, 6), (7, 6), (8, 6), (8, 12), (0, 12)], {1: "door"})
+    b.room("f1", "Kitchen", [(0, 6), (ka, 6), (kb, 6), (8, 6), (8, 12), (0, 12)], {1: "door"})
     b.room("f1", "Stairs", [(16, 0), (19, 0), (19, 3), (16, 3), (16, 2), (16, 1)], {4: "opening"})
     # floor 2
     b.room("f2", "Conference Room", [(0, 0), (16, 0), (16, 1), (16, 2), (16, 6), (14, 6), (12, 6), (0, 6)],
