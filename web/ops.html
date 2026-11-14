@@ -26,6 +26,9 @@
   .appbar .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .appbar .check input { accent-color: var(--yellow); width: 16px; height: 16px; }
   .spacer { flex: 1; }
+  .barbtn { height: 32px; border: none; border-radius: 8px; padding: 0 12px; background: rgba(255, 255, 255, .16); color: #fff; font-weight: 600; cursor: pointer; }
+  .barbtn:hover { background: rgba(255, 255, 255, .26); }
+  .appbar :focus-visible { outline-color: #fff; }
   .pill { display: inline-block; font-size: 12px; font-weight: 600; line-height: 16px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
   .pill.replay { background: var(--yellow); color: var(--navy); }
   .pill.live { color: #fff; padding-left: 0; padding-right: 0; font-size: 15px; }
@@ -91,6 +94,8 @@
   .kv div:nth-child(odd) { border-right: 1px solid var(--hair); }
   .kv span:first-child { color: var(--sec); white-space: nowrap; }
   .kv span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kv .on { font-weight: 600; }
+  .kv .off { color: var(--ter); }
   .list { height: 100%; overflow-y: auto; font-size: 12px; }
   .none { padding: 16px; color: var(--sec); font-size: 15px; }
   .ev { display: grid; grid-template-columns: 56px 64px 1fr; gap: 8px; padding: 0 16px; line-height: 28px; border-top: 1px solid var(--hair); }
@@ -119,7 +124,10 @@
   .row.has:hover { background: var(--surface); }
   .row.hide { display: none; }
 
-  /* replay form */
+  /* replay dialog */
+  dialog { border: none; border-radius: 12px; padding: 0; width: 400px; margin: auto; color: var(--navy); box-shadow: 0 12px 40px rgba(10, 31, 92, .25); }
+  dialog::backdrop { background: rgba(10, 31, 92, .3); }
+  .dh { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 4px; font-size: 17px; font-weight: 600; }
   .form { padding: 8px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sec); }
   .field select, .field input { height: 32px; border: 1px solid var(--hair); border-radius: 8px; background: #fff; color: var(--navy); padding: 0 8px; font-size: 15px; outline: none; }
@@ -140,6 +148,7 @@
   <select id="sess" aria-label="Session"></select>
   <label class="check soft"><input type="checkbox" id="follow" checked> Follow</label>
   <span class="spacer"></span>
+  <button class="barbtn" id="openReplay">Replay</button>
   <span class="pill live" id="mode">Live</span>
   <span class="soft" id="conn">Connecting</span>
   <span class="soft" id="clock"></span>
@@ -152,7 +161,7 @@
       <div class="stage" id="st-pi"><div class="k">Tracker</div><div class="v" id="v-pi"></div><div class="d" id="d-pi"></div></div>
       <div class="stage" id="st-nav"><div class="k">Navigator</div><div class="v" id="v-nav"></div><div class="d" id="d-nav"></div></div>
       <div class="stage" id="st-band"><div class="k">Collar</div><div class="v" id="v-band"></div>
-        <div class="d"><span class="sh" id="shL">Left</span><span class="sh" id="shR">Right</span><span id="bandmode"></span></div></div>
+        <div class="d"><span class="sh" id="shL">Left</span><span class="sh" id="shR">Right</span></div></div>
       <div class="stage" id="st-voice"><div class="k">Voice</div><div class="v" id="v-voice"></div><div class="d" id="d-voice"></div></div>
     </div>
   </section>
@@ -166,7 +175,7 @@
         <span><b style="background:var(--red);border:2px solid #fff;box-shadow:0 0 0 1px var(--hair)"></b>Traveller</span>
         <span><b style="background:var(--yellow);border:2px solid var(--navy)"></b>Destination</span></div>
       <div id="scale"></div>
-      <div id="empty">No active session</div>
+      <div id="empty">No phone connected</div>
     </div>
   </section>
 
@@ -192,13 +201,19 @@
       <div class="head"><span>Building</span></div>
       <div class="card kv" id="facts"></div>
     </section>
+    <section class="group">
+      <div class="head"><span>Devices</span></div>
+      <div class="card kv" id="devices"></div>
+    </section>
     <section class="group grow">
       <div class="head"><span>Events</span><button class="btn text" id="pause">Pause</button></div>
       <div class="card grow"><div class="list" id="events"></div></div>
     </section>
-    <section class="group">
-      <div class="head"><span>Replay</span></div>
-      <div class="card form">
+  </div>
+</main>
+<dialog id="rp" aria-label="Replay">
+  <div class="dh"><span>Replay</span><button class="btn text" id="r-close">Close</button></div>
+      <div class="form">
         <label class="field">Building<select id="r-sid"><option value="R1FX6EmdcDt">Rabinowitz Hall</option><option value="MgGNVWsyXtH">1255 S Atlantic</option></select></label>
         <label class="field">Speed<select id="r-speed"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
         <label class="field">From<input id="r-start" value="entrance arcade"></label>
@@ -209,9 +224,7 @@
           <button class="btn" id="r-exc" disabled>Locked door</button>
         </div>
       </div>
-    </section>
-  </div>
-</main>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 const NS = "http://www.w3.org/2000/svg";
@@ -219,7 +232,7 @@ const C = { red: "#ce1126", blue: "#0038a8", navy: "#0a1f5c", yellow: "#fcd116",
 const S = {
   session: null, sid: null, graph: null, places: null, floors: [], floor: null, bounds: null, k: 0.05,
   cur: null, tgt: null, heading: null, trail: [], route: null, next: null, toNext: null, done: false, goal: null,
-  sessions: [], started: {}, buildings: {}, follow: true, paused: false, hubState: null,
+  sessions: [], started: {}, buildings: {}, follow: true, paused: false, hubState: null, devices: [], travellers: {}, band: null,
   filters: { model: true, tool: true, sub: true, hitl: true }, rows: {}, steps: [], stepTotal: 0, nodePlace: {}, walked: {},
 };
 const api = (p, o) => fetch(p, o).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t))));
@@ -429,6 +442,30 @@ function renderFacts() {
     : `<div class="none" style="grid-column:1/span 2;border:none">No building</div>`;
 }
 
+const ago = s => s < 60 ? "Just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+// the traveller this page is about: the one on the followed trip, else the phone that called in last
+function traveller() {
+  const sess = S.sessions.find(x => x.session === S.session);
+  if (sess?.traveller && sess.traveller !== "replay" && S.travellers[sess.traveller]) return sess.traveller;
+  return S.devices.find(d => d.role === "phone")?.traveller || null;
+}
+function renderDevices() {
+  const tid = traveller(), dev = role => S.devices.find(d => d.role === role && d.traveller === tid);
+  const cell = (d, on, none) => !d ? `<span class="off">${none}</span>` : d.online ? `<span class="on">${on}</span>` : `<span>${ago(d.age_s)}</span>`;
+  const n = tid ? S.travellers[tid]?.imessage || 0 : 0, b = S.band;
+  const rows = [
+    ["Phone", cell(dev("phone"), "Online", "Not connected")],
+    ["Caretaker app", cell(dev("care"), "Watching", "Not open")],
+    ["iMessage", n ? `<span class="on">${n} paired</span>` : `<span class="off">None paired</span>`],
+    ["Collar", !b?.attached ? `<span class="off">Off</span>` : b.mode === "dry" ? "<span>Dry run</span>" : `<span class="on">${esc(cap(b.mode))}</span>`],
+  ];
+  put("devices", rows.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join(""));
+  if (S.session) return;
+  const ph = dev("phone");
+  put("v-phone", ph ? (ph.online ? "Online" : "Offline") : "");
+  put("d-phone", ph?.online ? (ph.heading != null ? `Heading ${Math.round(ph.heading)}°` : "Waiting for a trip") : ph ? ago(ph.age_s) : "");
+}
+
 function renderTrip(s) {
   put("m-rem", s && s.remaining != null ? metres(s.remaining) : "");
   put("m-eta", s && s.remaining != null ? (s.done ? `0<small>s</small>` : eta(s.remaining / 0.9)) : "");
@@ -449,14 +486,17 @@ async function snapshot() {
   try { snap = await api("/api/ops/snapshot?events=0"); } catch { return; }
   S.buildings = { ...S.buildings, ...(snap.buildings || {}) };
   put("model", esc(modelName(snap.model)));
-  put("bandmode", !snap.band?.attached ? "Off" : snap.band.mode === "dry" ? "Dry run" : esc(cap(snap.band.mode)));
+  S.band = snap.band; S.devices = snap.devices || []; S.travellers = snap.travellers || {};
   S.sessions = snap.sessions || [];
   let want = S.session;
-  if (S.follow && S.sessions.length) {
-    const live = S.sessions.filter(s => !s.done);
-    want = (live.length ? live : S.sessions).at(-1).session;
-  }
-  if (!S.sessions.find(s => s.session === want)) want = S.sessions.at(-1)?.session || null;
+  if (S.follow) {
+    // a walk in progress first, a real one before a rehearsal, then the latest.
+    // a finished rehearsal gives way to a connected phone waiting for its trip.
+    const phoneOn = S.devices.some(d => d.role === "phone" && d.online);
+    const pool = S.sessions.filter(s => !(phoneOn && s.replay && s.done));
+    const rank = s => (s.done ? 0 : 2) + (s.replay ? 0 : 1);
+    want = pool.length ? pool.reduce((a, s) => rank(s) >= rank(a) ? s : a).session : null;
+  } else if (!S.sessions.find(s => s.session === want)) want = S.sessions.at(-1)?.session || null;
   const sel = $("sess"), opts = S.sessions.map(s => {
     const t = S.started[s.session];
     return `<option value="${esc(s.session)}" title="${esc(s.session)}">${esc(cap(s.goal))}${t ? ", " + hm(t) : ""}${s.replay ? ", replay" : ""}${s.done ? ", done" : ""}</option>`;
@@ -465,11 +505,26 @@ async function snapshot() {
   sel.value = want || "";
   const s = S.sessions.find(x => x.session === want);
   if (s) await follow(s);
-  else { S.session = null; renderTrip(null); renderNext(); $("r-exc").disabled = true; if (!S.sid) renderFacts(); }
-  $("empty").style.display = s ? "none" : "flex";
-  $("legend").style.display = $("scale").style.display = s ? "" : "none";
+  else await waiting();
+  renderDevices();
+  const plan = !!s || !!S.graph;
+  $("empty").style.display = plan ? "none" : "flex";
+  $("empty").textContent = S.devices.some(d => d.role === "phone" && d.online) ? "Waiting for a trip" : "No phone connected";
+  $("legend").style.display = s ? "" : "none";
+  $("scale").style.display = plan ? "" : "none";
   const mode = $("mode"), rp = !!s?.replay;
   mode.textContent = rp ? "Replay" : "Live"; mode.className = `pill ${rp ? "replay" : "live"}`;
+}
+
+// no trip yet: the plan of the building the phone last walked, if any, so the page is ready
+async function waiting() {
+  if (S.session) Object.assign(S, { session: null, route: null, trail: [], cur: null, tgt: null, next: null, done: false, goal: null });
+  renderTrip(null); $("r-exc").disabled = true;
+  const sid = S.travellers[traveller()]?.sid;
+  if (sid && sid !== S.sid) await loadBuilding(sid);
+  else if (!S.sid) renderFacts();
+  drawRoute(); drawMe();
+  put("next", S.graph ? `<div class="k">${S.devices.some(d => d.role === "phone" && d.online) ? "Phone online" : "No phone connected"}</div><div class="t">Waiting for a trip</div>` : "");
 }
 
 async function follow(s) {
@@ -556,7 +611,8 @@ document.querySelectorAll("#filters button").forEach(b => b.onclick = () => {
 
 // --- event log ------------------------------------------------------------------------------------
 const KIND = { step: "Step", position: "Position", maneuver: "Route", reroute: "Reroute", voice: "Voice", band: "Collar",
-  session: "Session", hub: "Status", agent: "Agent", exception: "Problem", replay: "Replay" };
+  session: "Session", hub: "Status", agent: "Agent", exception: "Problem", replay: "Replay", device: "Device", calibrate: "Calibrate" };
+const kindOf = ev => ev.kind === "voice" ? (ev.who === "traveller" ? "Heard" : "Said") : KIND[ev.kind] || cap(ev.kind);
 function describe(ev) {
   switch (ev.kind) {
     case "step": return `${ev.steps} step${ev.steps === 1 ? "" : "s"}${ev.heading_deg != null ? `, heading ${Math.round(ev.heading_deg)}°` : ", no compass"}`;
@@ -564,7 +620,9 @@ function describe(ev) {
     case "maneuver": case "reroute": return ev.text || cap(ev.type);
     case "voice": return ev.text;
     case "band": return `${cueName(ev.cue)}, ${side(ev.cue).toLowerCase()}${ev.mode === "dry" ? ", dry run" : ""}`;
-    case "session": return `To ${cap(ev.goal)}, ${ev.route_m ?? "?"} m, ${ev.profile}`;
+    case "session": return `To ${cap(ev.goal)}, ${ev.route_m ?? "?"} m, ${ev.profile}${ev.by === "voice" ? ", by voice" : ""}`;
+    case "device": return `${ev.role === "care" ? "Caretaker app" : "Phone"} ${ev.phase}${ev.name ? `, ${ev.name}` : ""}`;
+    case "calibrate": return `Facing ${Math.round(ev.heading_deg)}°`;
     case "hub": return cap([ev.type, ev.state].filter(Boolean).join(", ").replace(/_/g, " "));
     case "agent": return `${agentName(ev.agent)}, ${ev.event.replace(/_/g, " ")}${ev.tool ? " " + ev.tool : ""}${ev.ms != null ? ", " + dur(ev.ms) : ""}`;
     case "exception": return `${cap(ev.phase)}${ev.text ? ", " + ev.text : ""}`;
@@ -576,7 +634,7 @@ function logEvent(ev) {
   if (S.paused) return;
   const box = $("events"), d = document.createElement("div");
   d.className = "ev";
-  d.innerHTML = `<span class="tm">${hms(ev.ts)}</span><span class="k">${KIND[ev.kind] || esc(cap(ev.kind))}</span><span>${esc(describe(ev))}</span>`;
+  d.innerHTML = `<span class="tm">${hms(ev.ts)}</span><span class="k">${esc(kindOf(ev))}</span><span>${esc(describe(ev))}</span>`;
   const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
   box.appendChild(d);
   while (box.children.length > 500) box.removeChild(box.firstChild);
@@ -616,8 +674,12 @@ function handle(ev) {
       if (ev.kind === "reroute") snapshot();
       break;
     case "voice": if (!mine) break;
-      hot("voice"); put("v-voice", esc(ev.text)); put("d-voice", hms(ev.ts));
+      hot("voice"); put("v-voice", esc(ev.who === "traveller" ? `“${ev.text}”` : ev.text)); put("d-voice", ev.who === "traveller" ? "Traveller" : "Nudge");
       break;
+    case "calibrate": if (!mine) break;
+      hot("phone"); put("d-phone", `Facing ${Math.round(ev.heading_deg)}°`);
+      break;
+    case "device": snapshot(); break;
     case "band": if (ev.session && !mine) break;
       hot("band"); put("v-band", esc(cueName(ev.cue)));
       for (const [id, on] of [["shL", side(ev.cue) !== "Right"], ["shR", side(ev.cue) !== "Left"]]) {
@@ -639,6 +701,9 @@ function connect() {
 
 // --- replay controls ----------------------------------------------------------------------------------
 const ROUTES = { R1FX6EmdcDt: ["entrance arcade", "seminar room"], MgGNVWsyXtH: ["entrance", "Kitchen"] };
+$("openReplay").onclick = () => $("rp").showModal();
+$("r-close").onclick = () => $("rp").close();
+$("rp").onclick = e => { if (e.target === $("rp")) $("rp").close(); };
 $("r-sid").onchange = e => { [$("r-start").value, $("r-to").value] = ROUTES[e.target.value]; };
 $("r-run").onclick = async () => {
   S.follow = true; $("follow").checked = true;
@@ -650,6 +715,7 @@ $("r-run").onclick = async () => {
     logEvent({ ts: Date.now() / 1000, kind: "replay", phase: "error", error: String(e.message).slice(0, 160) });
   }
   $("r-run").disabled = false;
+  $("rp").close();
   snapshot();
 };
 $("r-stop").onclick = () => api("/api/ops/replay/stop", { method: "POST" }).catch(() => {});

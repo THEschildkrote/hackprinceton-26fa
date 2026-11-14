@@ -250,6 +250,71 @@ def _hub_to_traces():
 _hub_to_traces()
 
 
+# who is connected: the traveller's phone and the caretaker app, by when each last called in.
+# the phone polls for a trip every 2 s and posts every second while walking, so 12 s of quiet is offline.
+ONLINE_S = 12.0
+_seen = {}   # (role, traveller) -> {"ts", "heading"?}
+_seen_lock = threading.Lock()
+_seen_watch = []
+
+
+def _touch(role, tid, **info):
+    if not tid or tid == "replay":
+        return
+    now = time.time()
+    with _seen_lock:
+        prev = _seen.get((role, tid))
+        _seen[(role, tid)] = {**(prev or {}), **{k: v for k, v in info.items() if v is not None}, "ts": now,
+                              "online": True}
+        back = prev is None or not prev.get("online")
+        if not _seen_watch:
+            _seen_watch.append(threading.Thread(target=_watch_seen, daemon=True, name="nudge-presence"))
+            _seen_watch[0].start()
+    if back:
+        _trace("device", role=role, traveller=tid, name=_traveller_name(tid), phase="online")
+
+
+def _traveller_name(tid):
+    try:
+        from . import hub
+        return (hub.status(tid) or {}).get("name")
+    except Exception:
+        return None
+
+
+def _watch_seen():
+    while True:
+        time.sleep(1.0)
+        now, gone = time.time(), []
+        with _seen_lock:
+            for (role, tid), v in _seen.items():
+                if v.get("online") and now - v["ts"] > ONLINE_S:
+                    v["online"] = False
+                    gone.append((role, tid))
+        for role, tid in gone:
+            _trace("device", role=role, traveller=tid, name=_traveller_name(tid), phase="offline")
+
+
+def _presence():
+    now = time.time()
+    with _seen_lock:
+        rows = sorted(_seen.items(), key=lambda kv: -kv[1]["ts"])
+        return [{"role": role, "traveller": tid, "age_s": round(now - v["ts"], 1), "online": v.get("online", False),
+                 "heading": v.get("heading")} for (role, tid), v in rows]
+
+
+def _voice_told(tid, heard, out):
+    """every voice exchange on the dashboard: what the traveller said and what nudge said back."""
+    _touch("phone", tid)
+    session = out.get("session")
+    if heard:
+        _trace("voice", session=session, traveller=tid, who="traveller", text=heard)
+    if out.get("say") and not out.get("pending_job"):
+        _trace("voice", session=session, traveller=tid, who="nudge", text=out["say"])
+    elif out.get("say_now"):
+        _trace("voice", session=session, traveller=tid, who="nudge", text=out["say_now"])
+
+
 def _nav(session):
     s = _sessions.get(session)
     if not s:
@@ -328,6 +393,8 @@ def nav_start(req: StartReq):
     _publish(sid, nav, [dict(e, goal=goal) for e in ev])
     _trace("session", session=sid, sid=req.sid, goal=goal, profile=req.profile, traveller=tid,
            route_m=round(nav.route.length, 1) if nav.route else None)
+    if req.traveller:
+        _touch("phone", req.traveller, heading=req.heading)
     _trace_nav(sid, nav, ev)
     _band_sync(sid, nav, req.heading, start=True)
     from .pdr import Tracker
@@ -382,6 +449,8 @@ class CalibrateReq(BaseModel):
 def nav_calibrate(req: CalibrateReq):
     nav, tr = _tracker(req.session)
     out = tr.calibrate(req.heading_deg)
+    _touch("phone", _session_traveller.get(req.session), heading=req.heading_deg)
+    _trace("calibrate", session=req.session, heading_deg=round(req.heading_deg, 1))
     _band_sync(req.session, nav, tr.to_model(req.heading_deg))
     return out
 
@@ -404,7 +473,8 @@ def nav_step(req: StepReq):
            step_m=req.step_m or getattr(tr, "step_m", None))
     _trace_nav(req.session, nav, ev, waiting_for=out.get("waiting_for"))
     for line in out.get("say") or []:
-        _trace("voice", session=req.session, text=line)
+        _trace("voice", session=req.session, who="nudge", text=line)
+    _touch("phone", _session_traveller.get(req.session), heading=req.heading_deg)
     _band_sync(req.session, nav, out["heading_model"])
     tid = _session_traveller.get(req.session)
     if tid:
@@ -1140,6 +1210,7 @@ def traveller_register(req: RegisterReq):
     from . import hub
     tid = req.traveller_id or uuid.uuid4().hex[:8]
     code = hub.register_traveller(tid, req.name)
+    _touch("phone", tid)
     return {"traveller_id": tid, "code": code}
 
 
@@ -1149,6 +1220,7 @@ def traveller_status(tid: str):
     st = hub.status(tid)
     if st is None:
         raise HTTPException(404, "unknown traveller")
+    _touch("care", tid)
     # live position and route for the caretaker's map
     nav = _sessions.get(st.get("session") or "")
     st["position"], st["route"] = None, None
@@ -1175,15 +1247,17 @@ def traveller_trip_set(tid: str, req: TripReq):
     trip = hub.set_trip(tid, req.model_dump())
     if trip is None:
         raise HTTPException(404, "unknown traveller")
+    _touch("care", tid)
     hub.publish(tid, {"type": "trip_requested", "text": f"Trip to {req.to} sent.", "goal": req.to})
     return {"ok": True, "trip": trip}
 
 
 @app.get("/api/traveller/{tid}/trip")
-def traveller_trip_get(tid: str):
+def traveller_trip_get(tid: str, heading: float | None = None):
     from . import hub
     if hub.status(tid) is None:
         raise HTTPException(404, "unknown traveller")
+    _touch("phone", tid, heading=heading)
     return {"trip": hub.get_trip(tid)}
 
 
@@ -1206,6 +1280,7 @@ def caretaker_pair(req: PairReq):
     tid, name = hub.traveller_for_code(req.code)
     if tid is None:
         raise HTTPException(404, "no traveller with that code")
+    _touch("care", tid)
     return {"traveller_id": tid, "name": name}
 
 
@@ -1245,6 +1320,9 @@ def _register_voice_session(nav, sid):
     s = uuid.uuid4().hex[:10]
     _sessions[s] = nav
     _session_sid[s] = sid
+    _trace("session", session=s, sid=sid, goal=nav.goal, profile=nav.profile, by="voice",
+           route_m=round(nav.route.length, 1) if nav.route else None)
+    _trace_nav(s, nav)
     return s
 
 
@@ -1254,7 +1332,8 @@ def _has_caretaker(tid):
     return bool(hub.caretakers(tid)) or (_view is not None and tid in _view.watched)
 
 
-_voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker)
+_voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker,
+                      on_turn=_voice_told)
 app.include_router(_voice)
 
 
@@ -1439,7 +1518,8 @@ def ops_snapshot(events: int = 200):
         band = {"attached": False, "error": str(ex)}
     try:
         from . import hub
-        travellers = {tid: hub.status(tid) for tid in list(hub._load()["travellers"])}
+        travellers = {tid: {**(hub.status(tid) or {}), "imessage": len(hub.caretakers(tid))}
+                      for tid in list(hub._load()["travellers"]) if tid != "replay"}
     except Exception:
         travellers = {}
     try:
@@ -1450,7 +1530,7 @@ def ops_snapshot(events: int = 200):
     buildings = {}
     for sid in {s["sid"] for s in sessions if s.get("sid")}:
         buildings[sid] = _ops_building(sid)
-    return {"sessions": sessions, "band": band, "travellers": travellers, "model": model,
+    return {"sessions": sessions, "band": band, "travellers": travellers, "model": model, "devices": _presence(),
             "buildings": buildings, "events": traces.recent(max(0, min(events, traces.RING))) if events else []}
 
 
