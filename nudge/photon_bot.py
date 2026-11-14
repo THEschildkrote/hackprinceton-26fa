@@ -582,6 +582,9 @@ def serve(brain=None, poll_s=2.0, api_port=8765):
         except ApiError as ex:
             print(f"photon api error {ex.status} (request {ex.request_id or '?'})", file=sys.stderr)
             time.sleep(5)
+        except Exception as ex:  # network drops etc.: imessage must never take the api down with it
+            print(f"photon unreachable ({type(ex).__name__}); retrying", file=sys.stderr)
+            time.sleep(5)
         time.sleep(poll_s)
 
 
