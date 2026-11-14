@@ -319,8 +319,10 @@ struct API {
     }
 
     // traveller side: is there a trip waiting? then acknowledge it once started
-    func pendingTrip(traveller: String) async throws -> Trip? {
-        let r: TripReply = try await send("GET", "/api/traveller/\(traveller)/trip", timeout: 5)
+    // the compass rides along so the ops dashboard sees the phone turn before a trip starts
+    func pendingTrip(traveller: String, heading: Double? = nil) async throws -> Trip? {
+        let q: [URLQueryItem] = heading.map { [.init(name: "heading", value: String(format: "%.1f", $0))] } ?? []
+        let r: TripReply = try await send("GET", "/api/traveller/\(traveller)/trip", query: q, timeout: 5)
         return r.trip
     }
 

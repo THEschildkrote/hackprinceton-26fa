@@ -65,7 +65,8 @@ final class Traveller {
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.phase == .waiting || self.phase == .arrived || self.phase == .stopped {
-                    if let t = try? await self.settings.api.pendingTrip(traveller: self.settings.traveller) {
+                    if let t = try? await self.settings.api.pendingTrip(traveller: self.settings.traveller,
+                                                                       heading: self.heading) {
                         await self.start(t, fromCaretaker: true)
                     }
                 }

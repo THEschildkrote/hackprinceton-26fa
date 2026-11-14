@@ -130,6 +130,25 @@ def test_snapshot_shape_and_walk_traces():
     assert c.get("/api/ops/snapshot?events=0").json()["events"] == []   # polling skips the history
 
 
+def test_phone_and_caretaker_presence_and_voice_turns():
+    server._seen.clear()
+    tid = "t" + uuid.uuid4().hex[:6]
+    code = c.post("/api/traveller/register", json={"traveller_id": tid, "name": "Ada"}).json()["code"]
+    assert c.get(f"/api/traveller/{tid}/trip", params={"heading": 92.5}).json() == {"trip": None}
+    c.get(f"/api/traveller/{tid}/trip")   # a poll every 2 s is not news
+    assert c.post("/api/caretaker/pair", json={"code": code}).status_code == 200
+    snap = c.get("/api/ops/snapshot?events=0").json()
+    phone = next(d for d in snap["devices"] if d["role"] == "phone" and d["traveller"] == tid)
+    assert phone["online"] and phone["heading"] == 92.5
+    assert any(d["role"] == "care" and d["traveller"] == tid and d["online"] for d in snap["devices"])
+    assert snap["travellers"][tid]["imessage"] == 0 and "replay" not in snap["travellers"]
+    seen = [e for e in traces.recent(n=500) if e["kind"] == "device" and e.get("traveller") == tid]
+    assert sorted((e["role"], e["phase"]) for e in seen) == [("care", "online"), ("phone", "online")]
+    assert c.post("/api/voice/turn", json={"traveller": tid, "text": "where am i"}).status_code == 200
+    said = [e for e in traces.recent(n=500) if e["kind"] == "voice" and e.get("traveller") == tid]
+    assert [e["who"] for e in said] == ["traveller", "nudge"] and said[0]["text"] == "where am i"
+
+
 def test_replay_drives_the_real_endpoints(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ROOT", tmp_path)
     r = c.post("/api/ops/replay", json={"sid": "synthetic", "start": "Lobby", "to": "Conference Room",

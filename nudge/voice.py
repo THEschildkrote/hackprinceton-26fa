@@ -144,9 +144,10 @@ class Conversation:
 
 def make_router(get_navigator=None, register_session=None, graph_for=None, exception_factory=None,
                 explorer_factory=None, default_sid=None, agent_timeout=20.0, clock=time.monotonic,
-                has_caretaker=None):
+                has_caretaker=None, on_turn=None):
     """get_navigator(session) and register_session(nav, sid) -> session tie voice trips to the server's sessions,
-    so the band relay and the caretaker feed follow the same navigator. factories are injectable for tests."""
+    so the band relay and the caretaker feed follow the same navigator. factories are injectable for tests.
+    on_turn(traveller, heard, reply) sees every exchange (heard is None for a late agent answer)."""
     router = APIRouter(prefix="/api/voice")
     convos = {}
     graph_for = graph_for or _default_graph
@@ -460,8 +461,19 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
                 lines.append(nxt["text"])
         return lines or (["New route set."] if yes else ["Okay, keeping your route."])
 
+    def told(tid, heard, out):
+        if on_turn:
+            try:
+                on_turn(tid, heard, out)
+            except Exception:
+                pass  # the dashboard must never cost the traveller an answer
+        return out
+
     @router.post("/turn")
     def turn(req: Turn):
+        return told(req.traveller, req.text, _turn(req))
+
+    def _turn(req):
         c = convo(req.traveller)
         if req.sid and req.sid != c.sid:
             c.sid, c.here = req.sid, None
@@ -630,7 +642,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         lines = settle(jid)
         if lines is None:
             return {"done": False, "say": "", "elapsed_s": round(clock() - j["started"], 1)}
-        return reply(c, lines, done=True, fallback=j.get("fallback"))
+        return told(j["tid"], None, reply(c, lines, done=True, fallback=j.get("fallback")))
 
     @router.get("/state/{traveller}")
     def state(traveller: str):
