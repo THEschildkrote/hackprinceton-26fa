@@ -131,3 +131,19 @@ def test_agent_reject_leaves_plan(g):
     handle_event(agent, tid, "Elevator E1 is out of service.")
     approve(agent, tid, "reject", message="I'd rather wait for the elevator.")
     assert "p_E1" not in nav.blocked_nodes and nav.route.nodes == route
+
+
+def test_report_arrives_with_lookups_so_one_turn_can_propose(g):
+    # the traveller is standing still: status, nearby and the what-if for the link ahead come with the report
+    nav, _ = session(g, at="p_L4", goal="Office")
+    model = scripted(("commit_reroute", {"block_edge": "L4|O1", "reason": "The door is locked."},
+                      "That door is locked. Shall I take you round through the other doorway?"))
+    agent = create_exception_agent(nav, g, model=model)
+    tid = new_thread()
+    out = handle_event(agent, tid, "The door ahead is locked.")
+    assert out["pending"] and out["pending"]["name"] == "commit_reroute"   # proposed on its first turn
+    first = next(m for m in agent.get_state({"configurable": {"thread_id": tid}}).values["messages"]
+                 if m.type == "human").content
+    assert first.startswith("The door ahead is locked.")
+    for part in ("nav_status:", "list_nearby:", "compare_options with the link just ahead blocked"):
+        assert part in first

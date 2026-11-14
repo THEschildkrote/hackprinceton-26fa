@@ -31,8 +31,13 @@ a door is locked, a hallway is blocked, or they are lost. Live turn-by-turn guid
 you only handle the exception.
 
 How to work:
-- Start with nav_status, and list_nearby if the location matters. Use compare_options to see what each
-  choice costs before suggesting anything. Use alternate_goals when another place could serve the same need.
+- The traveller is standing still waiting for you, so be quick. Each report arrives with nav_status,
+  list_nearby and compare_options for the link just ahead already run. Don't call those again unless
+  something you need is missing; when the compare_options result fits the problem, call commit_reroute
+  in your first turn with a one-sentence reason.
+- If you need more, call every tool you need in the same turn rather than one per turn. Use
+  compare_options to see what a different choice costs before suggesting it. Use alternate_goals when
+  another place could serve the same need.
 - When the traveller names a place or a need ("the kitchenette", "somewhere to get water"), call find_place
   and use the name it returns as the goal. If it returns a question, ask that question.
 - Never invent rooms, doors, distances or directions. Every option you mention must come from a tool result.
@@ -280,22 +285,65 @@ def make_tools(nav, g):
     return [nav_status, list_nearby, compare_options, alternate_goals, find_place_tool(nav, g), commit_reroute]
 
 
+def _ahead(nav, g, look=4):
+    """the link the traveller is about to use: the first doorway in the next few links of the route,
+    else the very next link. 'a|b' pano ids, or None."""
+    if not nav.route or len(nav.route.nodes) < 2:
+        return None
+    x, y, f, _ = _here(nav, g)
+    here, _ = snap(g, x, y, f)
+    nodes = nav.route.nodes
+    i = nodes.index(here) if here in nodes else min(range(len(nodes)), key=lambda k: dist((x, y), g.nodes[nodes[k]].xy))
+    links = list(zip(nodes[i:], nodes[i + 1:]))[:look]
+    if not links:
+        return None
+    door = next(((a, b) for a, b in links if "door" in (g.edge(a, b).tags if g.edge(a, b) else ())), None)
+    a, b = door or links[0]
+    return f"{a}|{b}"
+
+
+def prefetch(nav, g, tools):
+    """what the agent always asks for first, run before its first turn: the same tools, no model.
+    saves three round trips while the traveller stands still."""
+    t = {x.name: x for x in tools}
+    out = []
+    for name, args in (("nav_status", {}), ("list_nearby", {"radius_m": 8.0})):
+        try:
+            out.append(f"{name}: {t[name].invoke(args)}")
+        except Exception as ex:
+            out.append(f"{name}: unavailable ({type(ex).__name__})")
+    ahead = _ahead(nav, g)
+    if ahead:
+        try:
+            res = t["compare_options"].invoke({"block_edge": ahead, "profiles": nav.profile})
+            out.append(f"compare_options with the link just ahead blocked (block_edge={ahead}): {res}")
+        except Exception as ex:
+            out.append(f"compare_options: unavailable ({type(ex).__name__})")
+    return "\n".join(out)
+
+
+_PREFETCH = {}  # id(agent) -> callable giving the context for its next report
+
+
 def create_exception_agent(nav, g, user_profile_text="", model=None, checkpointer=None):
     if model is None:
         from .llm import model as default_model
-        model = default_model()
+        model = default_model(live=True)
     prompt = SYSTEM_PROMPT
     if user_profile_text:
         prompt += f"\nAbout this traveller (from their settings): {user_profile_text}\n"
-    return create_deep_agent(
+    tools = make_tools(nav, g)
+    agent = create_deep_agent(
         model=model,
-        tools=make_tools(nav, g),
+        tools=tools,
         system_prompt=prompt,
         middleware=[TodoListMiddleware()],
         interrupt_on={"commit_reroute": True},
         checkpointer=checkpointer or MemorySaver(),
         name="nudge-exception",
     )
+    _PREFETCH[id(agent)] = lambda: prefetch(nav, g, tools)
+    return agent
 
 
 def _cfg(thread_id):
@@ -360,7 +408,14 @@ def handle_event(agent, thread_id, event_text):
         since = 0
     who = _label(agent)
     _trace("event", who, text=event_text)
-    result = agent.invoke({"messages": [HumanMessage(content=event_text)]}, config=_traced(cfg, who))
+    content = event_text
+    ctx = _PREFETCH.get(id(agent))
+    if ctx:
+        try:
+            content = f"{event_text}\n\nAlready looked up for you:\n{ctx()}"
+        except Exception:
+            pass  # the agent can still look everything up itself
+    result = agent.invoke({"messages": [HumanMessage(content=content)]}, config=_traced(cfg, who))
     out = _reply(result, since + 1)
     _trace_reply(who, out)
     return out

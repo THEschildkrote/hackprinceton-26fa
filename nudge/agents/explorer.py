@@ -202,7 +202,7 @@ def create_explorer_agent(nav, g, sid=None, model=None, vision_model=None, check
     from .llm import model as default_model
 
     sid = sid or (_scans(g) or [None])[0] or "synthetic"
-    m = model if model is not None else default_model()
+    m = model if model is not None else default_model(live=True)
     vm = vision_model if vision_model is not None else (m if model is not None else default_model(role="vision"))
     subagents = [{"name": name, "description": SUBAGENTS[name][0], "system_prompt": _prompt(name),
                   "tools": SUBAGENTS[name][1], "skills": ["/agent/skills/"], "permissions": READ_ONLY_AGENT,

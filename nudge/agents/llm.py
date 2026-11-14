@@ -51,7 +51,9 @@ def has_credentials(s=None):
     return True
 
 
-def model(s=None, role="text", **kw):
+def model(s=None, role="text", live=False, **kw):
+    """live=True is for agents a traveller is waiting on (exceptions, exploring): they get their own limiter,
+    so they never queue behind a survey's parallel subagents."""
     s = s or spec(role)
     if s.startswith("openrouter:"):
         kw.setdefault("app_url", "https://github.com/arkankau/hackprinceton-26fa")
@@ -65,11 +67,12 @@ def model(s=None, role="text", **kw):
         kw.setdefault("max_retries", 6)  # backs off on 429s
         # the lead and every subagent share one limiter: parallel subagents queue instead of tripping the
         # trial key's per-minute quota (a real run hit 429 RESOURCE_EXHAUSTED after 5 parallel calls)
-        kw.setdefault("rate_limiter", _gemini_limiter())
+        kw.setdefault("rate_limiter", _live_limiter() if live else _gemini_limiter())
     return init_chat_model(s, **kw)
 
 
 _LIMITER = None
+_LIVE = None
 
 
 def _gemini_limiter():
@@ -79,3 +82,14 @@ def _gemini_limiter():
         rps = float(os.environ.get("NUDGE_GEMINI_RPS", "0.2"))  # 12 calls a minute
         _LIMITER = InMemoryRateLimiter(requests_per_second=rps, check_every_n_seconds=0.1, max_bucket_size=2)
     return _LIMITER
+
+
+def _live_limiter():
+    """a live exception is a short sequential burst (a handful of calls), not five parallel subagents: let
+    it through at once and pace only a long run. the sdk still backs off if the quota does say no."""
+    global _LIVE
+    if _LIVE is None:
+        from langchain_core.rate_limiters import InMemoryRateLimiter
+        rps = float(os.environ.get("NUDGE_GEMINI_LIVE_RPS", "1.0"))
+        _LIVE = InMemoryRateLimiter(requests_per_second=rps, check_every_n_seconds=0.05, max_bucket_size=5)
+    return _LIVE
