@@ -33,13 +33,14 @@ TIMEOUT_S = 3.0
 POLL_S = 0.5
 WATCH_S = 2.0   # how often an idle belt is asked whether it is there, once a dashboard has asked
 ONLINE_S = 6.0  # no answer for this long: the belt is off or out of range
+CONTINUE_M = 3.0  # the wearer counts as standing where a walk begins within this of its first point
 
 # the pi is on the phone's hotspot or a cable: never send it through a proxy
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 _lock = threading.Lock()
 _state = {"session": None, "floor": None, "error": None, "link_error": None, "route": None, "walking": False,
           "thread": None, "points": None, "steps": None, "tap_seq": None, "seen_at": None, "last": None,
-          "watch": None}
+          "watch": None, "continued": False}
 
 
 class BeltError(Exception):
@@ -113,21 +114,47 @@ def _points(nav):
     return nav.route.to_dict(nav.g)["points"]
 
 
+def _standing_at(st, point):
+    """is the wearer, by the belt's own reckoning, standing where a walk that starts at `point` begins?
+    only a belt that has been lined up knows where they are at all, and only one that is on a walk or has
+    just arrived is believed: a belt that was stopped may have been carried anywhere since."""
+    pose = st.get("pose")
+    if not (st.get("calibrated") and pose) or os.environ.get("NUDGE_BELT_CONTINUE") == "0":
+        return False
+    if st.get("state") not in ("ARRIVED", "NAVIGATING", "FLOOR"):
+        return False
+    floor = (st.get("route") or {}).get("floor")
+    if floor is not None and floor != point[2]:
+        return False
+    return math.hypot(pose["x"] - point[0], pose["y"] - point[1]) <= CONTINUE_M
+
+
 def send_route(session, nav):
-    """give the belt this session's route. the belt has one wearer, so this takes it over."""
+    """give the belt this session's route. the belt has one wearer, so this takes it over.
+
+    when the belt already knows where the wearer is and they are standing where this walk begins (they
+    have just finished the last one), the route goes as a continuation: the belt keeps its position and
+    its calibration, and begin() only has to start it. that is how one walk follows another without
+    stopping to line up again, and how two or three walks make a loop. NUDGE_BELT_CONTINUE=0 turns it off."""
     if not enabled() or not getattr(nav, "route", None):
         return None
     points = _points(nav)
 
     def go():
-        if (_call("GET", "/state").get("state")) == "NAVIGATING":
+        st = _call("GET", "/state")
+        if len(points) >= 2 and _standing_at(st, points[0]):
+            try:
+                return dict(_call("POST", "/route", {"route": {"points": points}, "reroute": True}), continued=True)
+            except BeltError:
+                pass  # a belt runtime too old to carry on, or one that will not: line it up afresh
+        if st.get("state") == "NAVIGATING":
             _call("POST", "/stop")  # it refuses a new route while it is guiding
-        return _call("POST", "/route", {"route": {"points": points}})
+        return dict(_call("POST", "/route", {"route": {"points": points}}), continued=False)
 
     out = _try(go)
     with _lock:
         _state.update(session=session, floor=points[0][2], route=out, walking=False, points=points,
-                      steps=None, tap_seq=None)
+                      steps=None, tap_seq=None, continued=bool(out and out.get("continued")))
     return out
 
 
@@ -155,6 +182,9 @@ def begin(session):
         return None
 
     def go():
+        if _state["continued"]:
+            _call("POST", "/start")  # still lined up from the walk before: nothing to calibrate
+            return {"continued": True}
         cal = _call("POST", "/calibrate")
         _call("POST", "/start")
         return cal
@@ -278,7 +308,7 @@ def detach():
     """forget the session; the follow thread ends on its next turn. does not stop the belt."""
     with _lock:
         _state.update(session=None, floor=None, route=None, walking=False, thread=None, error=None,
-                      link_error=None, points=None, steps=None, tap_seq=None)
+                      link_error=None, points=None, steps=None, tap_seq=None, continued=False)
 
 
 def watch():
@@ -314,7 +344,7 @@ def summary():
 
 def status():
     out = {"enabled": enabled(), "url": url(), "session": _state["session"], "walking": _state["walking"],
-           "route": _state["route"], "error": _state["error"], "belt": None}
+           "route": _state["route"], "error": _state["error"], "belt": None, "continued": _state["continued"]}
     if enabled():
         st = _poll()
         out["error"] = _state["error"] or _state["link_error"]

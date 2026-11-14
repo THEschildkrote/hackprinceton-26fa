@@ -128,6 +128,7 @@ class StartReq(BaseModel):
     heading: float | None = None
     building: bool = False  # route across every joined scan of this building
     traveller: str | None = None  # who is walking (caretakers follow them); defaults to the session id
+    avoid: list[list[str]] | None = None  # edges not to walk, [[a, b], ...]: the way back of a loop avoids the way out
 
 
 class UpdateReq(BaseModel):
@@ -176,8 +177,10 @@ def route(body: dict):
     if not (sid and to and start):
         raise HTTPException(400, "need sid, from, to")
     g = graph_for(sid)
+    # "avoid": [[a, b], ...] are edges not to walk (the way back of a loop avoids the way out)
+    avoid = {(e[0], e[1]) for e in body.get("avoid") or [] if isinstance(e, (list, tuple)) and len(e) == 2}
     try:
-        r = plan(g, start, to, profile)
+        r = plan(g, start, to, profile, avoid)
     except NoRoute as ex:
         raise HTTPException(404, str(ex))
     return {"route": r.to_dict(g), "maneuvers": maneuvers(g, r)}
@@ -480,6 +483,7 @@ def nav_start(req: StartReq):
         goal, place = r["best"]["name"], places._summary(r["best"])
     _stalls_apply(g, req.sid)
     nav = Navigator(g, goal, req.profile)
+    nav.blocked_edges.update((e[0], e[1]) for e in req.avoid or [] if len(e) == 2)
     sid = uuid.uuid4().hex[:10]
     _sessions[sid] = nav
     _session_sid[sid] = req.sid

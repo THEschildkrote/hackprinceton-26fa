@@ -319,3 +319,82 @@ def test_a_walk_asked_for_by_voice_goes_to_the_belt_too(fake):
     wait(lambda: c.get("/api/belt").json()["session"] == sid)
     assert fake.state == "IDLE"                                                  # nothing moves until they are lined up
     assert c.post("/api/belt/begin", json={"session": sid}).json()["ok"] and fake.state == "NAVIGATING"
+
+
+# -- one walk after another, and loops ---------------------------------------------------------------------
+
+
+def start_and_arrive(fake, to):
+    s = c.post("/api/nav/start", json=dict(START, to=to)).json()
+    nav = server.get_navigator(s["session"])
+    c.post("/api/belt/begin", json={"session": s["session"]})
+    end = nav.route.to_dict(nav.g)["points"][-1]
+    fake.pose, fake.state = {"x": end[0], "y": end[1], "heading_deg": 0.0}, "ARRIVED"   # the belt walked them there
+    wait(lambda: not c.get("/api/belt").json()["walking"])
+    return s, end
+
+
+def test_the_next_walk_carries_on_from_where_the_last_one_ended(fake):
+    first, end = start_and_arrive(fake, "p_K2")
+    before = len(fake.posts())
+    second = c.post("/api/nav/start", json=dict(START, to="p_L1", x=end[0], y=end[1], floor=end[2])).json()
+    sent = fake.posts()[before:]
+    assert [p for p, _ in sent] == ["/route"] and sent[0][1]["reroute"] is True      # no stop, no fresh route
+    assert sent[0][1]["route"]["points"] == second["state"]["route"]["points"]
+    st = c.get("/api/belt").json()
+    assert st["continued"] and st["session"] == second["session"] and st["error"] is None
+    assert c.post("/api/belt/begin", json={"session": second["session"]}).json()["ok"]
+    assert [p for p, _ in fake.posts()[before:]] == ["/route", "/start"]             # started, not lined up again
+    assert fake.state == "NAVIGATING"
+
+
+def test_a_walk_that_starts_somewhere_else_is_lined_up_afresh(fake):
+    first, end = start_and_arrive(fake, "p_K2")
+    before = len(fake.posts())
+    second = c.post("/api/nav/start", json=dict(START, to="p_O3")).json()            # back at the lobby start
+    assert [p for p, _ in fake.posts()[before:]] == ["/route"] and "reroute" not in fake.posts()[-1][1]
+    assert not c.get("/api/belt").json()["continued"]
+    c.post("/api/belt/begin", json={"session": second["session"]})
+    assert [p for p, _ in fake.posts()[before:]] == ["/route", "/calibrate", "/start"]
+
+
+def test_carrying_on_can_be_switched_off(fake, monkeypatch):
+    monkeypatch.setenv("NUDGE_BELT_CONTINUE", "0")
+    first, end = start_and_arrive(fake, "p_K2")
+    before = len(fake.posts())
+    c.post("/api/nav/start", json=dict(START, to="p_L1", x=end[0], y=end[1], floor=end[2]))
+    assert "reroute" not in fake.posts()[-1][1] and not c.get("/api/belt").json()["continued"]
+    assert [p for p, _ in fake.posts()[before:]] == ["/route"]
+
+
+def test_an_old_belt_that_cannot_carry_on_is_lined_up_afresh(fake):
+    first, end = start_and_arrive(fake, "p_K2")
+    fake.old, fake.state = True, "NAVIGATING"            # an old runtime refuses a route while guiding
+    before = len(fake.posts())
+    c.post("/api/nav/start", json=dict(START, to="p_L1", x=end[0], y=end[1], floor=end[2]))
+    assert [p for p, _ in fake.posts()[before:]] == ["/route", "/stop", "/route"]
+    assert not c.get("/api/belt").json()["continued"] and c.get("/api/belt").json()["error"] is None
+
+
+def test_the_way_back_can_avoid_the_way_out_which_makes_a_loop():
+    out = c.post("/api/route", json={"sid": "synthetic", "from": "p_L1", "to": "p_L6"}).json()["route"]
+    edges = [list(e) for e in zip(out["nodes"], out["nodes"][1:])]
+    same = c.post("/api/route", json={"sid": "synthetic", "from": "p_L6", "to": "p_L1"}).json()["route"]
+    assert same["nodes"] == out["nodes"][::-1]                                       # the shortest way back retraces
+    back = c.post("/api/route", json={"sid": "synthetic", "from": "p_L6", "to": "p_L1", "avoid": edges}).json()["route"]
+    walked = {frozenset(e) for e in edges}
+    assert back["nodes"][0] == "p_L6" and back["nodes"][-1] == "p_L1"
+    assert not walked & {frozenset(e) for e in zip(back["nodes"], back["nodes"][1:])}    # another way round
+    s = c.post("/api/nav/start", json={"sid": "synthetic", "to": "p_L1", "profile": "blind", "x": 6.5, "y": 5.2,
+                                       "floor": "f1", "avoid": edges}).json()
+    nav = server.get_navigator(s["session"])
+    assert not walked & {frozenset(e) for e in zip(nav.route.nodes, nav.route.nodes[1:])}
+
+
+def test_a_belt_that_was_stopped_is_lined_up_afresh_even_if_it_thinks_it_is_near(fake):
+    first, end = start_and_arrive(fake, "p_K2")
+    fake.state = "STOPPED"                                # stopped, then perhaps carried somewhere: not believed
+    before = len(fake.posts())
+    c.post("/api/nav/start", json=dict(START, to="p_L1", x=end[0], y=end[1], floor=end[2]))
+    assert [p for p, _ in fake.posts()[before:]] == ["/route"] and "reroute" not in fake.posts()[-1][1]
+    assert not c.get("/api/belt").json()["continued"]

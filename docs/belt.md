@@ -70,6 +70,15 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
   `POST /api/belt/floor`, or Next floor in the belt's own viewer. The belt then puts the wearer on the
   first point of the next floor's stretch and guides again, and the floor it reports, which is the floor
   our navigator is told, is the new one.
+- **One walk after another.** When a walk starts and the belt has just arrived somewhere (or is still
+  walking), and that is within 3 m of the new walk's first point, the route is handed over as a
+  continuation: the belt keeps its position and calibration, and `begin` (or the phone's calibrate)
+  only starts it. Nobody stands still to be lined up again. `GET /api/belt` says `continued: true`.
+  `NUDGE_BELT_CONTINUE=0` turns this off. To line up afresh anyway, press Calibrate in the belt's viewer.
+- **A loop is two or three walks.** The planner takes the shortest way, so the walk back from B to A
+  retraces the walk out unless it is told not to. `"avoid": [[a, b], ...]` in `/api/nav/start` or
+  `/api/route` lists edges not to walk: give the walk back the edges of the walk out and it comes round
+  the other way. Three walks, each under half the loop, need no `avoid`.
 - **A walk asked for by voice.** "Take me to the kitchen" (`/api/voice/turn`, from the voice page, the app
   or a phone agent) hands its route to the belt like a walk started with `/api/nav/start`. The wearer
   still has to be lined up before it guides: on the route's first point, facing the second, then
@@ -82,6 +91,22 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
 
 These need the belt runtime from 14 Nov evening or later. An older one refuses a reroute ("stop first");
 the refusal is kept in `GET /api/belt` and the walk goes on along the old route.
+
+## Starting a walk on the belt from this laptop
+
+`tools/venue_route.py` needs nothing but Python. With the server running:
+
+```bash
+python tools/venue_route.py --list                                      # the points on each floor, with their ids
+python tools/venue_route.py --from A --to B --traveller Aaron           # a walk; prints where to stand and the session
+python tools/venue_route.py --begin SESSION                             # the wearer is in place: line up and guide
+python tools/venue_route.py --from here --to A --other-way --continue   # at B: back round the other way, no lining up
+python tools/venue_route.py --loop --floor "Floor 3" --name loop --keep # one loop, kept on the belt, no server needed after
+```
+
+With `NUDGE_BELT_URL` set it starts the walk here (`/api/nav/start`), so the dashboard follows it. Without, or
+with `--direct`, it plans here and posts the route straight to the belt. `--sid` picks the building (default: the
+venue), `--server` and `--belt` say where the two sides are.
 
 ## What the belt cannot do yet
 
