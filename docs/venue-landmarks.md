@@ -12,6 +12,15 @@ Positions are in metres in the scan's frame. The lower level has no nodes.
 
 ![Both floors of the venue graph with node numbers and place names](venue-graph.png)
 
+The same graph on the scan itself, seen from above (the scan's floor plan view is turned half a turn from
+the drawing above, so the elevator is at the top right here):
+
+![The walk graph drawn on the Matterport floor plan of both floors](venue-graph-on-scan.png)
+
+`venue-paths.html` is an interactive version: download it and open it in a browser (GitHub shows it as
+source). Pick two places and it draws the shortest route on the scan with its turns, and "Snap photo" saves
+a PNG. Its routes are the shortest by edge length; they are not taken from `nudge/router.py`.
+
 ## Landmarks
 
 The **Identify by** column is for what a blind traveller can tell without sight: what is underfoot, a
