@@ -76,3 +76,15 @@ def test_places_can_have_real_names(fresh, monkeypatch):
     assert r["say"].startswith("Okay, going to the elevator"), r["say"]
     start = next(n for n in g.nodes.values() if n.label == a)
     assert r["trip"]["start"][:2] == [start.x, start.y]
+
+
+def test_the_venue_names_list_points_at_real_points():
+    from nudge import voice
+    from nudge.agents.tools import graph
+    try:
+        g = graph(server.VENUE)
+    except Exception as ex:
+        pytest.skip(f"venue map not available: {ex}")
+    labels = {n.label for n in g.nodes.values()}
+    names = voice._venue_names(server.VENUE)
+    assert names and all(v in labels for v in names.values()), {k: v for k, v in names.items() if v not in labels}
