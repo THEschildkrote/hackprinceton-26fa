@@ -107,6 +107,19 @@
   .film-meta a { color: #a9bdd7; }
   .film-meta a:hover { color: var(--ink); }
 
+  /* the venue in 3D (web/venue-3d.html in embed mode), loaded only when it's about to be seen */
+  .mesh { position: relative; margin-top: 48px; height: min(72vh, 660px); border-radius: 24px; overflow: hidden; border: 1px solid var(--line);
+          background: radial-gradient(120% 90% at 50% 10%, rgba(77, 124, 255, .14), #070a14 70%); box-shadow: 0 50px 140px -60px rgba(163, 230, 53, .35); }
+  .mesh.short { height: min(56vh, 500px); }
+  .mesh iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s var(--ease); }
+  .mesh iframe.ready { opacity: 1; }
+  .mesh::after { content: ""; position: absolute; inset: auto 0 0 0; height: 46%; pointer-events: none; background: linear-gradient(to top, rgba(4, 6, 12, .92), rgba(4, 6, 12, 0)); }
+  .mesh-cap { position: absolute; z-index: 1; left: 28px; right: 28px; bottom: 24px; max-width: 640px; font-size: 15px; color: #c3cde0; }
+  .mesh-cap b { display: block; font-size: 19px; font-weight: 500; color: var(--ink); margin-bottom: 4px; letter-spacing: -.01em; }
+  .mesh-open { position: absolute; z-index: 1; top: 18px; right: 18px; padding: 10px 16px; border-radius: 999px; font-size: 14px; background: rgba(14, 18, 28, .72);
+               border: 1px solid rgba(255, 255, 255, .14); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .3s; }
+  .mesh-open:hover { background: rgba(255, 255, 255, .12); }
+
   /* small animated scenes inside cards */
   .mini { display: block; width: 100%; height: 120px; margin: 0 0 22px; overflow: visible; }
   .m-line { fill: none; stroke: rgba(220, 228, 245, .32); stroke-width: 1.4; }
@@ -218,6 +231,10 @@
     .film { border-radius: 16px; }
     .film .cap { left: 16px; bottom: 14px; }
     .swipe { display: block; }
+    .mesh { height: 64vh; border-radius: 16px; }
+    .mesh.short { height: 52vh; }
+    .mesh-cap { left: 16px; right: 16px; bottom: 16px; font-size: 13.5px; }
+    .mesh-cap b { font-size: 16px; }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -312,13 +329,11 @@
   <section class="block" id="inside">
     <div class="eyebrow reveal">Inside and out</div>
     <h2 class="reveal">Built on the building's own data.</h2>
-    <div class="stats">
-      <div class="stat reveal" style="--d:0s"><b data-count="66">66</b><span>scan positions</span></div>
-      <div class="stat reveal" style="--d:.08s"><b data-count="2">2</b><span>floors, joined at the real stairs and elevator</span></div>
-      <div class="stat reveal" style="--d:.16s"><b data-count="18">18</b><span>named places to ask for</span></div>
-      <div class="stat reveal" style="--d:.24s"><b>0.7 m</b><span>scan lined up with the street</span></div>
+    <div class="mesh reveal">
+      <iframe data-src="/venue-3d.html#embed=1&explode=1&spin=0.6" title="The JRR scan in 3D with Isaac's walk graph, touring routes" tabindex="-1" aria-hidden="true"></iframe>
+      <div class="mesh-cap"><b>The Julis Romo Rabinowitz Building, Princeton.</b> Both floors of the real scan, lifted apart, with Isaac's walk graph on them. Every dot is a scan position; the green line is the route A* finds between two places, through the real stairs and elevator.</div>
+      <a class="mesh-open" href="/venue-3d.html" target="_blank" rel="noopener">Explore it in 3D →</a>
     </div>
-    <p class="where reveal">The Julis Romo Rabinowitz Building, Princeton.</p>
     <div class="grid3">
       <article class="card layer reveal" style="--d:0s"><b>Matterport</b><h3>The inside</h3>
         <p>Walls and rooms become the walking map. The point cloud finds doorways and head-height hazards; the panoramas confirm them.</p></article>
@@ -341,13 +356,10 @@
       <div class="fnode"><div class="disk" style="--t:3.1s">4</div><h4>The cane rule</h4><p>tables and railings never count: a cane finds their legs</p></div>
       <div class="fnode"><div class="disk" style="--t:4.1s">5</div><h4>Evidence</h4><p>the view is kept, and the router steers around it</p></div>
     </div>
-    <div class="stats">
-      <div class="stat reveal"><b data-count="55">55</b><span>leads judged at JRR</span></div>
-      <div class="stat hot reveal" style="--d:.08s"><b data-count="32">32</b><span>confirmed hazards</span></div>
-      <div class="stat reveal" style="--d:.16s"><b data-count="23">23</b><span>rejected, with the reason</span></div>
-      <div class="stat reveal" style="--d:.24s"><b data-count="0">0</b><span>skipped</span></div>
+    <div class="mesh short reveal">
+      <iframe data-src="/venue-3d.html#embed=1&walls=1&tour=0&spin=0.35&labels=0" title="The JRR scan in 3D with its glass walls and door frames" tabindex="-1" aria-hidden="true"></iframe>
+      <div class="mesh-cap"><b>Glass is what a scan misses.</b> The glass walls and door frames on the JRR scan, the kind of thing the hazard pass checks lead by lead. At JRR it judged all 55 leads: 26 glass walls and doors, 2 open stair undersides and 4 things on the wall at head height are hazards; 23 aren't.</div>
     </div>
-    <p class="fine reveal">Confirmed: 26 glass walls and doors, 2 open stair undersides, 4 things on the wall at head height.</p>
   </section>
 
   <section class="block" id="agents">
@@ -703,6 +715,16 @@ document.querySelectorAll(".phone-link").forEach(a => {
   a.href = `${a.dataset.kind}:${number}`;
   a.textContent = a.dataset.kind === "tel" ? `Call ${pretty}` : `Text ${pretty}`;
 });
+
+// the 3d venue: a 2 MB page with its own webgl, so it loads only when it's about to scroll into view
+const meshIO = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  const f = e.target;
+  f.addEventListener("load", () => f.classList.add("ready"), { once: true });
+  f.src = f.dataset.src + (REDUCED ? "&spin=0.01&tour=0" : "");
+  meshIO.unobserve(f);
+}), { rootMargin: "400px 0px" });
+document.querySelectorAll(".mesh iframe[data-src]").forEach(f => meshIO.observe(f));
 
 // numbers count up as they arrive
 function countUp(el) {
