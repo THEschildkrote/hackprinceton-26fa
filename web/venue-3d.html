@@ -130,6 +130,9 @@
     #hint { display: none; }
     #chip { top: auto; bottom: 14px; }
   }
+  /* #embed=1: a page that embeds this gets the scene alone, turning slowly, and scrolls past it as usual */
+  body.embed #bar, body.embed #panel, body.embed #chip, body.embed #hint, body.embed #tip { display: none !important; }
+  body.embed #view canvas { touch-action: auto; cursor: default; }
 </style>
 </head>
 <body data-state="loading">
@@ -55826,6 +55829,13 @@ function main(THREE, OrbitControls, SCANS) {
   // e.g. venue_3d.html#floors=upper&explode=1&view=top&route=48-55&numbers=1&places=all&walls=1&scan=0&labels=0&panel=1
   const hp = new URLSearchParams(location.hash.replace(/^#/, ''));
   const flag = (name) => ['1', 'true', 'on', 'yes', 'all'].includes(String(hp.get(name)).toLowerCase());
+  const EMBED = flag('embed');
+  if (EMBED) {
+    document.body.classList.add('embed');
+    controls.enabled = false;   // no drag, wheel or touch here: the page around it keeps scrolling
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = Number(hp.get('spin')) || 0.7;
+  }
   if (!hasScan) {
     $('#btn-scan').disabled = true;
     $('#btn-scan').title = 'The scan imagery could not be loaded';
@@ -55850,6 +55860,22 @@ function main(THREE, OrbitControls, SCANS) {
   camera.position.copy(start.pos);
   controls.target.copy(start.t);
   controls.update();
+
+  if (EMBED && hp.get('tour') !== '0') {
+    // a slow tour for an embedding page: shortest routes between named places, across floors where they can be
+    const named = DATA.nodes.filter((n) => n.room_label);
+    const pairs = [];
+    for (let i = 0; i < named.length * 3 && pairs.length < 8; i++) {
+      const a = named[(i * 7) % named.length], b = named[(i * 13 + 5) % named.length];
+      if (a === b || a.place === b.place || pairs.some(([x, y]) => x.place === a.place && y.place === b.place)) continue;
+      const r = shortest(a.id, b.id);
+      if (r && r.length > 12 && (a.f !== b.f || pairs.length % 2)) pairs.push([a, b]);
+    }
+    let k = 0;
+    const next = () => { if (!pairs.length) return; [routeFrom, routeTo] = pairs[k++ % pairs.length]; updateRoute(); };
+    next();
+    setInterval(next, (Number(hp.get('every')) || 6) * 1000);
+  }
 
   const traced = floors.filter((f) => f.slabTraced).length;
   $('#lg-ground').textContent = `${floors[0].name} path`;
