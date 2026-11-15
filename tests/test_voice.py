@@ -133,7 +133,7 @@ def test_elevenlabs_tool_definition():
     c, _, _ = client()
     tools = c.get("/api/voice/elevenlabs/tools", params={"base": "https://example.test"}).json()["tools"]
     t = tools[0]
-    assert t["type"] == "webhook" and t["api_schema"]["url"] == "https://example.test/api/voice/turn"
+    assert t["type"] == "webhook" and t["api_schema"]["url"] == "https://example.test/api/voice/call"
     assert t["api_schema"]["method"] == "POST"
 
 

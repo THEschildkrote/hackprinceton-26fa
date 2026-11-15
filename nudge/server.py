@@ -1609,6 +1609,67 @@ _voice = voice_router(get_navigator, register_session=_register_voice_session, h
 app.include_router(_voice)
 
 
+class CallTurn(BaseModel):
+    caller: str | None = None   # the caller's number, from the elevenlabs agent ({{system__caller_id}})
+    text: str
+
+
+_WALKING = ("walking", "off_route", "rerouting")
+
+
+@app.post("/api/voice/call")
+def voice_call(req: CallTurn):
+    """a phone call: photon number -> elevenlabs agent -> here. the caller is the walker. a trip they ask for goes
+    to their isaac phone (on their back, driving the belt), the way a caretaker's does; anything else is a voice
+    turn on that phone's live walk. a caller with no isaac phone gets the voice guide on its own."""
+    from . import hub
+    from .photon_bot import WANT, _only_phone_online, resolve_trip
+    from .voice import PLACEQ, TRIP, Turn, _norm
+    caller = (req.caller or "").strip()
+    if caller.lower() in ("", "null", "none", "unknown", "anonymous"):
+        caller = ""
+    tid = hub.walker(caller) if caller else None
+    if tid is None:
+        tid = _only_phone_online()          # one isaac phone on: that's the caller's
+        if tid and caller:
+            hub.set_walker(caller, tid)
+    _trace("voice", session=None, who="caller", text=req.text, traveller=tid or caller or "caller", via="phone")
+    from .voice import THANKS
+    if THANKS.match(_norm(req.text)) and re.search(r"\b(bye|goodbye|see you)\b", req.text, re.I):
+        return {"say": "Okay. Your phone and belt keep guiding you. Bye."}
+    if tid is None:
+        return _voice.turn(Turn(traveller=caller or "caller", text=req.text,
+                                sid=os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt"))
+    st = hub.status(tid) or {}
+    walking = st.get("state") in _WALKING and st.get("session")
+    place = None
+    if not walking:
+        m = WANT.match(req.text.strip())
+        if m:
+            place = m["place"]
+        else:
+            m = TRIP.match(_norm(req.text)) or PLACEQ.match(_norm(req.text))
+            if m:
+                place = m["place"] + (f" at {m['bldg']}" if m["bldg"] else "")
+    if place is None:
+        return _voice.turn(Turn(traveller=tid, text=req.text, sid=st.get("sid"),
+                                session=st.get("session") if walking else None))
+    profile = st.get("profile") or "blind"
+    sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt", profile)
+    if sid is None:
+        return {"say": to, "trip": None}
+    hub.set_trip(tid, {"sid": sid, "to": to, "profile": profile, "by": "walker"})
+    hub.publish(tid, {"type": "trip_requested", "goal": to, "text": f"{st.get('name') or 'The traveller'} asked "
+                                                                    f"for {to} on a call."})
+    online = time.time() - (_seen.get(("phone", tid)) or {}).get("ts", 0) <= ONLINE_S
+    at = f" in {bname}" if bname else ""
+    say = (f"Okay. Your phone is starting your trip to {to}{at} now. Follow the taps on your belt. "
+           "You can hang up, or stay on and ask me anything." if online else
+           f"I've sent {to}{at} to your phone. It starts as soon as Isaac is open on it.")
+    _trace("voice", session=None, who="nudge", text=say, traveller=tid, via="phone")
+    return {"say": say, "trip": {"sid": sid, "goal": to}}
+
+
 # the maya demo: briefing, the walk, what the agents found, and sam's live view of his imessages
 
 from . import demo as _maya  # noqa: E402

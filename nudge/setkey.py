@@ -2,6 +2,7 @@
 
 run: python -m nudge.setkey                 (asks for PHOTON_API_KEY)
      python -m nudge.setkey VEXCEL_API_KEY MATTERPORT_API_KEY ...
+     python -m nudge.setkey --clipboard ELEVENLABS_API_KEY   (takes what was just copied; never shown)
 """
 import getpass
 import sys
@@ -22,7 +23,21 @@ def save(name, value):
     ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def clipboard():
+    import subprocess
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"], capture_output=True, text=True)
+    return (r.stdout or "").strip().strip('"').strip("'")
+
+
 def main(names):
+    if names and names[0] == "--clipboard":
+        for name in names[1:]:
+            value = clipboard()
+            if not value or len(value) < 20 or " " in value:
+                raise SystemExit(f"the clipboard doesn't hold a key for {name}")
+            save(name, value)
+            print(f"  saved {name} to .env from the clipboard ({len(value)} characters)")
+        return
     for name in names or ["PHOTON_API_KEY"]:
         value = getpass.getpass(f"{name} (input hidden, enter to skip): ").strip().strip('"').strip("'")
         if not value:

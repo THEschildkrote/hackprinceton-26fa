@@ -123,6 +123,7 @@ struct Trip: Codable, Equatable {
     let to: String
     let profile: String
     let ts: Double?
+    var by: String? = nil   // "walker" when they texted isaac for it themselves
 }
 
 struct TripReply: Decodable {

@@ -38,6 +38,7 @@ def _load():
             _data = {}
         _data.setdefault("travellers", {})
         _data.setdefault("caretakers", {})
+        _data.setdefault("walkers", {})
     return _data
 
 
@@ -54,7 +55,7 @@ def reset(path=None):
     with _lock:
         if path is not None:
             PATH = path
-        _data = {"travellers": {}, "caretakers": {}}
+        _data = {"travellers": {}, "caretakers": {}, "walkers": {}}
         _subs.clear()
 
 
@@ -109,6 +110,29 @@ def traveller_for_code(code):
             if t.get("code") == str(code).strip():
                 return tid, t.get("name")
     return None, None
+
+
+def link_walker(handle, code):
+    """the traveller texts their own 6-digit code once; their messages then ask for trips on their phone."""
+    tid, name = traveller_for_code("".join(ch for ch in str(code) if ch.isdigit()))
+    if tid is None:
+        return None, None
+    with _lock:
+        _load()["walkers"][handle] = tid
+        _save()
+    return tid, name
+
+
+def set_walker(handle, traveller_id):
+    with _lock:
+        _load()["walkers"][handle] = traveller_id
+        _save()
+
+
+def walker(handle):
+    with _lock:
+        tid = _load()["walkers"].get(handle)
+        return tid if tid in _load()["travellers"] else None
 
 
 def register_traveller(traveller_id, name=None):
@@ -229,7 +253,8 @@ def status(traveller_id):
         eta = None if rem is None or t["state"] == "arrived" else max(1, math.ceil(rem / WALK_MPS / 60))
         return {"name": t.get("name"), "state": t["state"], "place": t.get("place"), "floor": t.get("floor"),
                 "goal": t.get("goal"), "remaining_m": rem, "eta_min": eta, "last_update_ts": t.get("last_update_ts"),
-                "recent": list(t["recent"]), "session": t.get("session"), "sid": t.get("sid")}
+                "recent": list(t["recent"]), "session": t.get("session"), "sid": t.get("sid"),
+                "profile": t.get("profile")}
 
 
 def pair(caretaker_handle, code):

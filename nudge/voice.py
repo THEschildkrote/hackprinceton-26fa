@@ -46,6 +46,9 @@ PLACEQ = re.compile(r"^(?:please\s+)?(?:where (?:can|could|do|should) i (?:get|f
                     r"i'?m looking for)\s+(?P<place>.+?)(?:\s+(?:at|in)\s+(?P<bldg>.+?))?\s*\??$")
 LOST = re.compile(r"\b(i'?m lost|i am lost|lost|where do i go|which way|i don'?t know where)\b")
 FAR = {"how far", "how far is it", "how much further", "how far left", "how long", "how far to go", "are we there yet"}
+# "ok, thanks, bye": nothing to do, and never a problem to reroute around
+THANKS = re.compile(r"^(?:(?:ok(?:ay)?|got it|thanks?|thank you(?: so much)?|cool|great|perfect|alright|all right|bye|"
+                    r"goodbye|see you|sounds good|isaac|then|so)\b[\s,]*)+$")
 # answers to "is something in the way?" that mean nothing is
 CLEAR = NO | {"keep going", "nothing", "nothing there", "it's fine", "its fine", "all clear", "clear", "i'm fine",
               "im fine", "i'm okay", "im okay", "carry on", "continue", "go on", "never mind", "nevermind", "no it's fine"}
@@ -558,7 +561,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             nxt = nav.state().get("next")
             return reply(c, [nxt["text"] if nxt else "You have arrived."])
         stall = c.stall if c.stall and clock() - c.stall["t"] < STALL_ANSWER_S else None
-        asks = t in WHERE or t in FAR or t in BRIEF or LOST.search(t) or re.match(r"^(how far|how much further|how long)", t)
+        asks = t in WHERE or t in FAR or t in BRIEF or LOST.search(t) or re.match(r"^(how far|how much further|how long)\b", t)
         if stall and not asks:
             # the answer to "is something in the way?"
             if t in YES:
@@ -627,6 +630,8 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             return reply(c, start_trip(c, q["place"], q["bldg"]))
         if m:
             return reply(c, start_trip(c, m["place"], m["bldg"]))
+        if THANKS.match(t):
+            return reply(c, ["Okay. I'm here if you need me."])
         if nav is not None and not nav.done:
             return agent_reply(c, req, req.text)
         # no building yet: maybe they just said the address
@@ -647,17 +652,19 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
     def agent_reply(c, req, text):
         """hand `text` to the exception agent: an acknowledgement at once for clients that poll, else wait."""
         jid = run_agent(c, text, use_agent=req.agent)
+        # "stay where you are, I'm finding another way" only when they reported a problem, not for a question
+        ack = ACK if PROBLEM.search(_norm(text)) or c.stall else "One moment."
         if req.async_ok:
             lines = settle(jid) if not req.agent else None
             if lines is not None:
-                return reply(c, [ACK] + lines, say_now=ACK, pending_job=None)
-            return reply(c, [ACK], say_now=ACK, pending_job=jid)
+                return reply(c, [ack] + lines, say_now=ack, pending_job=None)
+            return reply(c, [ack], say_now=ack, pending_job=jid)
         # one-shot clients: wait for the agent, but never past the timeout
         lines = settle(jid)
         while lines is None:
             time.sleep(0.2)
             lines = settle(jid)
-        return reply(c, [ACK] + lines)
+        return reply(c, ([ack] if ack == ACK else []) + lines)
 
     def note_stall(tid, info):
         """the tracker saw this traveller stall and Isaac asked; their next words are the answer."""
@@ -712,6 +719,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         return {"tools": elevenlabs_tool_defs(root), "notes": ELEVENLABS_NOTES}
 
     router.conversations = convos  # handy for tests and the caretaker feed
+    router.turn = turn            # the phone-call webhook (server.voice_call) speaks through the same brain
     router.note_stall = note_stall
     router.jobs = jobs
     return router
@@ -726,33 +734,31 @@ def _agent_module(kind):
 
 
 ELEVENLABS_NOTES = (
-    "Webhook ('server') tool for an ElevenLabs agent. Confirmed from ElevenLabs docs: type 'webhook', name, "
-    "description, api_schema.url and api_schema.method. Assumed (check the current API reference when importing): "
-    "the request body is described under api_schema.request_body_schema, and {{system__caller_id}} is the caller's "
-    "number, used here as the traveller id. Base URL must be public (a tunnel to this server).")
+    "Webhook tool for the ElevenLabs agent behind the Photon phone number (tools/phone_line.py creates it). "
+    "It posts what the caller said and their number ({{system__caller_id}}) to /api/voice/call; the agent reads "
+    "back 'say'. Base URL must be public (a tunnel to this server).")
 
 
 def elevenlabs_tool_defs(root):
     """one tool: send what the caller said, speak back the 'say' field."""
     return [{
         "type": "webhook",
-        "name": "nudge_turn",
-        "description": ("Send everything the blind caller says about where they want to go, where they are, "
-                        "problems on the way (elevator out, door locked, lost), yes/no answers and requests for help "
-                        "to the Isaac wayfinding service. Read the 'say' field of the response to the caller "
-                        "word for word. Never invent directions yourself."),
+        "name": "isaac_turn",
+        "description": ("Send everything the blind caller says to the Isaac wayfinding service: where they want to go, "
+                        "where they are, problems on the way (elevator out, door locked, lost), yes or no answers and "
+                        "requests for help. Then read the 'say' field of the response to the caller word for word. "
+                        "Never invent directions yourself."),
+        "response_timeout_secs": 30,
         "api_schema": {
-            "url": f"{root}/api/voice/turn",
+            "url": f"{root}/api/voice/call",
             "method": "POST",
             "request_body_schema": {
                 "type": "object",
                 "properties": {
-                    "traveller": {"type": "string", "description": "Caller id. Use {{system__caller_id}}.",
-                                  "dynamic_variable": "system__caller_id"},
-                    "text": {"type": "string", "description": "What the caller just said, verbatim."},
-                    "sid": {"type": "string", "description": "Building id if the caller named one; else omit."},
+                    "caller": {"type": "string", "dynamic_variable": "system__caller_id"},
+                    "text": {"type": "string", "description": "What the caller just said, word for word."},
                 },
-                "required": ["traveller", "text"],
+                "required": ["text"],
             },
         },
     }]

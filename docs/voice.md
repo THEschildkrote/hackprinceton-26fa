@@ -48,17 +48,23 @@ Settings shows the caretaker code. The app registers the traveller on first laun
 
 ## 3. A phone call
 
-Call a number and talk to Isaac, no app needed. This needs two accounts:
+The walker calls a number and talks to Isaac: no screen, no typing. Photon answers the call and passes it over SIP
+to an ElevenLabs agent. The agent has one webhook tool. It posts what the caller said, and the caller's number
+(`{{system__caller_id}}`), to `POST /api/voice/call {caller, text}`, then reads back `say`.
 
-- **Photon** voice on a **dedicated** number (an SMS number or a dedicated iMessage/WhatsApp number). Shared iMessage
-  lines can't take calls. See https://photon.codes/docs/beta/get-started/voice.md.
-- **ElevenLabs** agent, imported into ElevenLabs as a SIP-trunk number, with Photon's voice profile pointing at
-  `sips:sip.rtc.elevenlabs.io:5061` over TLS.
+The caller's number is the walker. The first call links it to the Isaac phone that is online (exactly one), and
+the link is kept. A trip they ask for ("I wanna go to the seminar room") then goes to that phone, the way a
+caretaker's does. The phone is on their back, starts the walk from where they stand, and drives the belt.
+Anything else ("how far", "where am I", "the elevator is out") is a normal voice turn on that phone's live walk.
+A caller with no Isaac phone gets the voice guide on its own, at JRR unless `NUDGE_SITE` says otherwise.
 
-Give the ElevenLabs agent the tool from `GET /api/voice/elevenlabs/tools?base=<public url>`. It posts what the caller
-says to `/api/voice/turn`, and the agent reads back `say`. The server must be reachable from the internet (a tunnel).
-The traveller id is the caller's number (`{{system__caller_id}}`).
+Setup, with the server running and a tunnel to it (`tools/phone_line.py` keeps ids in `cache/phone_line.json`):
 
-What's confirmed from ElevenLabs docs: tool `type: "webhook"`, `name`, `description`, `api_schema.url` and `method`.
-Assumed: the body schema key (`api_schema.request_body_schema`) and the caller-id dynamic variable name. Check them
-against the current ElevenLabs API reference when importing.
+1. `python -m nudge.setkey ELEVENLABS_API_KEY` (an ElevenLabs key with Agents access).
+2. A call-capable Photon number: shared iMessage lines can't take calls. Buy a US number in the Photon dashboard,
+   or with `python tools/phone_line.py buy --area 609` (billed by Photon).
+3. `python tools/phone_line.py agent --base https://<tunnel>` creates the agent and its tool.
+4. `python tools/phone_line.py photon --number +1...` points Photon's default voice profile at
+   `sips:sip.rtc.elevenlabs.io:5061`.
+5. `python tools/phone_line.py import --number +1...` imports the number into ElevenLabs as a SIP trunk for the agent.
+6. After a tunnel restart (quick tunnel URLs change): `python tools/phone_line.py base --base https://<new tunnel>`.

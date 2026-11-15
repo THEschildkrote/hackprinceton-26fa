@@ -6,6 +6,13 @@ the traveller talks to nudge by voice; the person who worries about them follows
   "notify all"           -> also room-by-room updates (default: important only)
 pushed without asking: trip started, floor changes, arrived, off the map, help, stuck, approved reroutes.
 
+the WALKER only talks: "hey siri, text isaac, i want to go to the seminar room" (siri reads the reply out).
+their number is linked on its own when exactly one isaac phone is online; otherwise once, by voice too:
+  "i'm 123456"                    -> this handle is the traveller with that code
+  "i want to go to the kitchen"   -> a trip on their phone, as if the caretaker app sent it (default building:
+                                     their last one, else NUDGE_SITE, else jrr); "... at <building>" picks one
+a caretaker can send one the same way: "take them to the kitchen".
+
 "travel mode" switches this handle to the old traveller commands (testing): "take me to X at Y".
 
 run: python -m nudge.photon_bot            (also serves the api on :8765, so the hub is shared)
@@ -287,7 +294,72 @@ URGENT = {"help", "unmapped", "stuck"}
 CARETAKER_HELP = ("I'm Isaac. I keep you posted while someone you care for walks with Isaac's voice guide. "
                   "Text follow plus the 6-digit code from their app to start. Then ask: where are they? eta? "
                   "is everything ok? Text notify all for room-by-room updates, notify important to go back. "
-                  "You can set pronouns with: pronouns she, he or they.")
+                  "You can set pronouns with: pronouns she, he or they. "
+                  "Walking with Isaac yourself? Just tell Siri: text Isaac, I want to go to the seminar room.")
+
+# the walker, by text
+ME = re.compile(r"^(?:i'?m|i am|this is|it'?s|me|walker|my code(?: is)?|code)\s*:?\s*([\d\s-]{6,})$", re.I)
+WANT = re.compile(
+    r"^(?:(?:hey|hi|ok|okay)\s+)?(?:isaac[,.]?\s+)?(?:can you\s+|could you\s+|please\s+)?"
+    r"(?:i\s*(?:wanna|want to|need to|would like to|'?d like to|have to|gotta)\s+(?:go|get|walk|head)(?:\s+to)?"
+    r"|i'?m (?:going|heading|walking) to|(?P<who>(?:take|bring|guide|get|walk|lead)\s+(?:me|them|him|her))\s+to"
+    r"|navigate(?: me)? to|go to|directions to|how (?:do|can|would|should) i (?:get|go|walk) to|how to get to"
+    r"|where(?:'s| is) the way to)\s+(?P<place>.+)$", re.I)
+_NOT_A_PLACE = {"here", "there", "this place", "that place", "somewhere", "it"}
+JRR = "R1FX6EmdcDt"
+
+
+def _clean_place(text):
+    t = re.sub(r"[\s.!?]+$", "", text.strip())
+    t = re.sub(r"[\s,]+(?:please|pls|now|thanks|thank you)$", "", t, flags=re.I)
+    return t.strip()
+
+
+def _phone_online(tid):
+    """True/False when this process serves the api (it sees the phone poll for trips), None when it can't tell."""
+    srv = sys.modules.get("nudge.server")
+    if srv is None:
+        return None
+    v = srv._seen.get(("phone", tid))
+    return bool(v) and time.time() - v["ts"] <= srv.ONLINE_S
+
+
+def _only_phone_online():
+    """the one traveller whose isaac app is polling right now, or None (none, several, or no api here)."""
+    srv = sys.modules.get("nudge.server")
+    if srv is None:
+        return None
+    now = time.time()
+    live = {tid for (role, tid), v in list(srv._seen.items()) if role == "phone" and now - v["ts"] <= srv.ONLINE_S}
+    return live.pop() if len(live) == 1 else None
+
+
+def resolve_trip(text, sid_default, profile="blind"):
+    """(sid, building name or None, place name), or (None, None, a question to send back)."""
+    from . import places
+    query = _clean_place(text)
+    if not query or query.lower() in _NOT_A_PLACE:
+        return None, None, "Where to? Text a place, like: I want to go to the seminar room."
+    tries = []
+    m = AT.match(query)
+    if m:
+        sid, name = find_building(m["bldg"])
+        if sid:
+            tries.append((sid, name, m["q"]))
+    tries.append((sid_default, None, query))
+    last = None
+    for sid, name, q in tries:
+        try:
+            g = graph(sid)
+        except Exception as ex:
+            last = f"I couldn't load that building's 3D scan: {ex}"
+            continue
+        entry, _ = key_places(g)
+        r = places.resolve(g, q, here=(entry.x, entry.y, entry.floor), profile=profile)
+        if r["best"] and not r["ambiguous"]:
+            return sid, name, r["best"]["name"]
+        last = r["question"] if r["ambiguous"] else r["message"]
+    return None, None, last
 
 
 def _ago(ts, now_ts):
@@ -369,6 +441,47 @@ class CaretakerBrain:
     travel_brain: object = None
     travel_mode: set = field(default_factory=set)
     pronouns: dict = field(default_factory=dict)
+    waiting: dict = field(default_factory=dict)   # handle -> where they asked to go before saying who they are
+
+    def trip(self, handle, place, for_them=False):
+        """a trip on the phone of the walker who texted (or, for a caretaker, of the traveller they follow)."""
+        tid = None if for_them else hub.walker(handle)
+        by = "walker"
+        if tid is None:
+            tid, by = (hub.caretaker(handle) or {}).get("traveller"), "caretaker"
+        if tid is None and not for_them:
+            tid, by = _only_phone_online(), "walker"   # one isaac phone on: that's whose number this is
+            if tid:
+                hub.set_walker(handle, tid)
+        if tid is None:
+            self.waiting[handle] = place
+            return ["I can't tell which Isaac phone is yours. Open Isaac on it, or say: I'm, then the 6-digit code "
+                    f"from the app. Then I'll send {_the(_clean_place(place))} to it."]
+        st = hub.status(tid) or {}
+        profile = st.get("profile") or "blind"
+        sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or JRR, profile)
+        if sid is None:
+            return [to]
+        hub.set_trip(tid, {"sid": sid, "to": to, "profile": profile, "by": by})
+        who = st.get("name")
+        hub.publish(tid, {"type": "trip_requested", "goal": to,
+                          "text": f"{who or 'The traveller'} asked for {_the(to)} by text." if by == "walker"
+                          else f"Trip to {to} sent by text."})
+        at = f" in {bname}" if bname else ""
+        busy = st.get("state") in ("walking", "off_route", "rerouting")
+        online = _phone_online(tid)
+        if by == "caretaker":
+            v = self.voice(handle)
+            when = (f" It starts when {v.they} finish the current trip." if busy
+                    else " It starts as soon as Isaac is open on their phone." if online is False
+                    else " Their phone starts it in a few seconds.")
+            return [f"Sent {_the(to)}{at} to {v.who}.{when}"]
+        hi = f"Okay {who}: " if who else "Okay: "
+        if busy:
+            return [f"{hi}{_the(to)}{at} is next. It starts when you finish this trip or say stop."]
+        if online is False:
+            return [f"{hi}I sent {_the(to)}{at} to your phone. It starts as soon as Isaac is open on it."]
+        return [f"{hi}your phone is starting a trip to {_the(to)}{at}. Isaac will guide you from where you are."]
 
     def voice(self, handle):
         c = hub.caretaker(handle) or {}
@@ -389,6 +502,19 @@ class CaretakerBrain:
             return self.travel_brain.handle(handle, t)
         if low in ("help", "hi", "hello", "start", "?", "menu"):
             return [CARETAKER_HELP]
+        m = ME.match(low)
+        if m:
+            tid, name = hub.link_walker(handle, m.group(1))
+            if not tid:
+                return ["That code didn't match anyone. It's the 6-digit code in your Isaac app."]
+            if handle in self.waiting:
+                return self.trip(handle, self.waiting.pop(handle))
+            return [f"Got it{', ' + name if name else ''}. Text me where you want to go, like: "
+                    "I want to go to the seminar room."]
+        m = WANT.match(t)
+        if m:
+            who = (m["who"] or "").lower()
+            return self.trip(handle, m["place"], for_them=bool(who) and not who.endswith(" me"))
         m = FOLLOW.match(low)
         if m:
             tid = hub.pair(handle, m.group(1))

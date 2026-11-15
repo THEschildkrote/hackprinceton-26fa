@@ -95,7 +95,7 @@ final class Traveller {
         try? await settings.api.beltWearer(heightCm: settings.heightCm)   // the belt steps to the wearer's height
         queue = StepQueue()
         status = "Starting a trip to \(t.to)."
-        say(fromCaretaker ? "Your caretaker sent a trip to \(t.to)." : "Starting your trip to \(t.to).")
+        say(fromCaretaker && t.by != "walker" ? "Your caretaker sent a trip to \(t.to)." : "Starting your trip to \(t.to).")
         do {
             let r = try await settings.api.start(sid: t.sid, to: t.to, profile: t.profile, traveller: settings.traveller)
             session = r.session
