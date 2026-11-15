@@ -120,6 +120,9 @@ def load(sid, refresh=False):
         return fixture("synthetic").building()
     if sid == "synthetic-lobby":  # a second scan of the synthetic building (multi-model tests and demo)
         return fixture("synthetic_building").lobby()
+    from . import demomaps
+    if sid in demomaps.NAMES:  # the walk-anywhere demo maps: a straight line and one corner
+        return demomaps.model(sid)
     path = CACHE / f"{sid}.json"
     if path.exists() and not refresh:
         model = json.loads(path.read_text(encoding="utf-8"))
