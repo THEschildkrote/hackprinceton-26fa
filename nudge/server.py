@@ -1604,8 +1604,16 @@ def _has_caretaker(tid):
     return bool(hub.caretakers(tid)) or (_view is not None and tid in _view.watched)
 
 
+def _voice_building():
+    """the building a spoken request means when it names none: NUDGE_SID, else the venue. the app only
+    knows a building once a caretaker has sent it a trip, so a first "take me to the lounge" came with none
+    and was answered with "which building are you in?"."""
+    from . import buildings
+    return (os.environ.get("NUDGE_SID") or "").strip() or buildings.VENUE_SID
+
+
 _voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker,
-                      on_turn=_voice_told, on_stall_answer=_stall_answer)
+                      on_turn=_voice_told, on_stall_answer=_stall_answer, default_sid=_voice_building())
 app.include_router(_voice)
 
 

@@ -512,3 +512,10 @@ def test_the_caretaker_can_say_the_wearer_is_at_the_corner(fake):
     r = c.post("/api/belt/mark").json()
     assert r["ok"] and r["moved_m"] == 1.5 and fake.posts()[-1] == ("/mark", {})
     assert c.post("/api/belt/mark", json={"waypoint": 2}).json()["ok"] and fake.posts()[-1] == ("/mark", {"waypoint": 2})
+
+
+def test_a_spoken_request_that_names_no_building_means_the_one_the_server_is_set_up_for(monkeypatch):
+    from nudge import buildings
+    assert server._voice_building() == buildings.VENUE_SID
+    monkeypatch.setenv("NUDGE_SID", "synthetic")
+    assert server._voice_building() == "synthetic"
