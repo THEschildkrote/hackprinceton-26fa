@@ -245,6 +245,14 @@ def next_floor():
     return _try(_call, "POST", "/floor") if enabled() else None
 
 
+def mark(waypoint=None):
+    """someone watching says the wearer is standing on a waypoint of the belt's route now (the next one,
+    unless told which). the belt puts its position there: the fix for a step count that has drifted."""
+    if not enabled():
+        return None
+    return _try(_call, "POST", "/mark", {} if waypoint is None else {"waypoint": int(waypoint)})
+
+
 def wearer(height_cm):
     """someone else is wearing it: the belt scales its step length to their height."""
     return _try(_call, "POST", "/wearer", {"height_cm": height_cm}) if enabled() else None

@@ -191,6 +191,7 @@ struct SetupView: View {
                 .listRowBackground(Theme.row)
 
                 Section {
+                    Stepper("Height \(Int(s.heightCm)) cm", value: $s.heightCm, in: 120...215, step: 1)
                     Stepper("Step length \(String(format: "%.2f", s.stepM)) m", value: $s.stepM, in: 0.3...1.2, step: 0.05)
                     HStack {
                         // the stock placeholder grey is 2.2:1 on this blue; this is 5.3:1

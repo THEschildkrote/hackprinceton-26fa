@@ -92,6 +92,7 @@ final class Traveller {
         trip = t
         settings.lastTrip = t
         motion.mount = settings.mount   // setup may have changed how the phone is worn
+        try? await settings.api.beltWearer(heightCm: settings.heightCm)   // the belt steps to the wearer's height
         queue = StepQueue()
         status = "Starting a trip to \(t.to)."
         say(fromCaretaker ? "Your caretaker sent a trip to \(t.to)." : "Starting your trip to \(t.to).")
@@ -197,6 +198,12 @@ final class Traveller {
             stopTrip()
             return
         }
+        // stairs or a lift: the belt stops at a change of floor and waits to be told they are on the next one
+        if low.contains("upstairs") || low.contains("downstairs") || low.contains("next floor") {
+            let ok = (try? await settings.api.beltFloor()) ?? false
+            say(ok ? "Okay, carrying on from here." : "There is no next floor on this route.")
+            return
+        }
         if (low == "start" || low.contains("start my trip")) && phase != .walking {
             await startLastTrip()
             return
@@ -269,6 +276,8 @@ final class Traveller {
         phase = .stopped
         status = "Trip stopped. Waiting for a trip."
         say("Trip stopped.")
+        let api = settings.api
+        Task { try? await api.beltStop() }   // otherwise the belt taps on until its sensor goes quiet
     }
 
     // MARK: helpers

@@ -8,6 +8,7 @@ final class TravellerSettings {
 
     var server: String { didSet { d.set(server, forKey: "server") } }
     var stepM: Double { didSet { d.set(stepM, forKey: "stepM") } }
+    var heightCm: Double { didSet { d.set(heightCm, forKey: "heightCm") } }   // the belt sets its step length from this
     var mountRaw: String { didSet { d.set(mountRaw, forKey: "mount") } }
     var name: String { didSet { d.set(name, forKey: "name") } }
     var traveller: String { didSet { d.set(traveller, forKey: "traveller") } }
@@ -20,6 +21,8 @@ final class TravellerSettings {
         server = d.string(forKey: "server") ?? "http://172.20.10.2:8765"
         let s = d.double(forKey: "stepM")
         stepM = s > 0 ? s : 0.7
+        let h = d.double(forKey: "heightCm")
+        heightCm = h > 0 ? h : 170
         mountRaw = d.string(forKey: "mount") ?? Mount.screenFacesBody.rawValue
         name = d.string(forKey: "name") ?? ""
         if let t = d.string(forKey: "traveller") {

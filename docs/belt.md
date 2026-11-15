@@ -91,6 +91,12 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
   retraces the walk out unless it is told not to. `"avoid": [[a, b], ...]` in `/api/nav/start` or
   `/api/route` lists edges not to walk: give the walk back the edges of the walk out and it comes round
   the other way. Three walks, each under half the loop, need no `avoid`.
+- **The belt's controls, from the apps.** Isaac: saying "stop" also stops the belt
+  (`POST /api/belt/stop`); the wearer's height in setup goes to the belt (`POST /api/belt/wearer`), which
+  sets its step length; "I'm upstairs", "I'm downstairs" or "next floor" tells the belt the wearer is on
+  the next floor (`POST /api/belt/floor`). Isaac Care: "At the corner" tells the belt the wearer is
+  standing on the next corner of its route (`POST /api/belt/mark`, new), which puts a drifted position
+  right. The Swift for these was written without Xcode and has not been built or run.
 - **The app takes up a trip asked for by voice.** `ios/Nudge/Traveller.swift` now adopts the session a
   voice reply names: it counts down, calibrates and starts sending steps, as it does for a trip from the
   caretaker. Asked mid-walk, it keeps walking and reports to the new trip. This change has not been built
