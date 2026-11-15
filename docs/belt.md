@@ -91,6 +91,10 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
   retraces the walk out unless it is told not to. `"avoid": [[a, b], ...]` in `/api/nav/start` or
   `/api/route` lists edges not to walk: give the walk back the edges of the walk out and it comes round
   the other way. Three walks, each under half the loop, need no `avoid`.
+- **The app takes up a trip asked for by voice.** `ios/Nudge/Traveller.swift` now adopts the session a
+  voice reply names: it counts down, calibrates and starts sending steps, as it does for a trip from the
+  caretaker. Asked mid-walk, it keeps walking and reports to the new trip. This change has not been built
+  or run: it was written without Xcode. Build it and try it before relying on it.
 - **A walk asked for by voice.** "Take me to the kitchen" (`/api/voice/turn`, from the voice page, the app
   or a phone agent) hands its route to the belt like a walk started with `/api/nav/start`. The wearer
   still has to be lined up before it guides: on the route's first point, facing the second, then

@@ -215,9 +215,32 @@ final class Traveller {
                 if let s = reply.say, !s.isEmpty { say(s) }
             }
             pendingApproval = reply.pending != nil
+            // "take me to the kitchen" starts a trip on the pi and names its session in the reply.
+            // take it up here, or no steps are ever sent for it and nothing guides.
+            if let s = reply.session ?? r.session, s != session {
+                await adopt(s)
+            }
         } catch {
             handle(error)
         }
+    }
+
+    // a trip started by voice: the pi has already planned it and said where it goes
+    private func adopt(_ newSession: String) async {
+        guard phase != .starting, phase != .calibrating else { return }
+        let wasWalking = phase == .walking
+        session = newSession
+        queue = StepQueue()
+        pendingApproval = false
+        if wasWalking {
+            // asked mid-walk: the direction is already known, so keep walking and report to the new trip
+            status = "Walking to your new destination."
+            return
+        }
+        motion.mount = settings.mount
+        phase = .starting
+        status = "Starting your trip."
+        await calibrate()
     }
 
     // the agent can take a while; the pi falls back to a safe reroute after ~20 s
