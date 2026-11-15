@@ -92,6 +92,7 @@ final class Traveller {
         trip = t
         settings.lastTrip = t
         motion.mount = settings.mount   // setup may have changed how the phone is worn
+        try? await settings.api.beltWearer(heightCm: settings.heightCm)   // the belt steps to the wearer's height
         queue = StepQueue()
         status = "Starting a trip to \(t.to)."
         say(fromCaretaker ? "Your caretaker sent a trip to \(t.to)." : "Starting your trip to \(t.to).")
@@ -197,6 +198,12 @@ final class Traveller {
             stopTrip()
             return
         }
+        // stairs or a lift: the belt stops at a change of floor and waits to be told they are on the next one
+        if low.contains("upstairs") || low.contains("downstairs") || low.contains("next floor") {
+            let ok = (try? await settings.api.beltFloor()) ?? false
+            say(ok ? "Okay, carrying on from here." : "There is no next floor on this route.")
+            return
+        }
         if (low == "start" || low.contains("start my trip")) && phase != .walking {
             await startLastTrip()
             return
@@ -215,9 +222,40 @@ final class Traveller {
                 if let s = reply.say, !s.isEmpty { say(s) }
             }
             pendingApproval = reply.pending != nil
+            // "take me to the kitchen" starts a trip on the pi and names its session in the reply.
+            // take it up here, or no steps are ever sent for it and nothing guides.
+            // a finished trip is not taken up: after a restart the app has no session, and "where am i"
+            // would otherwise name the pi's last, already-arrived one and start a countdown for it
+            if let s = reply.session ?? r.session, s != session, (reply.state ?? r.state)?.done != true {
+                await adopt(s, trip: reply.trip ?? r.trip)
+            }
         } catch {
             handle(error)
         }
+    }
+
+    // a trip started by voice: the pi has already planned it and said where it goes
+    private func adopt(_ newSession: String, trip voiceTrip: VoiceTrip? = nil) async {
+        guard phase != .starting, phase != .calibrating else { return }
+        let wasWalking = phase == .walking
+        session = newSession
+        queue = StepQueue()
+        pendingApproval = false
+        if let sid = voiceTrip?.sid, let goal = voiceTrip?.goal {
+            // so the screen, "start my trip" and the next voice turn all know where this one goes
+            let t = Trip(sid: sid, to: goal, profile: "blind", ts: nil)
+            trip = t
+            settings.lastTrip = t
+        }
+        if wasWalking {
+            // asked mid-walk: the direction is already known, so keep walking and report to the new trip
+            status = "Walking to your new destination."
+            return
+        }
+        motion.mount = settings.mount
+        phase = .starting
+        status = "Starting your trip."
+        await calibrate()
     }
 
     // the agent can take a while; the pi falls back to a safe reroute after ~20 s
@@ -238,6 +276,8 @@ final class Traveller {
         phase = .stopped
         status = "Trip stopped. Waiting for a trip."
         say("Trip stopped.")
+        let api = settings.api
+        Task { try? await api.beltStop() }   // otherwise the belt taps on until its sensor goes quiet
     }
 
     // MARK: helpers

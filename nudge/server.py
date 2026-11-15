@@ -128,6 +128,7 @@ class StartReq(BaseModel):
     heading: float | None = None
     building: bool = False  # route across every joined scan of this building
     traveller: str | None = None  # who is walking (caretakers follow them); defaults to the session id
+    avoid: list[list[str]] | None = None  # edges not to walk, [[a, b], ...]: the way back of a loop avoids the way out
 
 
 class UpdateReq(BaseModel):
@@ -176,8 +177,10 @@ def route(body: dict):
     if not (sid and to and start):
         raise HTTPException(400, "need sid, from, to")
     g = graph_for(sid)
+    # "avoid": [[a, b], ...] are edges not to walk (the way back of a loop avoids the way out)
+    avoid = {(e[0], e[1]) for e in body.get("avoid") or [] if isinstance(e, (list, tuple)) and len(e) == 2}
     try:
-        r = plan(g, start, to, profile)
+        r = plan(g, start, to, profile, avoid)
     except NoRoute as ex:
         raise HTTPException(404, str(ex))
     return {"route": r.to_dict(g), "maneuvers": maneuvers(g, r)}
@@ -368,13 +371,74 @@ def _belt_apply(session, x, y, floor, heading):
     nav = _sessions.get(session)
     if nav is None:
         return
-    ev = nav.update(x, y, floor, heading)
+    with _belt_said_lock:
+        # under the lock: a step report must never see the navigator arrive without the arrival line,
+        # or the app stops reporting (it is done) and "You have arrived" is never spoken
+        ev = nav.update(x, y, floor, heading)
+        lines = [e["text"] for e in ev if e.get("text")]
+        if lines:  # kept for the app's next step report, so the phone still speaks the turns
+            _belt_said[session] = (_belt_said.get(session, []) + lines)[-20:]
     _publish(session, nav, ev)
     _trace_nav(session, nav, ev, source="belt")
     tid = _session_traveller.get(session)
     if tid:
         from . import hub
         hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+
+
+_belt_said = {}   # session -> what the navigator said while the belt moved it, until the app asks
+_belt_said_lock = threading.Lock()
+
+
+def _belt_here():
+    """where the belt has the wearer, when it knows: the start of the next walk."""
+    try:
+        from . import belt
+        return None if os.environ.get("NUDGE_BAND") else belt.where()
+    except Exception:
+        return None
+
+
+def _belt_fed(session):
+    """is the belt on this walk, so that the app's steps and compass should go to it?"""
+    try:
+        from . import belt
+        return belt.holds(session) and not os.environ.get("NUDGE_BAND")
+    except Exception:
+        return False
+
+
+def _belt_step(req, nav, tr=None):
+    """the app's step report, on a walk the belt is on: steps and compass go to the belt, which keeps the
+    position and taps. our own tracker stays out of it (one source of position per walk). the reply carries
+    what the navigator has said since the app last asked, so the phone still speaks."""
+    from . import belt
+    belt.sensor(req.session, req.steps, req.heading_deg)
+    _trace("step", session=req.session, steps=req.steps, heading_deg=req.heading_deg, step_m=req.step_m, source="app")
+    tid = _session_traveller.get(req.session)
+    _touch("phone", tid, heading=req.heading_deg)
+    with _belt_said_lock:   # the lines and `done` from the same moment (see _belt_apply)
+        say = _belt_said.pop(req.session, [])
+        done = bool(nav.done)
+    lv = nav.live(getattr(nav, "heading", None)) if nav.pos else {}
+    if not say and tr is not None and not done:
+        # the "10 meters to the next turn" line our own tracker gives between turns, from the belt's position
+        try:
+            line = tr._distance_line(lv, [], time.monotonic())
+        except Exception:
+            line = None
+        if line:
+            say = [line]
+    for line in say:
+        _trace("voice", session=req.session, who="nudge", text=line)
+    if tid:
+        from . import hub
+        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+    x, y, fl = tuple(nav.pos[:3]) if nav.pos else (None, None, None)
+    return {"say": say, "events": [], "state": _state(nav), "device": _device(nav),
+            "position": {"x": x, "y": y, "floor": fl}, "distance_to_next_m": lv.get("distance_to_next_m"),
+            "bearing_to_next_deg": lv.get("bearing_to_next_deg"), "done": done,
+            "waiting_for": None, "ask": None}
 
 
 def _belt_start(session, nav):
@@ -386,9 +450,23 @@ def _belt_start(session, nav):
         # runtime (which tracks position itself) stays out of it; one source of position per walk
         if belt.enabled() and not os.environ.get("NUDGE_BAND"):
             belt.send_route(session, nav)
-            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading))
+            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading),
+                        tell=lambda kind, **f: _belt_tell(session, kind, **f),
+                        nav_of=lambda: _sessions.get(session))
     except Exception:
         pass
+
+
+def _belt_tell(session, kind, **f):
+    """what the belt's own phone and pods are doing, in the words the dashboard has for a phone and a
+    collar: `step` and `band` traces, and the phone counted as connected while the belt hears from it."""
+    tid = _session_traveller.get(session)
+    if kind == "presence":
+        _touch("phone", tid, heading=f.get("heading_deg"))
+        return
+    _trace(kind, session=session, **f)
+    if kind == "step":
+        _touch("phone", tid, heading=f.get("heading_deg"))
 
 
 def _belt_begin(session):
@@ -445,6 +523,15 @@ def nav_start(req: StartReq):
             raise HTTPException(502, f"could not join the scans of {req.sid}: {ex}")
     else:
         g = graph_for(req.sid)
+    # the app always asks to start "at the entrance". with the belt, a walk after the first starts where the
+    # belt has the wearer, so one trip follows another; and NUDGE_START names the place or pano the first one
+    # starts at, for a demo that does not begin at the door.
+    if (req.x is None or req.y is None or req.floor is None) and (req.start or "entrance").strip().lower() == "entrance":
+        here = _belt_here()
+        if here:
+            req.x, req.y, req.floor, req.start = here[0], here[1], here[2], None
+        elif os.environ.get("NUDGE_START"):
+            req.start = os.environ["NUDGE_START"].strip()
     site = None
     if req.x is None or req.y is None or req.floor is None or req.start:
         from .pdr import resolve_start, site_for
@@ -466,6 +553,7 @@ def nav_start(req: StartReq):
         goal, place = r["best"]["name"], places._summary(r["best"])
     _stalls_apply(g, req.sid)
     nav = Navigator(g, goal, req.profile)
+    nav.blocked_edges.update((e[0], e[1]) for e in req.avoid or [] if len(e) == 2)
     sid = uuid.uuid4().hex[:10]
     _sessions[sid] = nav
     _session_sid[sid] = req.sid
@@ -538,6 +626,9 @@ def nav_calibrate(req: CalibrateReq):
     _touch("phone", _session_traveller.get(req.session), heading=req.heading_deg)
     _trace("calibrate", session=req.session, heading_deg=round(req.heading_deg, 1))
     _band_sync(req.session, nav, tr.to_model(req.heading_deg))
+    if _belt_fed(req.session):
+        from . import belt
+        belt.sensor(req.session, 0, req.heading_deg)   # the belt lines up on a reading, so it gets this one first
     _belt_begin(req.session)
     return out
 
@@ -589,6 +680,8 @@ def _stall_answer(tid, stall, outcome, text):
 @app.post("/api/nav/step")
 def nav_step(req: StepReq):
     nav, tr = _tracker(req.session)
+    if _belt_fed(req.session):
+        return _belt_step(req, nav, tr)
     _stalls_apply(nav.g, _session_sid.get(req.session))
     out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
     _stall_check(req.session, tr, req.steps, out)
@@ -650,13 +743,33 @@ def belt_status():
 def belt_begin(body: dict):
     """calibrate and start the belt without a phone compass: the wearer is on the first point, facing the second."""
     from . import belt
-    return {"ok": belt.begin(body.get("session")) is not None, **belt.status()}
+    out = belt.begin(body.get("session"))
+    if out is not None and out.get("heading_deg") is not None:
+        _trace("calibrate", session=body.get("session"), heading_deg=round(out["heading_deg"], 1))
+    return {"ok": out is not None, **belt.status()}
+
+
+@app.post("/api/belt/floor")
+def belt_floor():
+    """the wearer is on the next floor, standing where the route goes on: the belt puts them there and
+    guides again. at a change of floor it stops them and waits for this (its state is FLOOR)."""
+    from . import belt
+    return {"ok": belt.next_floor() is not None, **belt.status()}
 
 
 @app.post("/api/belt/stop")
 def belt_stop():
     from . import belt
     return {"ok": belt.stop() is not None, **belt.status()}
+
+
+@app.post("/api/belt/mark")
+def belt_mark(body: dict | None = None):
+    """the wearer is standing on the next corner of the route (or on waypoint `waypoint`): the belt puts
+    its position there. for the caretaker, when the dot has drifted from the person."""
+    from . import belt
+    out = belt.mark((body or {}).get("waypoint"))
+    return {"ok": out is not None, "moved_m": (out or {}).get("moved_m"), **belt.status()}
 
 
 @app.post("/api/belt/wearer")
@@ -1479,6 +1592,9 @@ def _register_voice_session(nav, sid):
     _trace("session", session=s, sid=sid, goal=nav.goal, profile=nav.profile, by="voice",
            route_m=round(nav.route.length, 1) if nav.route else None)
     _trace_nav(s, nav)
+    # "take me to the kitchen" hands the route to the belt like any other walk. off the request's own
+    # thread: the reply is about to be spoken, and a belt that is out of range takes seconds to say nothing
+    threading.Thread(target=_belt_start, args=(s, nav), daemon=True, name="nudge-belt-voice").start()
     return s
 
 
@@ -1685,6 +1801,16 @@ def ops_snapshot(events: int = 200):
         band = bandserve.status()
     except Exception as ex:
         band = {"attached": False, "error": str(ex)}
+    try:
+        # the belt taps by itself, so the collar's runner is not attached; say so as haptics all the same
+        from . import belt
+        if not band.get("attached") and belt.enabled() and not os.environ.get("NUDGE_BAND"):
+            belt.watch()
+            b = belt.summary()
+            if b["online"]:
+                band = {**band, "attached": True, "mode": "belt", "session": b["session"], "state": b["state"]}
+    except Exception:
+        pass
     try:
         from . import hub
         travellers = {tid: {**(hub.status(tid) or {}), "imessage": len(hub.caretakers(tid))}

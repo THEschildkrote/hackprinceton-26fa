@@ -98,6 +98,10 @@ struct HomeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Send Trip") { showTrip = true }
                 }
+                ToolbarItem(placement: .bottomBar) {
+                    Button("At the corner") { Task { _ = await store.atCorner() } }
+                        .accessibilityHint("Tells the belt they are standing on the next corner of the route")
+                }
             }
             .sheet(isPresented: $showTrip) { SendTripView().environment(store) }
             .sheet(isPresented: $showSettings) { CareSettingsView().environment(store) }

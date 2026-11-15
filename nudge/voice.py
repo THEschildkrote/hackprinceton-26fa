@@ -216,10 +216,23 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         return where_am_i(g, pos[0], pos[1], pos[2])["text"]
 
     def start_position(c, g):
+        # mid-walk, a new trip starts where the traveller is now, not where this walk began. with the belt
+        # that is also what lets it carry on without lining up again (belt.send_route's continuation)
+        nav = live_nav(c)
+        if nav is not None and not nav.done and getattr(nav, "pos", None) and \
+                (nav.g is g or (c.trip or {}).get("sid") == c.sid):
+            x, y, floor = nav.pos[:3]
+            return (x, y, floor, getattr(nav, "heading", None))
         if c.here:
             return c.here
-        from .agents.tools import key_places
-        entry, _ = key_places(g)
+        # the same "entrance" a trip from the app starts at (nudge.pdr.resolve_start): a scan point named
+        # entrance, then the building's front door, then the best guess from the room names
+        try:
+            from .pdr import resolve_start
+            entry = resolve_start(g, c.sid, "entrance")
+        except Exception:
+            from .agents.tools import key_places
+            entry, _ = key_places(g)
         c.here = (entry.x, entry.y, entry.floor, None)
         return c.here
 
@@ -250,6 +263,13 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             return [f"I couldn't load this building's map. {ex}"]
         x, y, floor, heading = start_position(c, g)
         from .places import goal_nodes, resolve
+        # a scan point named outright ("the finish" on a demo map) is the spot itself, as it is for a trip
+        # the app starts: not the whole room around it, which the traveller may already be standing in
+        q = re.sub(r"^the\s+", "", place_query.strip().strip(".").lower())
+        named = {n.id for n in g.nodes.values() if (n.label or "").lower() == q}
+        if named:
+            label = next(g.nodes[i].label for i in named)
+            return begin(c, g, {"name": label}, named, x, y, floor, heading)
         r = resolve(g, place_query, here=(x, y, floor), profile=c.profile)
         if r.get("ambiguous"):
             c.choice = {"query": place_query, "options": r.get("options") or []}

@@ -28,6 +28,10 @@ struct StartReply: Decodable {
     let start_heading_deg: Double?
 }
 
+struct BeltReply: Decodable {
+    let ok: Bool?
+}
+
 struct CalibrateReply: Decodable {
     let ok: Bool?
 }
@@ -95,6 +99,13 @@ struct VoiceReply: Decodable {
     let session: String?
     let pending: PendingAction?
     let state: NavState?
+    var trip: VoiceTrip? = nil   // set when the words started a trip ("take me to the kitchen")
+}
+
+// the trip a voice turn started: the building and where to
+struct VoiceTrip: Decodable {
+    let goal: String?
+    let sid: String?
 }
 
 struct PendingAction: Decodable {
@@ -329,6 +340,28 @@ struct API {
 
     func ackTrip(traveller: String) async throws {
         let _: [String: AnyDecodable] = try await send("POST", "/api/traveller/\(traveller)/trip/ack", body: [:], timeout: 5)
+    }
+
+    // the belt: the pi passes these on to it. each is best effort, so callers use try?
+    func beltStop() async throws {
+        let _: [String: AnyDecodable] = try await send("POST", "/api/belt/stop", body: [:], timeout: 5)
+    }
+
+    // the belt scales its step length to the wearer's height
+    func beltWearer(heightCm: Double) async throws {
+        let _: [String: AnyDecodable] = try await send("POST", "/api/belt/wearer", body: ["height_cm": heightCm], timeout: 5)
+    }
+
+    // the wearer is on the next floor, where the route goes on
+    func beltFloor() async throws -> Bool {
+        let r: BeltReply = try await send("POST", "/api/belt/floor", body: [:], timeout: 5)
+        return r.ok ?? false
+    }
+
+    // the wearer is standing on the next corner of the route: the belt puts its position there
+    func beltMark() async throws -> Bool {
+        let r: BeltReply = try await send("POST", "/api/belt/mark", body: [:], timeout: 5)
+        return r.ok ?? false
     }
 
     // caretaker side

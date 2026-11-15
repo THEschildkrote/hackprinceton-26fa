@@ -322,7 +322,8 @@ const agentName = a => cap(String(a || "agent").replace(/\s*agent$/i, "").replac
 const modelName = m => String(m || "").replace(/^[a-z_]+:/, "").replace(/^models\//, "").split("-").map(cap).join(" ");
 const CUES = { left: "Turn left", right: "Turn right", bear_left: "Bear left", bear_right: "Bear right", steer_left: "Steer left",
   steer_right: "Steer right", uturn: "Turn around", floor: "Floor change", arrive: "Arrived", hazard: "Hazard",
-  off_route: "Off route", unmapped: "Off map", start: "Start" };
+  off_route: "Off route", unmapped: "Off map", start: "Start", stop: "Stop",
+  overturn_left: "Too far, back left", overturn_right: "Too far, back right" };
 const cueName = c => CUES[c] || cap(String(c || "").replace(/_/g, " "));
 const side = c => /left/.test(c) ? "Left" : /right/.test(c) ? "Right" : "Both";
 // status words and fills, as in the caretaker app
@@ -697,7 +698,7 @@ function renderDevices() {
     ["Phone", cell(dev("phone"), "Online", "Not connected")],
     ["Caretaker app", cell(dev("care"), "Watching", "Not open")],
     ["iMessage", n ? `<span>${n} paired</span>` : `<span class="off">None paired</span>`],
-    ["Haptics", !b?.attached ? `<span class="off">Off</span>` : b.mode === "dry" ? `<span class="off">Dry run</span>` : `<span>${b.mode === "pca" ? "Belt" : "Collar"}</span>`],
+    ["Haptics", !b?.attached ? `<span class="off">Off</span>` : b.mode === "dry" ? `<span class="off">Dry run</span>` : `<span>${b.mode === "pca" || b.mode === "belt" ? "Belt" : "Collar"}</span>`],
   ];
   put("devices", rows.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join(""));
   if (S.session) return;

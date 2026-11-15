@@ -59,14 +59,81 @@ ours (radians counter-clockwise from +x).
 Like the collar, all of this is best effort. A belt that is off, out of range or refusing never turns a
 nav request into a 500: the route still plans and speaks, and `GET /api/belt` says what went wrong.
 
+## Reroutes, floors and the dashboard
+
+- **A reroute mid-walk.** When the navigator's route changes while the belt is walking (a blocked door,
+  an exception the agent rerouted around), the new route goes to the belt as `POST /route` with
+  `"reroute": true`. The belt keeps its position and its calibration, picks the route up from where the
+  wearer is and carries on tapping. Nobody stops. Each new route is offered once.
+- **A change of floor.** The belt takes the whole route. At the end of a floor's stretch it stops the
+  wearer (both pods) and waits, with its state `FLOOR`; it cannot tell when they are upstairs. Say so with
+  `POST /api/belt/floor`, or Next floor in the belt's own viewer. The belt then puts the wearer on the
+  first point of the next floor's stretch and guides again, and the floor it reports, which is the floor
+  our navigator is told, is the new one.
+- **The traveller's app is the belt's sensor.** On a walk the belt is on, the app's step reports
+  (`POST /api/nav/step`: new steps and compass) are passed on to the belt as its sensor readings, and the
+  compass the app sends with `POST /api/nav/calibrate` is what the belt lines up on. The belt keeps the
+  position and taps; our own tracker does not move the navigator on that walk, so there is one source of
+  position. The reply to each step report carries what the navigator has said since the last one, so the
+  phone still speaks the turns. Between the app's reports the last reading is repeated to the belt, for up
+  to 2.5 s, because the belt stops the wearer when its sensor is silent for a second. The belt's own phone
+  page is then not needed, and must not be open on another phone at the same time.
+- **Where a walk starts.** The app always asks to start "at the entrance". With the belt, a walk after the
+  first starts where the belt has the wearer (it has just arrived there), so trips chain without anyone
+  walking back to the door. `NUDGE_START=<place name or pano id>` says where the first one starts, for a
+  demo that begins somewhere else, such as a hallway on another floor.
+- **One walk after another.** When a walk starts and the belt has just arrived somewhere (or is still
+  walking), and that is within 3 m of the new walk's first point, the route is handed over as a
+  continuation: the belt keeps its position and calibration, and `begin` (or the phone's calibrate)
+  only starts it. Nobody stands still to be lined up again. `GET /api/belt` says `continued: true`.
+  `NUDGE_BELT_CONTINUE=0` turns this off. To line up afresh anyway, press Calibrate in the belt's viewer.
+- **A loop is two or three walks.** The planner takes the shortest way, so the walk back from B to A
+  retraces the walk out unless it is told not to. `"avoid": [[a, b], ...]` in `/api/nav/start` or
+  `/api/route` lists edges not to walk: give the walk back the edges of the walk out and it comes round
+  the other way. Three walks, each under half the loop, need no `avoid`.
+- **The belt's controls, from the apps.** Isaac: saying "stop" also stops the belt
+  (`POST /api/belt/stop`); the wearer's height in setup goes to the belt (`POST /api/belt/wearer`), which
+  sets its step length; "I'm upstairs", "I'm downstairs" or "next floor" tells the belt the wearer is on
+  the next floor (`POST /api/belt/floor`). Isaac Care: "At the corner" tells the belt the wearer is
+  standing on the next corner of its route (`POST /api/belt/mark`, new), which puts a drifted position
+  right. The Swift for these was written without Xcode and has not been built or run.
+- **The app takes up a trip asked for by voice.** `ios/Nudge/Traveller.swift` now adopts the session a
+  voice reply names: it counts down, calibrates and starts sending steps, as it does for a trip from the
+  caretaker. Asked mid-walk, it keeps walking and reports to the new trip. This change has not been built
+  or run: it was written without Xcode. Build it and try it before relying on it.
+- **A walk asked for by voice.** "Take me to the kitchen" (`/api/voice/turn`, from the voice page, the app
+  or a phone agent) hands its route to the belt like a walk started with `/api/nav/start`. The wearer
+  still has to be lined up before it guides: on the route's first point, facing the second, then
+  `POST /api/belt/begin` with the session, or Calibrate and Start in the belt's viewer.
+- **The dashboard.** While a walk is followed, the belt's phone and pods show on `ops.html` the way a
+  phone and a collar do: its steps come through as `step` traces (pace, the phone tile), its taps as `band`
+  traces in the collar's cue words (a single tap is `steer_left`, a double tap `left`, a tap back after
+  turning too far `overturn_left`, the stop at a change of floor `floor`, arrival `arrive`), and the phone
+  counts as connected while the belt hears from it. Haptics reads "Belt" whenever the belt is answering.
+
+These need the belt runtime from 14 Nov evening or later. An older one refuses a reroute ("stop first");
+the refusal is kept in `GET /api/belt` and the walk goes on along the old route.
+
+## Starting a walk on the belt from this laptop
+
+`tools/venue_route.py` needs nothing but Python. With the server running:
+
+```bash
+python tools/venue_route.py --list                                      # the points on each floor, with their ids
+python tools/venue_route.py --from A --to B --traveller Aaron           # a walk; prints where to stand and the session
+python tools/venue_route.py --begin SESSION                             # the wearer is in place: line up and guide
+python tools/venue_route.py --from here --to A --other-way --continue   # at B: back round the other way, no lining up
+python tools/venue_route.py --loop --floor "Floor 3" --name loop --keep # one loop, kept on the belt, no server needed after
+```
+
+With `NUDGE_BELT_URL` set it starts the walk here (`/api/nav/start`), so the dashboard follows it. Without, or
+with `--direct`, it plans here and posts the route straight to the belt. `--sid` picks the building (default: the
+venue), `--server` and `--belt` say where the two sides are.
+
 ## What the belt cannot do yet
 
-- **Change floor.** It follows the route up to the first change of floor and reports how many points it
-  dropped (`route.dropped_other_floors`). Send it the next floor's route once the wearer is there.
-- **Take a new route mid-walk.** A reroute has to stop the belt and calibrate again at the start of the
-  new route, because it lines itself up by having the wearer face the first leg.
 - **Play our cue grammar.** It taps left or right to steer, and has a stop and an arrival pattern. There is
-  no hazard, off-route or floor cue on it.
+  no hazard or off-route cue on it.
 - **Two position sources.** While the belt is walking, do not also post `/api/nav/step` from the phone
   app for the same session; the two would disagree about where the wearer is.
 
@@ -74,9 +141,13 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
 
 `tests/test_belt.py` runs the real server against a stand-in belt: the route is sent in our format,
 calibrate lines it up and starts it, its position moves our navigator, arrival ends the feed, a new walk
-takes the belt over, and a belt that is off never breaks a walk.
+takes the belt over, and a belt that is off never breaks a walk. Also: a blocked edge reroutes the
+navigator and the new route reaches the belt without a stop, an old belt's refusal is kept and not
+repeated, the floor follows the belt after `/api/belt/floor`, and the belt's steps and taps arrive as
+`step` and `band` traces.
 
 It has also been run against the real on-body runtime in simulator mode on a laptop: the synthetic
 building's route was handed over (five points on the first floor, two on the second dropped), the walk
 was started, and after four steps both sides had the wearer at (4.0, 1.5) facing along the first leg.
-It has not yet been walked on the belt itself with a route from here.
+It has not yet been walked on the belt itself with a route from here, and the reroute and the change of
+floor have only been run against the stand-in and the simulator.
