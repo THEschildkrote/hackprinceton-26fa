@@ -10,6 +10,8 @@ rebuilt since, check a few numbers against `python tools/venue_route.py --list` 
 
 Positions are in metres in the scan's frame. The lower level has no nodes.
 
+![Both floors of the venue graph with node numbers and place names](venue-graph.png)
+
 ## Landmarks
 
 The **Identify by** column is for what a blind traveller can tell without sight: what is underfoot, a
