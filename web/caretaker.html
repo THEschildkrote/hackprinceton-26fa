@@ -19,6 +19,12 @@
   .thread { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 8px; }
   .bubble { align-self: flex-start; max-width: 85%; background: var(--bubble); padding: 9px 12px; border-radius: 18px 18px 18px 6px; }
   .bubble.urgent { border: 2px solid var(--urgent); }
+  .bubble.mine { align-self: flex-end; background: var(--accent); color: #fff; border-radius: 18px 18px 6px 18px; }
+  .ask { display: flex; gap: 8px; padding: 10px 12px 0; }
+  .ask input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--bubble); border: 1px solid var(--line);
+               border-radius: 18px; padding: 8px 14px; }
+  .ask button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 18px;
+                padding: 8px 14px; cursor: pointer; }
   .bubble .tag { display: block; font-size: 12px; font-weight: 700; color: var(--urgent); letter-spacing: .02em; margin-bottom: 2px; }
   .time { align-self: center; color: var(--muted); font-size: 12px; margin: 4px 0; }
   .empty { color: var(--muted); text-align: center; margin-top: 30px; padding: 0 16px; }
@@ -35,6 +41,10 @@
   <section class="thread" id="thread" aria-live="polite" aria-relevant="additions">
     <p class="empty" id="empty">No messages yet. Sam gets a text when Maya starts walking, if she needs help, and when she arrives.</p>
   </section>
+  <form class="ask" id="ask" autocomplete="off">
+    <input id="askText" placeholder="Text Isaac, e.g. where is she?" aria-label="Message to Isaac">
+    <button type="submit">Send</button>
+  </form>
   <footer id="foot">Real iMessage: text <b>follow <span id="code">······</span></b> to the Isaac line.</footer>
 </main>
 <script>
@@ -45,10 +55,13 @@
   const thread = document.getElementById("thread");
   let seen = 0, lastStamp = 0;
 
+  // ?name= names the traveller being followed (a real one from the app, not the demo's)
+  const followed = q.get("name");
+  if (followed) document.getElementById("sub").textContent = `iMessage · following ${followed}`;
   fetch(`/api/demo/${encodeURIComponent(sid)}`).then(r => r.ok ? r.json() : null).then(d => {
     if (!d) return;
     document.getElementById("code").textContent = d.code;
-    document.getElementById("sub").textContent = `iMessage · following ${d.name}`;
+    if (!followed) document.getElementById("sub").textContent = `iMessage · following ${d.name}`;
   }).catch(() => {});
 
   function add(m) {
@@ -62,7 +75,7 @@
     }
     lastStamp = ts;
     const b = document.createElement("div");
-    b.className = "bubble" + (m.urgent ? " urgent" : "");
+    b.className = "bubble" + (m.urgent ? " urgent" : "") + (m.mine ? " mine" : "");
     if (m.urgent) {
       const tag = document.createElement("span");
       tag.className = "tag";
@@ -73,6 +86,25 @@
     thread.appendChild(b);
     thread.scrollTop = thread.scrollHeight;
   }
+
+  // sam texts isaac: the same caretaker bot that answers the real imessage line replies here.
+  // the page's caretaker handle follows this traveller first (with the 6-digit code), once
+  const handle = "page-caretaker-" + tid;
+  let following = null;
+  async function care(text) {
+    const r = await fetch("/api/caretaker/text", {method: "POST", headers: {"content-type": "application/json"},
+                                                    body: JSON.stringify({handle, text, traveller: tid})});
+    return r.ok ? (await r.json()).replies || [] : ["Isaac didn't answer. Is the server running?"];
+  }
+  document.getElementById("ask").addEventListener("submit", async e => {
+    e.preventDefault();
+    const box = document.getElementById("askText");
+    const text = box.value.trim();
+    if (!text) return;
+    box.value = "";
+    add({text, mine: true});
+    (await care(text)).forEach(t => add({text: t}));
+  });
 
   function poll() {
     fetch(`/api/traveller/${encodeURIComponent(tid)}/messages?after=${seen}`).then(r => r.json()).then(d => {

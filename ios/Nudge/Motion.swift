@@ -27,6 +27,9 @@ final class Motion: NSObject, CLLocationManagerDelegate {
     var available: Bool { motion.isDeviceMotionAvailable }
 
     func start() {
+        #if targetEnvironment(simulator)
+        if !motion.isDeviceMotionAvailable { startSimulatedWalk(); return }
+        #endif
         guard motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
         if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() }
         location.startUpdatingLocation()
@@ -57,6 +60,22 @@ final class Motion: NSObject, CLLocationManagerDelegate {
             }
         }
     }
+
+    #if targetEnvironment(simulator)
+    // a simulator has no motion sensors. for recording a demo on the mac: a step every 0.6 s, always facing
+    // the same way, so a straight trip (the straight line demo) plays out to the arrival. simulator builds only.
+    private var simTimer: Timer?
+    private let simHeading = 0.0
+
+    private func startSimulatedWalk() {
+        simTimer?.invalidate()
+        simTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.onHeading?(self.simHeading, false)
+            self.onStep?()
+        }
+    }
+    #endif
 
     func stop() {
         motion.stopDeviceMotionUpdates()

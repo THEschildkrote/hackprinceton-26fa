@@ -40,9 +40,10 @@ struct MainView: View {
                 // one big visual that says what state we are in at a glance. decorative: the whole
                 // screen is a single VoiceOver element that reads the status, so this adds nothing there
                 Beacon(phase: traveller.phase, reachable: traveller.piReachable,
-                       distance: traveller.phase == .walking ? traveller.distanceToNext : nil)
+                       distance: traveller.phase == .walking ? traveller.distanceToNext : nil,
+                       listening: traveller.listening)
                     .accessibilityHidden(true)
-                Text(traveller.status)
+                Text(traveller.listening ? "Listening…" : traveller.status)
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
@@ -72,11 +73,16 @@ struct MainView: View {
             }
             .padding()
         }
+        // the whole screen is one button: off a trip it calls isaac, on a trip it's tap-to-talk
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { Task { await traveller.startLastTrip() } }
+        .onTapGesture { traveller.tap() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(traveller.status)
-        .accessibilityHint("Double tap to start your last trip. Or say where am I, repeat, how far, or I need help.")
+        .accessibilityLabel(traveller.listening ? "Listening" : traveller.status)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(traveller.onTrip ? "Double tap, then say where am I, how far, or I need help."
+                                            : "Double tap to call Isaac and say where you want to go.")
+        .accessibilityAction { traveller.tap() }
+        .accessibilityAction(named: "Talk without calling") { traveller.talk() }
         .accessibilityAction(named: "Start last trip") { Task { await traveller.startLastTrip() } }
         .accessibilityAction(named: "Stop trip") { traveller.stopTrip() }
         .accessibilityAction(named: "Setup") { showSetup = true }
@@ -106,9 +112,11 @@ private struct Beacon: View {
     let phase: Traveller.Phase
     let reachable: Bool
     let distance: Double?
+    var listening = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var colour: Color {
+        if listening { return .white }
         if !reachable { return Theme.red }     // 3.7:1 on black: fine for a graphic, never for text
         switch phase {
         case .starting, .calibrating, .walking: return Theme.yellow
@@ -119,6 +127,7 @@ private struct Beacon: View {
     }
 
     private var symbol: String {
+        if listening { return "mic.fill" }
         switch phase {
         case .waiting: return "figure.walk.motion"
         case .starting: return "location.fill"
@@ -129,7 +138,9 @@ private struct Beacon: View {
         }
     }
 
-    private var breathes: Bool { reachable && !reduceMotion && (phase == .waiting || phase == .walking) }
+    private var breathes: Bool {
+        !reduceMotion && (listening || (reachable && (phase == .waiting || phase == .walking)))
+    }
 
     var body: some View {
         ZStack {
@@ -140,7 +151,7 @@ private struct Beacon: View {
                     } animation: { _ in .easeOut(duration: 2.0) }
             }
             Circle().stroke(colour, lineWidth: 12)
-            if let distance {
+            if let distance, !listening {
                 Text(fmtMetres(distance))
                     .font(.system(size: 56, weight: .heavy, design: .rounded))
                     .foregroundStyle(Theme.yellow)
@@ -207,6 +218,16 @@ struct SetupView: View {
                     }
                 } header: { Text("Walking").foregroundStyle(Theme.sky) } footer: {
                     Text("Walk 10 normal steps, measure how far you went, and enter it.")
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                .listRowBackground(Theme.row)
+
+                Section {
+                    TextField(TravellerSettings.defaultIsaacLine, text: $s.isaacLine)
+                        .keyboardType(.phonePad)
+                        .accessibilityLabel("Isaac phone line")
+                } header: { Text("Isaac phone line").foregroundStyle(Theme.sky) } footer: {
+                    Text("Off a trip, tapping the screen calls this number. Leave it empty to talk to the phone instead.")
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 .listRowBackground(Theme.row)

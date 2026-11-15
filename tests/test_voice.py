@@ -27,7 +27,7 @@ def client(exception_model=None, explorer_model=None):
     g = walkgraph.build(building())
     sessions = {}
 
-    def register(nav, sid):
+    def register(nav, sid, tid=None):
         s = f"s{len(sessions)}"
         sessions[s] = nav
         return s

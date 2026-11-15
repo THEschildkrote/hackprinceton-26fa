@@ -35,7 +35,7 @@ def client(monkeypatch, agent=None, timeout=0.3, has_caretaker=None, explode=Fal
     g = walkgraph.build(building())
     sessions = {}
 
-    def register(nav, sid):
+    def register(nav, sid, tid=None):
         s = f"s{len(sessions)}"
         sessions[s] = nav
         return s
