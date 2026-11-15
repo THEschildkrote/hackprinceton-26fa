@@ -1,197 +1,254 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120">
+<svg xmlns="http://www.w3.org/2000/svg" width="1860" height="1440" viewBox="0 0 1860 1440">
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0a1f5c"/></marker></defs>
-<rect width="1800" height="1120" fill="#fff"/>
+<rect x="0" y="0" width="1860" height="1440" rx="0" fill="#fff" stroke="none" stroke-width="1"/>
 <text x="40" y="58" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#0a1f5c" text-anchor="start" >Isaac system design</text>
 <text x="318" y="58" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#4f5b73" text-anchor="start" >Real-time indoor guidance for blind travellers</text>
-<rect x="1440" y="40" width="60.199999999999996" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="1470.1" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
-<text x="1514" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >sponsor technology</text>
-<path d="M1628,50 L1668,50" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="1676" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >data and calls</text>
-<rect x="30" y="100" width="590" height="990" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
+<rect x="1496.5" y="40" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="1528.25" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="1572" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >sponsor technology</text>
+<path d="M1700,50 L1740,50" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1748" y="54" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >data and calls</text>
+<rect x="30" y="100" width="610" height="1276" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
 <text x="54" y="138" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Before the walk</text>
 <text x="54" y="160" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >once per building, ahead of time</text>
-<rect x="54" y="180" width="250" height="100" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="70" y="212" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Matterport</text>
-<rect x="227.8" y="195" width="60.199999999999996" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="257.90000000000003" y="209" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
-<text x="70" y="236" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Model API: floors, walls, rooms</text>
-<text x="70" y="256" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Point cloud and 360° panoramas</text>
-<path d="M304,230 L344,230" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="54" y="296" width="250" height="100" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="70" y="328" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Vexcel</text>
-<rect x="227.8" y="311" width="60.199999999999996" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="257.90000000000003" y="325" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
-<text x="70" y="352" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Building footprints</text>
-<text x="70" y="372" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Oblique facade imagery</text>
-<path d="M304,346 L344,346" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="54" y="412" width="250" height="100" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="70" y="444" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >CoStar</text>
-<rect x="227.8" y="427" width="60.199999999999996" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="257.90000000000003" y="441" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
-<text x="70" y="468" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Built year, pre-ADA, floors,</text>
-<text x="70" y="488" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >parking and tenants</text>
-<path d="M304,462 L344,462" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="54" y="528" width="250" height="100" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1" stroke-dasharray="6 5"/>
-<text x="70" y="560" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >OpenStreetMap + USGS</text>
-<text x="70" y="584" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Footprints, entrances, elevation</text>
-<text x="70" y="604" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >where Vexcel has no coverage</text>
-<path d="M304,578 L344,578" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="344" y="180" width="252" height="448" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="360" y="212" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Building model</text>
-<text x="360" y="230" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="start" >walkgraph.py, georef.py</text>
-<text x="360" y="266" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Walk graph</text>
-<text x="360" y="285" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >scan positions become nodes</text>
-<line x1="360" x2="580" y1="304" y2="304" stroke="#e6ebf3"/>
-<text x="360" y="328" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Doorways</text>
-<text x="360" y="347" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >found in the point cloud</text>
-<line x1="360" x2="580" y1="366" y2="366" stroke="#e6ebf3"/>
-<text x="360" y="390" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Floors</text>
-<text x="360" y="409" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >stairs and elevators joined</text>
-<line x1="360" x2="580" y1="428" y2="428" stroke="#e6ebf3"/>
-<text x="360" y="452" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Street position</text>
-<text x="360" y="471" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >scan lined up with the footprint</text>
-<line x1="360" x2="580" y1="490" y2="490" stroke="#e6ebf3"/>
-<text x="360" y="514" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Entrance</text>
-<text x="360" y="533" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >steps and ramps from the facade</text>
-<line x1="360" x2="580" y1="552" y2="552" stroke="#e6ebf3"/>
-<text x="360" y="576" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >Places</text>
-<text x="360" y="595" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >named rooms and what they serve</text>
-<path d="M380,628 L380,676" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="390" y="656" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="start" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >scan data</text>
-<path d="M560,676 L560,628" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="550" y="656" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="end" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >dossier</text>
-<rect x="54" y="676" width="542" height="390" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="72" y="708" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#0a1f5c" text-anchor="start" >Survey agent</text>
-<rect x="190" y="692" width="152.6" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="266.3" y="706" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >LangChain Deep Agents</text>
-<text x="72" y="730" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >writes the building dossier; model: Gemini via LangChain</text>
-<rect x="72" y="748" width="506" height="36" rx="8" fill="#0a1f5c" stroke="none" stroke-width="1"/>
-<text x="88" y="771" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#fff" text-anchor="start" >Lead plans the survey, delegates, then audits its own routes</text>
-<rect x="72" y="798" width="158" height="60" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="84" y="822" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0038a8" text-anchor="start" >place-indexer</text>
-<text x="84" y="842" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >names every section</text>
-<rect x="246" y="798" width="158" height="60" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="258" y="822" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0038a8" text-anchor="start" >hazard-scout</text>
-<text x="258" y="842" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >overhangs, glass, steps</text>
-<rect x="420" y="798" width="158" height="60" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="432" y="822" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0038a8" text-anchor="start" >landmark-writer</text>
-<text x="432" y="842" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >touch, sound, underfoot</text>
-<rect x="72" y="870" width="245" height="60" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="84" y="894" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0038a8" text-anchor="start" >site-surveyor</text>
-<text x="84" y="914" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the approach, from aerial and CoStar</text>
-<rect x="333" y="870" width="245" height="60" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="345" y="894" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0038a8" text-anchor="start" >building-cartographer</text>
-<text x="345" y="914" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >joins buildings made of several scans</text>
-<text x="72" y="954" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >Tools: look at a panorama, find overhangs and glass,</text>
-<text x="72" y="972" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >aerial view, CoStar record, audit the routes</text>
-<rect x="72" y="990" width="158" height="56" rx="8" fill="#f6f8fc" stroke="#e1e6ef" stroke-width="1"/>
-<text x="84" y="1013" font-family="Consolas, Menlo, monospace" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >/dossier</text>
-<text x="84" y="1032" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the router reads it</text>
-<rect x="246" y="990" width="158" height="56" rx="8" fill="#f6f8fc" stroke="#e1e6ef" stroke-width="1"/>
-<text x="258" y="1013" font-family="Consolas, Menlo, monospace" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >/memories</text>
-<text x="258" y="1032" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >lessons kept</text>
-<rect x="420" y="990" width="158" height="56" rx="8" fill="#f6f8fc" stroke="#e1e6ef" stroke-width="1"/>
-<text x="432" y="1013" font-family="Consolas, Menlo, monospace" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >/agent</text>
-<text x="432" y="1032" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >read-only skills</text>
-<rect x="650" y="100" width="560" height="990" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
-<text x="674" y="138" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Isaac API</text>
-<text x="674" y="160" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >FastAPI, one process on the Pi, public through a Cloudflare tunnel</text>
-<path d="M596,300 L704,300" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="650" y="292" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >walk graph</text>
-<rect x="704" y="180" width="482" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="211" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Tracker</text>
-<text x="1168" y="211" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >pdr.py</text>
-<text x="722" y="233" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >steps + compass become a position on the route</text>
-<path d="M945,258 L945,274" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="704" y="274" width="482" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="305" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Navigator</text>
-<text x="1168" y="305" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >navigator.py</text>
-<text x="722" y="327" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >A* for blind and wheelchair profiles, turns in metres</text>
-<rect x="704" y="368" width="482" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="399" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Voice assistant</text>
-<text x="1168" y="399" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >voice.py</text>
-<text x="722" y="421" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >“How do I get to Y?”, where am I, how far, help</text>
-<rect x="704" y="462" width="482" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="493" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Haptics driver</text>
-<text x="1168" y="493" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >band.py</text>
-<text x="722" y="515" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >left and right taps, cued by the navigator</text>
-<rect x="704" y="556" width="482" height="172" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="587" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Caretaker hub</text>
-<text x="1168" y="587" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >hub.py</text>
-<text x="722" y="609" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >pairing codes, live status, trips, help alerts</text>
-<text x="722" y="628" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >knows whether the phone and caretaker app are online</text>
-<rect x="704" y="744" width="482" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="775" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="start" >Trace bus</text>
-<text x="1168" y="775" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >traces.py</text>
-<text x="722" y="797" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >every event and agent call, streamed live</text>
-<rect x="704" y="846" width="482" height="220" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="722" y="878" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#0a1f5c" text-anchor="start" >Live agents</text>
-<rect x="826" y="862" width="152.6" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="902.3" y="876" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >LangChain Deep Agents</text>
-<text x="722" y="900" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >only when something goes wrong; routing never waits on a model</text>
-<rect x="722" y="914" width="215" height="72" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="734" y="938" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0038a8" text-anchor="start" >Exception agent</text>
-<text x="734" y="958" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >locked door, blocked hall:</text>
-<text x="734" y="975" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >compares routes, proposes one</text>
-<rect x="953" y="914" width="215" height="72" rx="8" fill="#eef3ff" stroke="#c9d6f2" stroke-width="1"/>
-<text x="965" y="938" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0038a8" text-anchor="start" >Explorer agent</text>
-<text x="965" y="958" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >outside the scan:</text>
-<text x="965" y="975" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >plans the way with the traveller</text>
-<rect x="722" y="996" width="446" height="34" rx="8" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="945" y="1018" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="middle" >The traveller says yes before any reroute</text>
-<text x="722" y="1052" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="start" >exception.py, explorer.py</text>
-<path d="M704,950 L678,950 L678,330 L704,330" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="670" y="640" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" transform="rotate(-90 670 640)">reroute after approval</text>
-<rect x="1240" y="100" width="530" height="990" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
-<text x="1264" y="138" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Devices and people</text>
-<text x="1264" y="160" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >everyone talks to the same API over HTTPS</text>
-<rect x="1290" y="180" width="456" height="266" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="212" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Traveller&#x27;s iPhone</text>
-<text x="1306" y="236" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Isaac app, worn on the back</text>
-<text x="1306" y="256" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >steps and compass from the motion sensors</text>
-<text x="1306" y="276" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >speech in, spoken directions out</text>
-<text x="1306" y="296" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the only source of position</text>
-<text x="1730" y="434" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >ios/Nudge</text>
-<rect x="1290" y="462" width="456" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="494" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Belt</text>
-<text x="1306" y="518" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Raspberry Pi + two servos on a PCA9685 board</text>
-<text x="1730" y="528" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >NUDGE_BAND=pca</text>
-<rect x="1290" y="556" width="456" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="588" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Isaac Care app</text>
-<text x="1306" y="612" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the caretaker&#x27;s live map; sends trips</text>
-<text x="1730" y="622" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >ios/NudgeCare</text>
-<rect x="1290" y="650" width="456" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="682" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >iMessage caretakers</text>
-<rect x="1669.8" y="665" width="60.199999999999996" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
-<text x="1699.8999999999999" y="679" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
-<text x="1306" y="706" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >status, help alerts and trips by text, through Photon</text>
-<text x="1730" y="716" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >photon_bot.py</text>
-<rect x="1290" y="744" width="456" height="78" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="776" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Ops dashboard</text>
-<text x="1306" y="800" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >laptop view of the live system</text>
-<text x="1730" y="810" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >web/ops.html</text>
-<text x="1290" y="868" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#4f5b73" text-anchor="start" >Model</text>
-<rect x="1290" y="880" width="456" height="100" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
-<text x="1306" y="912" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Gemini 3.5 Flash Lite</text>
-<text x="1306" y="936" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the agents&#x27; model, through LangChain</text>
-<text x="1306" y="956" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Claude or OpenRouter as fallback</text>
-<text x="1730" y="968" font-family="Consolas, Menlo, monospace" font-size="11" font-weight="400" fill="#6b7489" text-anchor="end" >agents/llm.py</text>
-<path d="M1290,219 L1186,219" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="1238" y="211" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >steps, compass</text>
-<path d="M1186,313 L1290,313" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="1238" y="305" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >directions</text>
-<path d="M1186,407 L1290,407" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1238" y="399" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >voice</text>
-<path d="M1186,501 L1290,501" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="1238" y="493" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >taps</text>
-<path d="M1186,595 L1290,595" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1238" y="587" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >pair, status</text>
-<path d="M1186,689 L1290,689" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1238" y="681" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >texts</text>
-<path d="M1186,783 L1290,783" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="1238" y="775" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >events</text>
-<path d="M1186,930 L1290,930" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1238" y="922" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#4f5b73" text-anchor="middle" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke" >LangChain</text>
-<text x="40" y="1110" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Routing, tracking and taps are deterministic. The models survey buildings ahead of time and handle exceptions; they are never in the loop of a step.</text>
+<rect x="700" y="100" width="560" height="1276" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
+<text x="724" y="138" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Isaac API</text>
+<text x="724" y="160" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >FastAPI, one process: on the Pi or a laptop behind a Cloudflare tunnel, or a cloud host</text>
+<rect x="1300" y="100" width="530" height="1276" rx="16" fill="#f3f6fb" stroke="#dfe5ef" stroke-width="1"/>
+<text x="1324" y="138" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Devices and people</text>
+<text x="1324" y="160" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >everyone talks to the same API over HTTPS</text>
+<rect x="54" y="180" width="262" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="72" y="210" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Matterport</text>
+<rect x="236.5" y="195" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="268.25" y="209" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="72" y="234" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Model API: floors, walls, rooms</text>
+<text x="72" y="254" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Point cloud and 360° panoramas</text>
+<path d="M316,232 L350,232" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="54" y="300" width="262" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="72" y="330" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Vexcel</text>
+<rect x="236.5" y="315" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="268.25" y="329" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="72" y="354" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Footprints and oblique facades</text>
+<text x="72" y="374" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Crosswalks, curbs and slope outside</text>
+<path d="M316,352 L350,352" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="54" y="420" width="262" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="72" y="450" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >CoStar</text>
+<rect x="236.5" y="435" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="268.25" y="449" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="72" y="474" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Year built and renovated, pre-ADA,</text>
+<text x="72" y="494" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >floors, parking and tenants</text>
+<path d="M316,472 L350,472" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="54" y="540" width="262" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1" stroke-dasharray="6 5"/>
+<text x="72" y="570" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >OpenStreetMap + USGS</text>
+<text x="72" y="594" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Footways, crossings, elevation</text>
+<text x="72" y="614" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >where Vexcel's outline doesn't fit</text>
+<path d="M316,592 L350,592" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="354" y="180" width="262" height="464" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="372" y="210" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Building model</text>
+<text x="372" y="230" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="start" >walkgraph.py, georef.py, outdoor.py</text>
+<text x="372" y="262" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Walk graph</text>
+<text x="372" y="282" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >scan positions become nodes</text>
+<path d="M372,304 L598,304" stroke="#d9e0ec"/>
+<text x="372" y="326" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Doorways</text>
+<text x="372" y="346" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >found in the point cloud</text>
+<path d="M372,368 L598,368" stroke="#d9e0ec"/>
+<text x="372" y="390" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Floors</text>
+<text x="372" y="410" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >stairs and elevators joined</text>
+<path d="M372,432 L598,432" stroke="#d9e0ec"/>
+<text x="372" y="454" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Street position</text>
+<text x="372" y="474" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >scan lined up with the footprint</text>
+<path d="M372,496 L598,496" stroke="#d9e0ec"/>
+<text x="372" y="518" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Outdoor leg</text>
+<text x="372" y="538" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >footpath, crossings, the entrance</text>
+<path d="M372,560 L598,560" stroke="#d9e0ec"/>
+<text x="372" y="582" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Places</text>
+<text x="372" y="602" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the venue's own names for rooms</text>
+<path d="M414,644 L414,692" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="426" y="672" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >scan data</text>
+<path d="M586,692 L586,644" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="574" y="672" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="end" >dossier</text>
+<rect x="54" y="692" width="562" height="660" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="74" y="724" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Survey agent</text>
+<rect x="215.5" y="707" width="154.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="292.75" y="721" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >LangChain Deep Agents</text>
+<text x="74" y="748" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >writes the building dossier; model: Gemini via LangChain</text>
+<rect x="74" y="764" width="522" height="36" rx="8" fill="#0a1f5c" stroke="none" stroke-width="1"/>
+<text x="92" y="788" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#fff" text-anchor="start" >Lead plans the survey, delegates, then audits its own routes</text>
+<rect x="74.0" y="814" width="166.0" height="58" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="88.0" y="838" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1d3f9a" text-anchor="start" >place-indexer</text>
+<text x="88.0" y="858" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >names every section</text>
+<rect x="252.0" y="814" width="166.0" height="58" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="266.0" y="838" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1d3f9a" text-anchor="start" >hazard-scout</text>
+<text x="266.0" y="858" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >judges each hazard lead</text>
+<rect x="430.0" y="814" width="166.0" height="58" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="444.0" y="838" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1d3f9a" text-anchor="start" >landmark-writer</text>
+<text x="444.0" y="858" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >touch, sound, underfoot</text>
+<rect x="74.0" y="884" width="255.0" height="58" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="88.0" y="908" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1d3f9a" text-anchor="start" >site-surveyor</text>
+<text x="88.0" y="928" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >the approach, from aerial and CoStar</text>
+<rect x="341.0" y="884" width="255.0" height="58" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="355.0" y="908" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1d3f9a" text-anchor="start" >building-cartographer</text>
+<text x="355.0" y="928" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >joins buildings made of several scans</text>
+<rect x="74" y="960" width="522" height="196" rx="10" fill="#fffbe6" stroke="#fcd116" stroke-width="1.5"/>
+<text x="90" y="988" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >Hazard pass: every point-cloud lead gets a verdict</text>
+<text x="580" y="988" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >hazards.py</text>
+<text x="90" y="1010" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Code walks every lead, so the model can't skip one; the hazard-scout</text>
+<text x="90" y="1029" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >judges each from a view rendered at it, stricter if CoStar says pre-ADA.</text>
+<rect x="90" y="1044" width="48" height="30" rx="15" fill="#fff" stroke="#fcd116" stroke-width="1"/>
+<text x="114.0" y="1064" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="middle" >lead</text>
+<rect x="163.75" y="1044" width="111" height="30" rx="15" fill="#fff" stroke="#fcd116" stroke-width="1"/>
+<text x="219.25" y="1064" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="middle" >rendered view</text>
+<path d="M141.0,1059 L160.75,1059" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="300.5" y="1044" width="69" height="30" rx="15" fill="#fff" stroke="#fcd116" stroke-width="1"/>
+<text x="335.0" y="1064" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Verdict</text>
+<path d="M277.75,1059 L297.5,1059" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="395.25" y="1044" width="83" height="30" rx="15" fill="#fff" stroke="#fcd116" stroke-width="1"/>
+<text x="436.75" y="1064" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="middle" >cane rule</text>
+<path d="M372.5,1059 L392.25,1059" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="504.0" y="1044" width="76" height="30" rx="15" fill="#fff" stroke="#fcd116" stroke-width="1"/>
+<text x="542.0" y="1064" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="middle" >evidence</text>
+<path d="M481.25,1059 L501.0,1059" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="90" y="1094" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#4f5b73" text-anchor="start" >overhang or glass</text>
+<text x="219.25" y="1110" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#4f5b73" text-anchor="middle" >from the nearest scan</text>
+<text x="335.0" y="1094" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#4f5b73" text-anchor="middle" >hazard / not / can't tell</text>
+<text x="436.75" y="1110" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#4f5b73" text-anchor="middle" >furniture never counts</text>
+<text x="580.0" y="1094" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#4f5b73" text-anchor="end" >the view, kept</text>
+<text x="90" y="1142" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0a1f5c" text-anchor="start" >At JRR: 55 leads judged, 32 confirmed (26 glass, 6 overhead), 23 rejected.</text>
+<text x="74" y="1182" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Tools: look at a panorama, find overhangs and glass, aerial view,</text>
+<text x="74" y="1201" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >CoStar record, audit the routes</text>
+<rect x="74.0" y="1218" width="166.0" height="58" rx="8" fill="#f3f6fb" stroke="#d9e0ec" stroke-width="1"/>
+<text x="88.0" y="1242" font-family="Consolas, Menlo, monospace" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >/dossier</text>
+<text x="88.0" y="1262" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >the router reads it</text>
+<rect x="252.0" y="1218" width="166.0" height="58" rx="8" fill="#f3f6fb" stroke="#d9e0ec" stroke-width="1"/>
+<text x="266.0" y="1242" font-family="Consolas, Menlo, monospace" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >/memories</text>
+<text x="266.0" y="1262" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >lessons, kept by the run</text>
+<rect x="430.0" y="1218" width="166.0" height="58" rx="8" fill="#f3f6fb" stroke="#d9e0ec" stroke-width="1"/>
+<text x="444.0" y="1242" font-family="Consolas, Menlo, monospace" font-size="13" font-weight="700" fill="#0a1f5c" text-anchor="start" >/agent</text>
+<text x="444.0" y="1262" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >read-only skills</text>
+<text x="74" y="1302" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >briefing.md is read to the traveller before the visit; audit.md says what was</text>
+<text x="74" y="1321" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >checked and confirmed, and what is still open.</text>
+<rect x="736" y="180" width="242" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="210" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Stall watch</text>
+<text x="960" y="210" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >stalls.py</text>
+<text x="754" y="234" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >stopped, backing up, shuffling:</text>
+<text x="754" y="254" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >“Is something in the way?”</text>
+<rect x="994" y="180" width="242" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1012" y="210" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Tracker</text>
+<text x="1218" y="210" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >pdr.py</text>
+<text x="1012" y="234" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >steps + compass become</text>
+<text x="1012" y="254" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >a position on the route</text>
+<path d="M1115,284 L1115,300" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="1340" y="180" width="466" height="368" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="210" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Traveller's iPhone</text>
+<text x="1358" y="234" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Isaac app, worn on the back</text>
+<text x="1358" y="254" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >steps and compass from the motion sensors</text>
+<text x="1358" y="274" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >speech in, spoken directions out</text>
+<text x="1358" y="294" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >tap to call Isaac or to talk</text>
+<text x="1358" y="314" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the source of every position</text>
+<text x="1788" y="534" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >ios/Nudge</text>
+<path d="M1340,240 L1236,240" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1288.0" y="233" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >steps, compass</text>
+<rect x="736" y="300" width="500" height="124" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="330" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Navigator</text>
+<text x="1218" y="330" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >navigator.py</text>
+<text x="754" y="354" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >A* for blind and wheelchair profiles</text>
+<text x="754" y="374" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >“12 meters, then left”: a distance and a direction,</text>
+<text x="754" y="394" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >hazards by height and side, never what things look like</text>
+<path d="M1236,362 L1340,362" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1288.0" y="355" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >directions</text>
+<path d="M616,362 L736,362" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="676.0" y="355" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >walk graph</text>
+<rect x="736" y="440" width="500" height="208" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="470" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Voice brain</text>
+<text x="1218" y="470" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >voice.py</text>
+<text x="754" y="494" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >“Take me to the seminar room”, where am I,</text>
+<text x="754" y="514" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >how far, help, stop</text>
+<text x="754" y="534" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >one endpoint for the app, the browser and calls:</text>
+<text x="754" y="554" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >POST /api/voice/turn, /api/voice/call</text>
+<path d="M1236,508 L1340,508" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1288.0" y="501" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >voice</text>
+<rect x="1340" y="564" width="466" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="594" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Phone call</text>
+<rect x="1726.5" y="579" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="1758.25" y="593" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="1358" y="618" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Photon number → SIP → ElevenLabs agent;</text>
+<text x="1358" y="638" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >its webhook posts to /api/voice/call</text>
+<text x="1788" y="654" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >tools/phone_line.py</text>
+<path d="M1340,616 L1236,616" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1288.0" y="609" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >call</text>
+<rect x="736" y="684" width="500" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="714" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Belt link</text>
+<text x="1218" y="714" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >belt.py</text>
+<text x="754" y="738" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >hands the route to the belt, reads back where</text>
+<text x="754" y="758" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the wearer is; next floor, stop</text>
+<rect x="1340" y="684" width="466" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="714" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Belt</text>
+<text x="1788" y="714" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >NUDGE_BELT_URL</text>
+<text x="1358" y="738" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Raspberry Pi + two servos on a PCA9685 board:</text>
+<text x="1358" y="758" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >keeps the position, taps each turn</text>
+<path d="M1236,736 L1340,736" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1288.0" y="729" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >route, position</text>
+<rect x="736" y="804" width="500" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="834" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Caretaker hub</text>
+<text x="1218" y="834" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >hub.py</text>
+<text x="754" y="858" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >pairing codes, live status, trips, help alerts;</text>
+<text x="754" y="878" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >knows whether the phone and the caretaker are online</text>
+<rect x="1340" y="804" width="466" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="834" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Isaac Care app</text>
+<text x="1358" y="858" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the caretaker's live map;</text>
+<text x="1358" y="878" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >sends trips, texts questions</text>
+<text x="1788" y="894" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >ios/NudgeCare</text>
+<path d="M1236,856 L1340,856" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1288.0" y="849" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >pair, status</text>
+<rect x="736" y="924" width="500" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="954" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >iMessage bot</text>
+<text x="1218" y="954" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >photon_bot.py</text>
+<text x="754" y="978" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >caretakers and the walker, by text;</text>
+<text x="754" y="998" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >polls Photon, so it needs no public URL</text>
+<rect x="1340" y="924" width="466" height="104" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="954" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >iMessage</text>
+<rect x="1726.5" y="939" width="63.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="1758.25" y="953" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >Sponsor</text>
+<text x="1358" y="978" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >status, help alerts and trips by text,</text>
+<text x="1358" y="998" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >for caretakers and the walker</text>
+<path d="M1236,976 L1340,976" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1288.0" y="969" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >texts</text>
+<rect x="736" y="1044" width="500" height="84" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="1074" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Trace bus</text>
+<text x="1218" y="1074" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >traces.py</text>
+<text x="754" y="1098" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >every event and agent call, streamed live</text>
+<rect x="1340" y="1044" width="466" height="84" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="1074" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Web</text>
+<text x="1788" y="1074" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >web/</text>
+<text x="1358" y="1098" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >ops dashboard (sign-in), caretaker page, venue routes</text>
+<path d="M1236,1086 L1340,1086" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1288.0" y="1079" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >events</text>
+<rect x="736" y="1144" width="500" height="208" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="754" y="1176" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a1f5c" text-anchor="start" >Live agents</text>
+<rect x="875.5" y="1159" width="154.5" height="20" rx="10" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="952.75" y="1173" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#0a1f5c" text-anchor="middle" >LangChain Deep Agents</text>
+<text x="754" y="1200" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >only when something goes wrong; routing never waits on a model</text>
+<rect x="754.0" y="1214" width="226.0" height="76" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="768.0" y="1240" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1d3f9a" text-anchor="start" >Exception agent</text>
+<text x="768.0" y="1260" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >locked door, blocked hall:</text>
+<text x="768.0" y="1278" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >compares routes, proposes one</text>
+<rect x="992.0" y="1214" width="226.0" height="76" rx="8" fill="#eef3fb" stroke="#c9d6ee" stroke-width="1"/>
+<text x="1006.0" y="1240" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1d3f9a" text-anchor="start" >Explorer agent</text>
+<text x="1006.0" y="1260" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >outside the scan:</text>
+<text x="1006.0" y="1278" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="start" >plans the way with the traveller</text>
+<rect x="754" y="1302" width="464" height="34" rx="8" fill="#fcd116" stroke="none" stroke-width="1"/>
+<text x="986.0" y="1324" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a1f5c" text-anchor="middle" >The traveller says yes before any reroute</text>
+<text x="1218" y="1176" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >exception.py, explorer.py</text>
+<path d="M736,1252 L718,1252 L718,400 L736,400" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="710" y="826.0" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" transform="rotate(-90 710 826.0)">reroute after approval</text>
+<text x="1340" y="1150" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#4f5b73" text-anchor="start" >Model</text>
+<rect x="1340" y="1164" width="466" height="124" rx="10" fill="#fff" stroke="#d9e0ec" stroke-width="1"/>
+<text x="1358" y="1194" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a1f5c" text-anchor="start" >Gemini 3.5 Flash Lite</text>
+<text x="1358" y="1218" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >the agents' model, through LangChain</text>
+<text x="1358" y="1238" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >every survey, verdict and reroute</text>
+<text x="1358" y="1258" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#4f5b73" text-anchor="start" >Claude or OpenRouter as fallback</text>
+<text x="1788" y="1274" font-family="Consolas, Menlo, monospace" font-size="11.5" font-weight="400" fill="#4f5b73" text-anchor="end" >agents/llm.py</text>
+<path d="M1236,1226 L1340,1226" fill="none" stroke="#0a1f5c" stroke-width="1.6" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1288.0" y="1219" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#4f5b73" text-anchor="middle" >LangChain</text>
+<text x="40" y="1406" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#4f5b73" text-anchor="start" >Routing, tracking and taps are deterministic. The models survey buildings ahead of time, judge every hazard lead with evidence, and handle exceptions; they are never in the loop of a step.</text>
 </svg>
