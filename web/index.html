@@ -490,7 +490,7 @@
         <h3>Call Isaac</h3><p>Ask for a room by voice. It plans the walk and talks you through it.</p>
         <a class="btn phone-link" data-kind="tel" href="#try">Number coming soon</a></article>
       <article class="card reveal" style="--d:.06s"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg></div>
-        <h3>Text Isaac</h3><p>iMessage the same number: where am I, take me somewhere, or follow someone as their caretaker.</p>
+        <h3>Text Isaac</h3><p>Over iMessage: where am I, take me somewhere, or follow someone as their caretaker. The line takes texts from numbers we've added.</p>
         <a class="btn phone-link" data-kind="sms" href="#try">Number coming soon</a></article>
       <article class="card reveal" style="--d:.12s"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
         <h3>In your browser</h3><p>Hold to talk and walk a route on the venue's real map. Works best in Chrome.</p>
@@ -523,8 +523,10 @@
 </footer>
 
 <script>
-// the number people can call or text; set it to show the buttons (e.g. "+16095550100")
-const ISAAC_NUMBER = "";
+// the voice line (photon number, calls go to the elevenlabs agent) and the imessage line (photon's shared line:
+// it only takes texts from numbers added with tools/phone_line.py imessage --add). empty hides that button.
+const ISAAC_VOICE = "+16095278166";
+const ISAAC_IMESSAGE = "";
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let paused = REDUCED;
@@ -689,11 +691,16 @@ const still = new Image();
 still.onload = () => { if (still.naturalWidth < 400) filmbox.style.backgroundImage = "url('https://i.ytimg.com/vi/yv9tC1JT24M/hqdefault.jpg')"; };
 still.src = "https://i.ytimg.com/vi/yv9tC1JT24M/maxresdefault.jpg";
 
-// call and text buttons, once there's a number to give out
+// call and text buttons, each with its own line
 document.querySelectorAll(".phone-link").forEach(a => {
-  if (!ISAAC_NUMBER) { a.classList.add("off"); a.setAttribute("aria-disabled", "true"); a.removeAttribute("href"); return; }
-  const pretty = ISAAC_NUMBER.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "+1 ($1) $2-$3");
-  a.href = `${a.dataset.kind}:${ISAAC_NUMBER}`;
+  const number = a.dataset.kind === "tel" ? ISAAC_VOICE : ISAAC_IMESSAGE;
+  if (!number) {
+    a.classList.add("off"); a.setAttribute("aria-disabled", "true"); a.removeAttribute("href");
+    if (a.dataset.kind === "sms") a.textContent = "Ask us to add your number";
+    return;
+  }
+  const pretty = number.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "+1 ($1) $2-$3");
+  a.href = `${a.dataset.kind}:${number}`;
   a.textContent = a.dataset.kind === "tel" ? `Call ${pretty}` : `Text ${pretty}`;
 });
 
