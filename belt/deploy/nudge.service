@@ -1,0 +1,23 @@
+# Template: deploy/install-service.sh fills in __USER__, __DIR__, __PYTHON__
+# and __ARGS__ and installs this as /etc/systemd/system/nudge.service.
+[Unit]
+Description=Nudge on-body runtime (tap guide)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+Environment=PYTHONUNBUFFERED=1
+# --tls: the iPhone only hands motion data to an HTTPS page.
+# Run as a module from the checkout, so nothing has to be pip-installed.
+ExecStart=__PYTHON__ -m nudge.main --tls __ARGS__
+# Whatever happened to the service, leave both arms at rest.
+ExecStopPost=-__PYTHON__ -m nudge.main taps --rest
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
