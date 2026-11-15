@@ -1585,11 +1585,15 @@ app.include_router(make_router(get_navigator))
 from .voice import make_router as voice_router  # noqa: E402
 
 
-def _register_voice_session(nav, sid):
+def _register_voice_session(nav, sid, tid=None):
     s = uuid.uuid4().hex[:10]
     _sessions[s] = nav
     _session_sid[s] = sid
-    _trace("session", session=s, sid=sid, goal=nav.goal, profile=nav.profile, by="voice",
+    # like an app trip: steps on this session reach whoever follows the traveller, so the caretaker sees
+    # the distance left and the arrival, not "walking" forever
+    if tid:
+        _session_traveller[s] = tid
+    _trace("session", session=s, sid=sid, goal=nav.goal, profile=nav.profile, by="voice", traveller=tid,
            route_m=round(nav.route.length, 1) if nav.route else None)
     _trace_nav(s, nav)
     # "take me to the kitchen" hands the route to the belt like any other walk. off the request's own
@@ -1605,7 +1609,10 @@ def _has_caretaker(tid):
 
 
 _voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker,
-                      on_turn=_voice_told, on_stall_answer=_stall_answer)
+                      on_turn=_voice_told, on_stall_answer=_stall_answer,
+                      # a traveller who hasn't named a building is in the venue (jrr), so isaac never asks
+                      # "which building are you in?". NUDGE_SITE overrides it; "demo corner" still switches
+                      default_sid=os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt")
 app.include_router(_voice)
 
 
@@ -1744,6 +1751,30 @@ def demo_facade(sid: str):
     if not f.exists():
         raise HTTPException(404, "no facade view cached")
     return Response(f.read_bytes(), media_type="image/jpeg")
+
+
+class CareText(BaseModel):
+    handle: str
+    text: str
+    traveller: str | None = None   # follow this traveller first, as texting "follow <code>" would
+
+
+_care_brain = None
+
+
+@app.post("/api/caretaker/text")
+def caretaker_text(req: CareText):
+    """the caretaker page's text box: the same bot that answers caretakers on the imessage line, without imessage."""
+    global _care_brain
+    from . import hub
+    from .photon_bot import CaretakerBrain
+    if _care_brain is None:
+        _care_brain = CaretakerBrain()
+    if req.traveller and (hub.caretaker(req.handle) or {}).get("traveller") != req.traveller:
+        code = (hub._load()["travellers"].get(req.traveller) or {}).get("code")
+        if code:
+            _care_brain.handle(req.handle, f"follow {code}")
+    return {"replies": _care_brain.handle(req.handle, req.text)}
 
 
 @app.get("/api/traveller/{tid}/messages")

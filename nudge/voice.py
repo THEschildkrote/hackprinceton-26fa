@@ -176,7 +176,7 @@ class Conversation:
 def make_router(get_navigator=None, register_session=None, graph_for=None, exception_factory=None,
                 explorer_factory=None, default_sid=None, agent_timeout=20.0, clock=time.monotonic,
                 has_caretaker=None, on_turn=None, on_stall_answer=None):
-    """get_navigator(session) and register_session(nav, sid) -> session tie voice trips to the server's sessions,
+    """get_navigator(session) and register_session(nav, sid, traveller) -> session tie voice trips to the server's sessions,
     so the band relay and the caretaker feed follow the same navigator. factories are injectable for tests.
     on_turn(traveller, heard, reply) sees every exchange (heard is None for a late agent answer)."""
     router = APIRouter(prefix="/api/voice")
@@ -199,9 +199,9 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
                 c.nav = nav
         return c.nav
 
-    def register(nav, sid):
+    def register(nav, sid, tid):
         if register_session:
-            return register_session(nav, sid)
+            return register_session(nav, sid, tid)
         s = uuid.uuid4().hex[:10]
         own_sessions[s] = nav
         return s
@@ -310,7 +310,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         if ev and ev[0].get("type") == "no_route":
             return [ev[0]["text"]]
         c.nav, c.choice, c.pending, c.agents = nav, None, None, {}
-        c.session = register(nav, c.sid)
+        c.session = register(nav, c.sid, c.tid)
         name = place.get("name") if isinstance(place, dict) else str(place)
         from .places import the
         said = the(place)
@@ -318,7 +318,8 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         c.trip = {"goal": name, "sid": c.sid, "start": [x, y, floor]}
         _attach(c.tid, c.session, c.sid, name, c.profile)
         _publish(c.tid, {"type": "trip_start", "goal": name, "sid": c.sid, "session": c.session,
-                         "length_m": round(nav.route.length, 1), "text": f"Started a trip to {said}."})
+                         "length_m": round(nav.route.length, 1), "remaining_m": round(nav.route.length, 1),
+                         "text": f"Started a trip to {said}."})
         lines = [f"Okay, going to {said}."]
         lines += [e["text"] for e in ev if e.get("text") and e.get("type") in ("route", "orient", "leg")]
         if not c.briefed:

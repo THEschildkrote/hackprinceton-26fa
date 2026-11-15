@@ -15,6 +15,10 @@ final class TravellerSettings {
     var code: String? { didSet { d.set(code, forKey: "code") } }
     var setupDone: Bool { didSet { d.set(setupDone, forKey: "setupDone") } }
     var lastTripData: Data? { didSet { d.set(lastTripData, forKey: "lastTrip") } }
+    // isaac's phone line (arkan's photon + elevenlabs agent). off a trip, a tap calls it and the trip they ask
+    // for lands on this phone. empty: a tap is tap-to-talk instead
+    var isaacLine: String { didSet { d.set(isaacLine, forKey: "isaacLine") } }
+    static let defaultIsaacLine = "609 527 8166"
 
     init() {
         // on an iphone hotspot the pi is usually 172.20.10.2-14
@@ -35,6 +39,7 @@ final class TravellerSettings {
         code = d.string(forKey: "code")
         setupDone = d.bool(forKey: "setupDone")
         lastTripData = d.data(forKey: "lastTrip")
+        isaacLine = d.string(forKey: "isaacLine") ?? Self.defaultIsaacLine
     }
 
     var api: API { API(base: server) }

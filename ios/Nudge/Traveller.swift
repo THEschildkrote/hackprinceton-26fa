@@ -2,9 +2,11 @@ import Foundation
 import Observation
 import UIKit
 
-// the traveller's phone, riding on their back. no screen use while walking: trips arrive from the caretaker,
-// calibration is a spoken countdown, guidance is spoken, the collar on the pi taps the shoulders, and the
-// traveller talks back ("where am I", "the door is locked", "yes").
+// the traveller's phone. a trip starts one of two ways: they tap anywhere, which calls isaac's line, and say
+// where they want to go (with no line set the tap is tap-to-talk instead), or their caretaker sends one.
+// either way the caretaker can follow it.
+// calibration is a spoken countdown, guidance is spoken, the belt taps, and a tap lets them talk back
+// ("where am I", "the door is locked", "yes").
 @MainActor
 @Observable
 final class Traveller {
@@ -12,7 +14,7 @@ final class Traveller {
 
     let settings: TravellerSettings
     private(set) var phase: Phase = .waiting
-    private(set) var status = "Waiting for a trip."
+    private(set) var status = "Tap anywhere to call Isaac."
     private(set) var trip: Trip?
     private(set) var session: String?
     private(set) var heading: Double?
@@ -20,6 +22,8 @@ final class Traveller {
     private(set) var piReachable = true
     private(set) var distanceToNext: Double?
     private(set) var heard = ""
+    private(set) var listening = false
+    private var micAllowed = false
     private var pendingApproval = false
     private var lastSaid = ""
 
@@ -35,8 +39,12 @@ final class Traveller {
 
     init(settings: TravellerSettings) {
         self.settings = settings
-        Speech.shared.onSpeaking = { [weak self] speaking in self?.listener.setPaused(speaking) }
-        listener.onUtterance = { [weak self] text in Task { await self?.command(text) } }
+        listener.onListening = { [weak self] on in
+            self?.listening = on
+            if !on { Speech.shared.holding = false }   // say what came in while they talked
+        }
+        listener.onUtterance = { [weak self] text in Haptic.tick(); Task { await self?.command(text) } }
+        listener.onNothingHeard = { [weak self] in self?.say("I didn't catch that. Tap and try again.") }
         motion.onHeading = { [weak self] deg, poor in self?.heading = deg; self?.compassPoor = poor }
         motion.onStep = { [weak self] in self?.onStep() }
     }
@@ -47,7 +55,7 @@ final class Traveller {
         // keep running with the screen on but dark; background audio keeps it alive if the screen locks
         UIApplication.shared.isIdleTimerDisabled = true
         Speech.shared.configureAudio()
-        if await Listener.requestAccess() { listener.start() }
+        micAllowed = await Listener.requestAccess()   // asked once; the mic stays off until a tap
         motion.mount = settings.mount
         motion.start()   // heading is ready by the time a trip arrives
         // trips are looked up by traveller id, which the pi only knows once we've registered
@@ -55,7 +63,7 @@ final class Traveller {
            let r = try? await settings.api.register(traveller: settings.traveller, name: settings.name) {
             settings.code = r.code
         }
-        say("Isaac is ready. Waiting for a trip.")
+        say("Isaac is ready. Tap the screen to call Isaac and say where you want to go.")
         startPolling()
     }
 
@@ -75,10 +83,59 @@ final class Traveller {
         }
     }
 
-    // double tap anywhere: run the last trip again
+    // MARK: tap to talk
+
+    var onTrip: Bool { phase == .starting || phase == .calibrating || phase == .walking }
+
+    // the whole screen. off a trip it calls isaac's line: the agent on the call plans the trip and it lands
+    // here like a caretaker's. on a trip (or with no line set) it opens the mic for one sentence
+    func tap() {
+        if !onTrip, !listener.listening, callIsaac() { return }
+        talk()
+    }
+
+    // false when there's no line set or the phone can't call (a simulator, an ipad): fall back to talking
+    @discardableResult
+    func callIsaac() -> Bool {
+        let digits = settings.isaacLine.filter(\.isNumber)
+        // no canOpenURL check: it needs the scheme declared in Info.plist. open() reports failure instead
+        guard digits.count >= 10, let url = URL(string: "tel://\(digits)") else { return false }
+        Speech.shared.hush()
+        status = "Calling Isaac."
+        Haptic.tick()
+        UIApplication.shared.open(url) { [weak self] ok in
+            Task { @MainActor in
+                guard let self else { return }
+                if !ok { self.status = "Tap anywhere and say where to go."; self.talk(); return }
+                // the trip arrives through the usual poll once the agent has it
+                self.status = "Waiting for your trip from the call."
+            }
+        }
+        return true
+    }
+
+    // a tap opens the mic for one sentence. tapping again while it listens sends it now
+    func talk() {
+        if listener.listening { listener.finishNow(); return }
+        guard micAllowed else {
+            say("Isaac can't use the microphone. Turn on the microphone and speech recognition in Settings.")
+            return
+        }
+        Speech.shared.hush()
+        Speech.shared.holding = true
+        if listener.listen() {
+            heard = ""
+            Haptic.tick()
+        } else {
+            Speech.shared.holding = false
+            say("Voice isn't ready yet. Try again in a moment.")
+        }
+    }
+
+    // "start my trip": run the last trip again
     func startLastTrip() async {
         guard let t = settings.lastTrip else {
-            say("No trip yet. Ask your caretaker to send one.")
+            say("No trip yet. Tap and say where you want to go.")
             return
         }
         await start(t, fromCaretaker: false)
@@ -230,7 +287,12 @@ final class Traveller {
                 await adopt(s, trip: reply.trip ?? r.trip)
             }
         } catch {
+            // a spoken command never goes unanswered: handle() only speaks the first time the server is lost
+            let wasReachable = piReachable
             handle(error)
+            if !wasReachable, !((error as? APIError)?.isUnknownSession ?? false) {
+                say("I can't reach the server. Check that the phone is on the hotspot.")
+            }
         }
     }
 
