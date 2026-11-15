@@ -21,6 +21,11 @@ the drawing above, so the elevator is at the top right here):
 source). Pick two places and it draws the shortest route on the scan with its turns, and "Snap photo" saves
 a PNG. Its routes are the shortest by edge length; they are not taken from `nudge/router.py`.
 
+`venue-3d.html` is the same graph in 3D: both floors stacked, each floored with the top-down scan capture,
+with a route picker, an exploded view and "Save PNG". Download it and open it in a browser. It loads
+three.js from a CDN, so the first open needs a network connection. The floors are flat captures of the
+scan, not the scan's 3D mesh.
+
 ## Landmarks
 
 The **Identify by** column is for what a blind traveller can tell without sight: what is underfoot, a
