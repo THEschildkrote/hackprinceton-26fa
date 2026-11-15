@@ -88,3 +88,21 @@ def test_a_call_with_no_caller_number_never_drives_someones_phone(code):
     c.get("/api/traveller/W/trip")                  # an isaac phone is on
     r = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_web_test01", "text": "take me to the kitchen"}).json()
     assert hub.get_trip("W") is None and r.get("session")    # the voice guide on its own; the phone is left alone
+
+
+@pytest.mark.parametrize("answer, floor", [("uh, upper floor", "Floor 2"), ("the second one", "Floor 2"), ("downstairs", "Floor 1")])
+def test_a_caller_can_answer_which_one(code, answer, floor):
+    c.get("/api/traveller/W/trip")
+    server._CALL_CHOICE.clear()
+    assert "Which one?" in c.post("/api/voice/call", json={"caller": "+15550007777", "text": "take me to the elevator"}).json()["say"]
+    c.post("/api/voice/call", json={"caller": "+15550007777", "text": answer})
+    assert hub.get_trip("W")["to"] == f"Elevator, {floor}"
+
+
+def test_what_the_model_understood_becomes_a_command_isaac_follows():
+    from nudge.understand import Meant, as_command
+    opts = ["Elevator, ground floor", "Elevator, upper floor"]
+    assert as_command(Meant(intent="choose", option=2), opts) == ("take me to Elevator, upper floor", "Elevator, upper floor")
+    assert as_command(Meant(intent="go_to", place="Lounge"))[0] == "take me to Lounge"
+    assert as_command(Meant(intent="problem", problem="a cart blocking me"))[0] == "a cart blocking me, it's in the way"
+    assert as_command(Meant(intent="other")) == (None, None)

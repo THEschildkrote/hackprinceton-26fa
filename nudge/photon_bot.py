@@ -336,8 +336,9 @@ def _only_phone_online():
     return live.pop() if len(live) == 1 else None
 
 
-def resolve_trip(text, sid_default, profile="blind"):
-    """(sid, building name or None, place name), or (None, None, a question to send back)."""
+def resolve_trip(text, sid_default, profile="blind", options_out=None):
+    """(sid, building name or None, place name), or (None, None, a question to send back). when the question is
+    "which one?", options_out (a list) gets the place names to choose from."""
     from . import places
     query = _clean_place(text)
     if not query or query.lower() in _NOT_A_PLACE:
@@ -361,6 +362,8 @@ def resolve_trip(text, sid_default, profile="blind"):
         if r["best"] and not r["ambiguous"]:
             return sid, name, r["best"]["name"]
         last = r["question"] if r["ambiguous"] else r["message"]
+        if r["ambiguous"] and options_out is not None:
+            options_out[:] = [o["name"] for o in r.get("options") or [] if o.get("name")]
     return None, None, last
 
 

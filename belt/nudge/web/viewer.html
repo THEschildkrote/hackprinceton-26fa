@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isaac viewer</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0f14; --panel: #151b23; --line: #263140; --text: #e8edf2; --dim: #8b98a7;
+          --route: #4da3ff; --pose: #ffd166; --ok: #3ddc97; --warn: #ffb020; --bad: #ff5d5d; --tap: #ff7a59; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .08em; }
+  .badge { padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; background: var(--panel);
+           border: 1px solid var(--line); }
+  .badge.NAVIGATING { background: #12305a; border-color: var(--route); color: #cfe6ff; }
+  .badge.ARRIVED { background: #0f3d2c; border-color: var(--ok); color: #c9f7e3; }
+  .badge.STOPPED, .badge.paused, .badge.offline { background: #4a1c1c; border-color: var(--bad); color: #ffd7d7; }
+  .badge.FLOOR { background: #4a3a10; border-color: #e0b84a; color: #fff0c4; }
+  button[hidden] { display: none; }
+  .spacer { flex: 1; }
+  select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+                   border-radius: 8px; padding: 7px 14px; }
+  button { cursor: pointer; font-weight: 600; }
+  button:hover { border-color: var(--dim); }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--route); outline-offset: 2px; }
+  button.go { background: #12305a; border-color: var(--route); }
+  button.halt { background: #4a1c1c; border-color: var(--bad); }
+  main { display: grid; grid-template-columns: minmax(90px, 14vw) 1fr minmax(90px, 14vw); min-height: 0; }
+  .pod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+         color: var(--dim); font-weight: 700; letter-spacing: .1em; }
+  .pod .lamp { width: min(9vw, 110px); aspect-ratio: 1; border-radius: 50%; background: var(--panel);
+               border: 3px solid var(--line); transition: background 60ms, box-shadow 60ms, transform 60ms; }
+  .pod.on .lamp { background: var(--tap); border-color: #ffd0c2; box-shadow: 0 0 40px 10px rgba(255, 122, 89, .55);
+                  transform: scale(1.08); }
+  .pod.on { color: var(--text); }
+  #map { width: 100%; height: 100%; display: block; min-height: 300px; }
+  footer { border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr minmax(260px, 34%); }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 26px; padding: 10px 16px; align-content: flex-start; }
+  .stat .k { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+  .stat .v { font: 600 22px/1.2 ui-monospace, Consolas, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  #log { margin: 0; padding: 10px 16px; list-style: none; border-left: 1px solid var(--line);
+         font: 13px/1.55 ui-monospace, Consolas, Menlo, monospace; height: 150px; overflow: hidden; }
+  #log li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #log .t { color: var(--dim); margin-right: 8px; }
+  #log .tap { color: var(--tap); } #log .loc { color: var(--ok); }
+  #msg { color: var(--warn); min-height: 1.4em; font-size: 14px; }
+  .hint { color: var(--dim); font-size: 13px; }
+  label.height { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--dim); }
+  label.height input { width: 150px; accent-color: var(--route); }
+  label.height input[type=checkbox] { width: auto; }
+  label.height select { width: auto; }
+  label.height span { min-width: 15.5em; font-variant-numeric: tabular-nums; }
+  /* A phone in the hand of whoever walks beside the wearer: everything reachable, nothing off the side. */
+  @media (max-width: 720px) {
+    footer { grid-template-columns: 1fr; }
+    #log { border-left: 0; border-top: 1px solid var(--line); height: 112px; }
+    header { gap: 8px; padding: 8px 10px; }
+    .spacer { display: none; }
+    select, button { padding: 9px 12px; }
+    label.height { flex-wrap: wrap; gap: 4px 8px; }
+    label.height input[type=range] { width: 130px; }
+    label.height span { min-width: 0; }
+    main { grid-template-columns: 50px 1fr 50px; }
+    .pod { gap: 6px; font-size: 10px; letter-spacing: 0; }
+    .pod .lamp { width: 34px; border-width: 2px; }
+    #map { min-height: 240px; }
+    .stats { gap: 4px 16px; padding: 8px 10px; }
+    .stat .v { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ISAAC</h1>
+  <span id="state" class="badge">connecting</span>
+  <span id="sensor" class="badge">no sensor</span>
+  <span id="msg" role="status" aria-live="polite"></span>
+  <span class="spacer"></span>
+  <span id="simhint" class="hint" hidden>sim: &larr; &rarr; turn, space = step</span>
+  <label class="height" title="Whoever is wearing it: scales the step length to their height">
+    Height
+    <input id="height" type="range" min="140" max="205" step="1" value="175" aria-label="Wearer height in centimetres">
+    <span id="heightText">--</span>
+  </label>
+  <select id="routes" aria-label="Route"></select>
+  <button id="load" type="button">Load route</button>
+  <button id="keep" type="button" title="Keep the route that is loaded now on the Pi under a name: it stays in this list, with no server needed">Keep route</button>
+  <button id="calibrate" type="button" title="Wearer stands on waypoint 0 facing waypoint 1 (key: C)">Calibrate</button>
+  <button id="start" class="go" type="button" title="Key: S">Start</button>
+  <button id="stop" class="halt" type="button" title="Key: X">Stop</button>
+  <label class="height" title="The wearer is standing on this waypoint right now: put the position there (key: M)">
+    Wearer is at
+    <select id="markWp" aria-label="Waypoint the wearer is standing on"></select>
+    <button id="mark" type="button" disabled>Fix position</button>
+  </label>
+  <label class="height" title="Let a sensor looking ahead stop the wearer for something in the way, and tap the way round. Off: readings are only shown.">
+    <input id="obstacleOn" type="checkbox" aria-label="Obstacle stop"> Obstacle stop
+  </label>
+  <button id="floor" type="button" hidden disabled
+          title="The wearer is on the next floor, standing where the route goes on (key: F)">Next floor</button>
+</header>
+
+<main>
+  <div class="pod" id="podL"><div class="lamp"></div>LEFT</div>
+  <canvas id="map" aria-label="Route map with the wearer's estimated position"></canvas>
+  <div class="pod" id="podR"><div class="lamp"></div>RIGHT</div>
+</main>
+
+<footer>
+  <div class="stats">
+    <div class="stat"><div class="k">Heading error</div><div class="v" id="err">--</div></div>
+    <div class="stat"><div class="k">To waypoint</div><div class="v" id="dist">--</div></div>
+    <div class="stat"><div class="k">Waypoint</div><div class="v" id="wp">--</div></div>
+    <div class="stat"><div class="k">Steps</div><div class="v" id="steps">--</div></div>
+    <div class="stat"><div class="k">Compass</div><div class="v" id="compass">--</div></div>
+    <div class="stat"><div class="k">Step length</div><div class="v" id="steplen">--</div></div>
+    <div class="stat"><div class="k">Compass bias</div><div class="v" id="bias">--</div></div>
+    <div class="stat"><div class="k">Pose</div><div class="v" id="frozen">--</div></div>
+    <div class="stat"><div class="k">Ahead</div><div class="v" id="ahead">--</div></div>
+  </div>
+  <ul id="log" aria-label="Recent taps and position corrections"></ul>
+</footer>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('map'), ctx = canvas.getContext('2d');
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const C = { line: css('--line'), dim: css('--dim'), route: css('--route'), pose: css('--pose'),
+              ok: css('--ok'), tap: css('--tap'), text: css('--text'), bad: css('--bad') };
+
+  let state = null, online = false, lastSeq = null, trail = [], routeKey = '', marks = [];
+  const lines = [];
+
+  function say(text) { $('msg').textContent = text || ''; if (text) setTimeout(() => { if ($('msg').textContent === text) $('msg').textContent = ''; }, 5000); }
+
+  // Every request to the Pi has a deadline. A fetch with none can wait for
+  // ever on a link that has gone quiet, and the page would go on showing the
+  // last state as if it were live.
+  async function request(path, options, ms) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), ms);
+    try {
+      const r = await fetch(path, { ...options, cache: 'no-store', signal: abort.signal });
+      return { ok: r.ok, data: await r.json().catch(() => ({})) };
+    } finally { clearTimeout(timer); }
+  }
+
+  async function post(path, body) {
+    try {
+      const r = await request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                      body: body ? JSON.stringify(body) : undefined }, 3000);
+      if (!r.ok) say(r.data.error || (path + ' failed'));
+      return r.ok;
+    } catch (err) { say('cannot reach the Pi'); return false; }
+  }
+
+  // -- taps: light the pods the way the servos move --------------------------------
+
+  function flash(pod, delay, ms) {
+    setTimeout(() => { pod.classList.add('on'); setTimeout(() => pod.classList.remove('on'), ms); }, delay);
+  }
+  function play(tap) {
+    const L = $('podL'), R = $('podR'), pod = tap.side === 'left' ? L : R;
+    if (tap.kind === 'tap') flash(pod, 0, 220);
+    else if (tap.kind === 'double_tap') { flash(pod, 0, 170); flash(pod, 320, 170); }
+    else if (tap.kind === 'stop') { flash(L, 0, 450); flash(R, 60, 450); }
+    else if (tap.kind === 'arrived') for (let i = 0; i < 3; i++) { flash(L, i * 560, 200); flash(R, i * 560 + 280, 200); }
+  }
+  const TAP_TEXT = { tap: (t) => 'tap ' + t.side + (t.reason === 'overturn' ? ' (turned too far: back a little)'
+                       : (t.reason === 'obstacle' ? ' (the way round)' : '')),
+                     double_tap: (t) => 'double tap ' + t.side,
+                     stop: (t) => 'STOP (both)' + (t.reason === 'floor' ? ': change of floor here'
+                       : (t.reason === 'obstacle' ? ': something in the way' : '')),
+                     arrived: () => 'ARRIVED' };
+  function describe(e) {
+    const m = (v) => (v == null ? '?' : v.toFixed(2));
+    switch (e.event) {
+      case 'turn_snap': return 'turn snap to waypoint ' + e.waypoint + ' (moved ' + m(e.moved_m) + ' m)';
+      case 'mark_snap': return 'position fixed at waypoint ' + e.waypoint + ' (moved ' + m(e.moved_m) + ' m)';
+      case 'step_length': return e.used === false
+        ? 'that leg measured ' + m(e.measured_m) + ' m a step: too far from ' + m(e.old_m) + ' m, not used'
+        : 'step length ' + m(e.old_m) + ' -> ' + m(e.new_m) + ' m';
+      case 'leg_advance': return 'next leg (' + (e.reason === 'passed' ? 'walked past waypoint ' : 'turned at waypoint ') + e.waypoint + ')';
+      case 'step_jump': return 'ignored ' + e.steps + ' steps arriving at once';
+      case 'freeze': return 'standing: pose frozen';
+      case 'unfreeze': return 'walking again';
+      default: return null;      // route snaps happen every step: counted, not listed
+    }
+  }
+  function addLine(t, text, cls) {
+    lines.push({ t, text, cls });
+    while (lines.length > 7) lines.shift();
+    $('log').innerHTML = '';
+    for (const line of lines) {
+      const li = document.createElement('li');
+      const time = document.createElement('span');
+      time.className = 't'; time.textContent = (line.t == null ? '' : line.t.toFixed(1) + ' s');
+      const body = document.createElement('span');
+      body.className = line.cls; body.textContent = line.text;
+      li.append(time, body); $('log').append(li);
+    }
+  }
+  function consume(s) {
+    const items = [...s.taps.map((t) => ({ ...t, tap: true })), ...s.events].sort((a, b) => a.seq - b.seq);
+    const newest = items.length ? items[items.length - 1].seq : 0;
+    if (lastSeq === null || newest < lastSeq) { lastSeq = newest; return; }   // first poll, or the Pi restarted
+    for (const item of items) {
+      if (item.seq <= lastSeq) continue;
+      if (item.tap) { play(item); addLine(item.t, TAP_TEXT[item.kind](item), 'tap'); }
+      else {
+        const text = describe(item);
+        if (text) addLine(item.t, text, 'loc');
+        if ((item.event === 'turn_snap' || item.event === 'mark_snap') && item.to) marks.push(item.to);
+      }
+    }
+    lastSeq = newest;
+  }
+
+  // -- status ----------------------------------------------------------------------
+
+  function setText(id, text) { $(id).textContent = text; }
+  let heightTouched = -1e9;
+  function heightLabel(cm, step) {
+    const inches = Math.round(cm / 2.54);
+    return cm + ' cm (' + Math.floor(inches / 12) + ' ft ' + (inches % 12) + ' in)' +
+           (step == null ? '' : ', step ' + step.toFixed(2) + ' m');
+  }
+  // "Wearer is at": the list holds this route's waypoints after the start, named as on the map.
+  // It follows the waypoint being walked towards until someone picks another one.
+  let markRoute = '', markTarget = null;
+  function syncMark(s) {
+    const n = s.route.waypoints.length - 1, list = $('markWp');
+    const key = JSON.stringify(s.route.waypoints);
+    if (key !== markRoute) {
+      markRoute = key; markTarget = null;
+      list.innerHTML = '';
+      for (let i = 1; i <= n; i++) {
+        const option = document.createElement('option');
+        option.value = String(i); option.textContent = i === n ? 'end' : String(i);
+        list.append(option);
+      }
+    }
+    if (n >= 1 && s.target !== markTarget) { markTarget = s.target; list.value = String(Math.min(Math.max(s.target, 1), n)); }
+    $('mark').disabled = !(s.calibrated && n >= 1);
+  }
+  let obstacleTouched = -1e9;
+  function refresh(s) {
+    const badge = $('state');
+    const label = !online ? 'offline' : (s.paused ? 'paused' : s.state);
+    const floors = s.route.floors || 1;
+    const floorText = floors > 1 ? ' (floor ' + (s.route.floor_index + 1) + ' of ' + floors + ')' : '';
+    badge.textContent = !online ? 'OFFLINE' : (s.paused ? 'PAUSED: NO SENSOR'
+      : (s.state === 'FLOOR' ? 'CHANGE FLOOR' : s.state) + floorText);
+    badge.className = 'badge ' + label;
+    // "Next floor" shows only for a route that goes on on another floor, and works once the walk is under way.
+    const more = online && s.route.floor_index + 1 < floors;
+    $('floor').hidden = !more;
+    $('floor').disabled = !(more && s.calibrated && ['FLOOR', 'NAVIGATING', 'STOPPED'].includes(s.state));
+    const sensor = $('sensor');
+    if (!s.sensor) { sensor.textContent = 'no sensor yet'; sensor.className = 'badge'; }
+    else if (!s.sensor_ok) { sensor.textContent = 'sensor silent'; sensor.className = 'badge offline'; }
+    else { sensor.textContent = s.source + ' ' + s.sensor.rate_hz.toFixed(0) + ' Hz'; sensor.className = 'badge'; }
+    const deg = (v, sign) => (v == null ? '--' : (sign && v > 0 ? '+' : '') + v.toFixed(0) + '°');
+    setText('err', s.state === 'NAVIGATING' ? deg(s.error_deg, true) : '--');
+    setText('dist', s.distance_m == null ? '--' : s.distance_m.toFixed(1) + ' m');
+    setText('wp', s.route.waypoints.length ? s.target + ' / ' + (s.route.waypoints.length - 1) : '--');
+    setText('steps', s.sensor ? String(s.sensor.step_count) : '--');
+    setText('compass', s.sensor ? deg(s.sensor.heading_deg) : '--');
+    setText('steplen', s.localizer.step_length_m.toFixed(2) + ' m');
+    setText('bias', s.localizer.drift_correction ? deg(s.localizer.bias_deg, true) : 'off');
+    setText('frozen', !s.calibrated ? 'uncalibrated' : (s.localizer.frozen ? 'frozen' : 'live'));
+    // What the sensor looking ahead sees, if there is one and it is still talking.
+    const o = s.obstacle;
+    const seeing = o && o.age_s != null && o.age_s <= 1.0;
+    const metres = (v) => (v == null ? 'clear' : v.toFixed(1) + ' m');
+    setText('ahead', !o || o.age_s == null ? 'no sensor' : (!seeing ? 'sensor silent'
+      : (o.blocked ? 'BLOCKED ' : '') + metres(o.ahead_m) + '  (L ' + metres(o.left_m) + ', R ' + metres(o.right_m) + ')'
+        + (o.enabled ? '' : '  shown only')));
+    // The switch follows the Pi, except just after someone here flipped it.
+    if (o && performance.now() - obstacleTouched > 1500) $('obstacleOn').checked = !!o.enabled;
+    $('ahead').style.color = seeing && o.blocked ? 'var(--bad)' : '';
+    $('simhint').hidden = !s.sim;
+    syncMark(s);
+    // The slider follows the Pi, except while someone here is moving it.
+    if (s.wearer && performance.now() - heightTouched > 1500) {
+      $('height').value = Math.round(s.wearer.height_cm);
+      $('heightText').textContent = heightLabel(Math.round(s.wearer.height_cm), s.localizer.step_length_m);
+    }
+  }
+
+  // -- map ---------------------------------------------------------------------------
+
+  function track(s) {
+    const key = JSON.stringify(s.route.waypoints);
+    if (key !== routeKey) { routeKey = key; trail = []; marks = []; }
+    if (!s.pose) { trail = []; return; }
+    const last = trail[trail.length - 1];
+    if (!last || Math.hypot(s.pose.x - last[0], s.pose.y - last[1]) > 0.03) trail.push([s.pose.x, s.pose.y]);
+    if (trail.length > 2000) trail.shift();
+  }
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const s = state;
+    const pts = s ? s.route.waypoints.slice() : [];
+    if (!pts.length) {
+      ctx.fillStyle = C.dim; ctx.font = '16px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(online ? 'No route loaded' : 'Waiting for the Pi…', w / 2, h / 2);
+      return;
+    }
+    const all = pts.concat(trail);
+    if (s.pose) all.push([s.pose.x, s.pose.y]);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of all) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const pad = 1.5;
+    x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
+    const scale = Math.min(w / (x1 - x0), h / (y1 - y0));
+    const ox = (w - (x1 - x0) * scale) / 2, oy = (h - (y1 - y0) * scale) / 2;
+    const X = (x) => ox + (x - x0) * scale, Y = (y) => h - oy - (y - y0) * scale;   // y up
+
+    ctx.lineWidth = 1; ctx.strokeStyle = C.line; ctx.beginPath();       // 1 m grid
+    for (let gx = Math.ceil(x0); gx <= x1; gx++) { ctx.moveTo(X(gx), Y(y0)); ctx.lineTo(X(gx), Y(y1)); }
+    for (let gy = Math.ceil(y0); gy <= y1; gy++) { ctx.moveTo(X(x0), Y(gy)); ctx.lineTo(X(x1), Y(gy)); }
+    ctx.stroke();
+    ctx.fillStyle = C.dim; ctx.font = '12px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('grid: 1 m', X(x0) + 8, Y(y0) - 8);
+
+    ctx.lineWidth = Math.max(4, scale * 0.12); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = C.route; ctx.globalAlpha = 0.55; ctx.beginPath();  // route
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.stroke(); ctx.globalAlpha = 1;
+
+    if (s.state === 'NAVIGATING' && pts[s.target]) {                     // arrival circle on the target
+      ctx.beginPath(); ctx.arc(X(pts[s.target][0]), Y(pts[s.target][1]), s.limits.arrive_radius_m * scale, 0, 2 * Math.PI);
+      ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5; ctx.strokeStyle = C.route; ctx.stroke(); ctx.setLineDash([]);
+    }
+    pts.forEach(([x, y], i) => {
+      const done = s.calibrated && i < s.target, last = i === pts.length - 1;
+      ctx.beginPath(); ctx.arc(X(x), Y(y), last ? 9 : 7, 0, 2 * Math.PI);
+      ctx.fillStyle = (s.state === 'ARRIVED' || done) ? C.ok : (i === s.target ? C.route : C.dim);
+      ctx.fill();
+      ctx.fillStyle = C.text; ctx.font = '600 13px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(i === 0 ? 'start' : (last ? 'end' : String(i)), X(x) + 12, Y(y) - 10);
+    });
+    for (const [x, y] of marks) {                                         // turn snaps
+      ctx.beginPath(); ctx.arc(X(x), Y(y), 15, 0, 2 * Math.PI); ctx.lineWidth = 2; ctx.strokeStyle = C.ok; ctx.stroke();
+    }
+    if (trail.length > 1) {                                               // where the wearer has been
+      ctx.lineWidth = 2.5; ctx.strokeStyle = C.pose; ctx.globalAlpha = 0.8; ctx.beginPath();
+      trail.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    if (s.pose) {
+      const px = X(s.pose.x), py = Y(s.pose.y), a = s.pose.heading_deg * Math.PI / 180;
+      if (s.state === 'NAVIGATING' && pts[s.target]) {
+        ctx.setLineDash([4, 6]); ctx.lineWidth = 1.5; ctx.strokeStyle = C.dim; ctx.beginPath();
+        ctx.moveTo(px, py); ctx.lineTo(X(pts[s.target][0]), Y(pts[s.target][1])); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.save(); ctx.translate(px, py); ctx.rotate(a);                   // heading 0 points up, clockwise positive
+      ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(12, 13); ctx.lineTo(0, 6); ctx.lineTo(-12, 13); ctx.closePath();
+      ctx.fillStyle = s.sensor_ok ? C.pose : C.bad; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#0b0f14'; ctx.stroke(); ctx.restore();
+    }
+  }
+
+  // -- polling and controls ------------------------------------------------------------
+
+  async function poll() {
+    try {
+      const r = await request('/state', {}, 1500);
+      if (!r.ok || !r.data.route) throw new Error('no state');
+      state = r.data;
+      online = true;
+      consume(state); track(state); refresh(state);
+    } catch (err) {
+      online = false;
+      if (state) refresh(state); else { $('state').textContent = 'OFFLINE'; $('state').className = 'badge offline'; }
+    }
+    draw();
+    setTimeout(poll, 100);
+  }
+
+  async function loadRoutes() {
+    try {
+      const data = (await request('/routes', {}, 3000)).data;
+      $('routes').innerHTML = '';
+      for (const name of data.routes) {
+        const opt = document.createElement('option'); opt.value = opt.textContent = name; $('routes').append(opt);
+      }
+    } catch (err) { /* the route list is a convenience only */ }
+  }
+
+  $('load').addEventListener('click', async () => {
+    if ($('routes').value && await post('/route', { name: $('routes').value })) { trail = []; marks = []; say('route loaded: calibrate before starting'); }
+  });
+  $('keep').addEventListener('click', async () => {
+    const was = state && state.route.name ? state.route.name : '';
+    const name = (prompt('Keep the loaded route on the Pi under this name (letters, digits, - and _):', was) || '').trim();
+    if (!name) return;
+    if (await post('/route/save', { name })) { say('kept as ' + name + ': it is in the route list now'); await loadRoutes(); $('routes').value = name; }
+  });
+  $('calibrate').addEventListener('click', async () => { if (await post('/calibrate')) { trail = []; marks = []; say('calibrated'); } });
+  $('start').addEventListener('click', () => post('/start'));
+
+  // Wearer height: dragging shows the value, letting go sends it to the Pi.
+  $('height').addEventListener('input', (e) => {
+    heightTouched = performance.now();
+    $('heightText').textContent = heightLabel(Number(e.target.value));
+  });
+  $('height').addEventListener('change', async (e) => {
+    heightTouched = performance.now();
+    const cm = Number(e.target.value);
+    if (await post('/wearer', { height_cm: cm })) say('step length set for a wearer of ' + cm + ' cm');
+  });
+  $('stop').addEventListener('click', () => post('/stop'));
+  $('obstacleOn').addEventListener('change', async (e) => {
+    obstacleTouched = performance.now();
+    const on = e.target.checked;
+    if (await post('/obstacle/mode', { enabled: on })) say('obstacle stop ' + (on ? 'on' : 'off'));
+    else e.target.checked = !on;
+  });
+  $('floor').addEventListener('click', async () => {
+    if (await post('/floor')) { trail = []; marks = []; say('on the next floor: guiding'); }
+  });
+  $('mark').addEventListener('click', async () => {
+    const list = $('markWp'), waypoint = Number(list.value);
+    if (!waypoint) return;
+    const name = list.selectedOptions[0].textContent;
+    if (await post('/mark', { waypoint })) { markTarget = null; say('position fixed at ' + (name === 'end' ? 'the end' : 'waypoint ' + name)); }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement
+        || e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (state && state.sim && ['arrowleft', 'arrowright', 'arrowup', ' '].includes(key)) {
+      e.preventDefault();
+      post('/sim', { key: key === 'arrowleft' ? 'left' : (key === 'arrowright' ? 'right' : 'step') });
+    } else if (key === 'c') $('calibrate').click();
+    else if (key === 's') $('start').click();
+    else if (key === 'x') $('stop').click();
+    else if (key === 'm') $('mark').click();
+    else if (key === 'f') $('floor').click();
+  });
+  window.addEventListener('resize', draw);
+
+  loadRoutes();
+  poll();
+})();
+</script>
+</body>
+</html>

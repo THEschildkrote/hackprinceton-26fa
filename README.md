@@ -55,7 +55,7 @@ The lead merges the results into `/dossier/annotations.json`, validates it, runs
 
 `nudge/agents/finalize.py` is the deterministic end of a run. Smaller models write sloppy JSON or stop before the last write, so it builds `annotations.json` from the subagents' files rather than trusting the lead's final message. A run also keeps a copy of `places.json` and restores it if the lead reshapes or deletes it.
 
-### 2. During the visit: deterministic, no model
+### 2. During the visit: deterministic
 
 - **Position** (`nudge/pdr.py`). The phone sends steps and a compass heading. Steps move the traveller along the route (0.7 m a step by default), not through open space, so step-count error stays along the corridor. The compass only matters when it disagrees with the route for three or more steps: 50 to 135 degrees off means they took another way and the navigator replans from there, and more than 135 degrees means they turned around. Stairs move them a floor after 16 steps on a staircase; an elevator does it after 10 seconds standing in it, then a step out.
 - **Graph and routing.** `walkgraph.py` links scan positions that have line of sight through the wall graph, treating doors and openings as passable, and joins floors through stairs and elevators. `router.py` runs A* with accessibility profiles (blind, wheelchair, default).
@@ -74,9 +74,9 @@ The wearable that is built is a belt: a Raspberry Pi, a PCA9685 board and two se
 
 `nudge/band.py` drives two SG90 servos on BCM 12 and 13. Direction is which shoulder taps and magnitude is how many strokes: one light stroke for a slight turn, two for a turn, three on both for arrival or a u-turn, one long press on both when off route. Steering is a single light tap toward the side to turn, at most once every 1.5 s. Cues have ranks (hazard, then state changes, then maneuvers, then steering), so a turn is never lost to a steering tap.
 
-`bandrun.py` connects a navigator to the band, and `bandserve.py` binds one collar to one server session (`NUDGE_BAND=1` attaches it to the first walk that starts, `NUDGE_BAND=dry` wires it up with no GPIO). Wiring, the power warning and the full cue table are in [docs/band-pi.md](docs/band-pi.md).
+`bandrun.py` connects a navigator to the band, and `bandserve.py` binds one belt to one server session (`NUDGE_BAND=1` attaches it to the first walk that starts, `NUDGE_BAND=dry` wires it up with no GPIO). Wiring, the power warning and the full cue table are in [docs/band-pi.md](docs/band-pi.md).
 
-`firmware/` holds an earlier ESP32 band with vibration motors. It speaks the same line protocol (`nudge/device.py`), but the live demo uses the Pi collar.
+`firmware/` holds an earlier ESP32 band with vibration motors. It speaks the same line protocol (`nudge/device.py`), but the live demo uses the Pi belt.
 
 ## What's in the repo
 

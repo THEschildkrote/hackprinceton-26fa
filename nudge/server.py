@@ -1629,6 +1629,36 @@ class CallTurn(BaseModel):
 
 
 _WALKING = ("walking", "off_route", "rerouting")
+_CALL_CHOICE = {}   # traveller -> {"options", "query", "ts"}: the "which one?" a caller still owes an answer to
+_FILLER = {"uh", "um", "er", "the", "a", "one", "please", "that", "i", "want", "go", "to", "on", "um,"}
+
+
+def _call_pick(choice, text):
+    """the caller's answer to "which one?": an ordinal, words that name one option, else the words added to the ask."""
+    from .voice import ORDINALS, _norm
+    words = [w for w in _norm(text).split() if w not in _FILLER]
+    opts = choice["options"]
+    up = {"upper", "upstairs", "top", "higher", "above"} & set(words) or ("second" in words and "floor" in words)
+    down = {"ground", "downstairs", "lower", "bottom", "below"} & set(words) or ("first" in words and "floor" in words)
+    if up or down:    # "the upper floor": the option on the highest floor (or the lowest), whatever the scan calls it
+        def level(o):
+            low = o.lower()
+            if any(k in low for k in ("upper", "second", "floor 2", "2nd", "top")):
+                return 2
+            if any(k in low for k in ("ground", "first", "floor 1", "1st", "lower", "basement")):
+                return 1
+            return None
+        ranked = sorted((lv, o) for o in opts for lv in [level(o)] if lv is not None)
+        if ranked:
+            return (ranked[-1] if up else ranked[0])[1]
+    for w in words:
+        if w in ORDINALS and opts:
+            i = ORDINALS[w]
+            return opts[i] if -len(opts) <= i < len(opts) else None
+    hits = [o for o in opts if words and all(w in o.lower() for w in words if len(w) > 2)]
+    if len(hits) == 1:
+        return hits[0]
+    return f"{choice['query']} {' '.join(words)}".strip() if words else None
 
 
 @app.post("/api/voice/call")
@@ -1650,31 +1680,54 @@ def voice_call(req: CallTurn):
         if tid:
             hub.set_walker(caller, tid)
     _trace("voice", session=None, who="caller", text=req.text, traveller=tid or caller or "caller", via="phone")
+    anon = None if tid else (caller or (f"call-{req.conversation[-12:]}" if req.conversation else "caller"))
+    st = hub.status(tid) or {} if tid else {}
+    # what they meant, in their own words: the model maps free speech to a command and a real place name
+    from .understand import as_command, meant
+    pend = _CALL_CHOICE.get(tid) if tid else None
+    if pend is None and anon:
+        conv = _voice.conversations.get(anon)
+        if conv is not None and conv.choice:
+            pend = {"options": [o["name"] for o in conv.choice.get("options") or [] if o.get("name")]}
+    options = (pend or {}).get("options") or None
+    m = meant(req.text, st.get("sid") or _voice_building(), options)
+    text, picked = as_command(m, options)
+    text = text or req.text
+    if m is not None:
+        _trace("voice", session=None, who="understood", text=text, traveller=tid or anon, via="phone",
+               intent=m.intent)
     from .voice import THANKS
-    if THANKS.match(_norm(req.text)) and re.search(r"\b(bye|goodbye|see you)\b", req.text, re.I):
+    if THANKS.match(_norm(text)) and re.search(r"\b(bye|goodbye|see you)\b", text, re.I):
         return {"say": "Okay. Your phone and belt keep guiding you. Bye."}
     if tid is None:
-        anon = f"call-{req.conversation[-12:]}" if req.conversation else "caller"
-        return _voice.turn(Turn(traveller=caller or anon, text=req.text,
-                                sid=os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt"))
-    st = hub.status(tid) or {}
+        return _voice.turn(Turn(traveller=anon, text=text, sid=_voice_building()))
     walking = st.get("state") in _WALKING and st.get("session")
-    place = None
-    if not walking:
-        m = WANT.match(req.text.strip())
+    place = picked if picked and not walking else None
+    if place is not None:
+        _CALL_CHOICE.pop(tid, None)
+    if place is None and not walking:
+        m = WANT.match(text.strip())
         if m:
             place = m["place"]
         else:
-            m = TRIP.match(_norm(req.text)) or PLACEQ.match(_norm(req.text))
+            m = TRIP.match(_norm(text)) or PLACEQ.match(_norm(text))
             if m:
                 place = m["place"] + (f" at {m['bldg']}" if m["bldg"] else "")
+    if place is None and not walking:
+        ch = _CALL_CHOICE.pop(tid, None)
+        if ch and time.time() - ch["ts"] < 180:
+            place = _call_pick(ch, text)
     if place is None:
         # a phone that has never had a trip has no building yet: the venue, as a caller with no phone gets
-        return _voice.turn(Turn(traveller=tid, text=req.text, sid=st.get("sid") or VENUE,
+        return _voice.turn(Turn(traveller=tid, text=text, sid=st.get("sid") or _voice_building(),
                                 session=st.get("session") if walking else None))
     profile = st.get("profile") or "blind"
-    sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt", profile)
+    opts = []
+    sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt", profile,
+                                  options_out=opts)
     if sid is None:
+        if opts:   # "which one?": remember it, so "the upper floor" or "the second one" picks one next turn
+            _CALL_CHOICE[tid] = {"options": opts, "query": place, "ts": time.time()}
         return {"say": to, "trip": None}
     hub.set_trip(tid, {"sid": sid, "to": to, "profile": profile, "by": "walker"})
     hub.publish(tid, {"type": "trip_requested", "goal": to, "text": f"{st.get('name') or 'The traveller'} asked "

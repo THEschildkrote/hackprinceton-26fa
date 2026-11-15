@@ -1,0 +1,594 @@
+From 27392b51f7be5a9d6a8a3f9e0b934759452d402c Mon Sep 17 00:00:00 2001
+From: THEschildkrote <THEschildkrote@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 13:42:31 -0500
+Subject: [PATCH] belt: hand the route to the pi's on-body runtime and follow
+ its position
+
+the wearable that got built is a belt on a pca9685, driven by its own runtime on the pi. NUDGE_BELT_URL points us at it: nav start sends the route as /api/route returns it, calibrate lines the belt up and starts it, and its position is fed back to the navigator so speech, the hub and the caretaker follow the wearer. best effort throughout, like the collar: a belt that is off never breaks a walk. see docs/belt.md.
+---
+ docs/belt.md       |  63 ++++++++++++++
+ nudge/belt.py      | 203 +++++++++++++++++++++++++++++++++++++++++++++
+ nudge/server.py    |  68 +++++++++++++++
+ tests/test_belt.py | 190 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 524 insertions(+)
+ create mode 100644 docs/belt.md
+ create mode 100644 nudge/belt.py
+ create mode 100644 tests/test_belt.py
+
+diff --git a/docs/belt.md b/docs/belt.md
+new file mode 100644
+index 0000000..eb4c47d
+--- /dev/null
++++ b/docs/belt.md
+@@ -0,0 +1,63 @@
++# The belt
++
++The belt is the wearable that is actually built: two servos on a PCA9685 board, a Raspberry Pi, and the
++traveller's iPhone as the step and heading sensor. The Pi runs its own on-body runtime (a separate
++codebase, not this repository). That runtime owns everything from the steps down: it reads the phone,
++keeps the wearer's position, and fires the taps.
++
++This repository owns everything before the steps: the building, the route, the words. The two meet at a
++handful of HTTP calls, in `nudge/belt.py`.
++
++It is separate from the collar in [band-pi.md](band-pi.md). `nudge/band.py` drives servos on GPIO 12 and
++13; the belt's servos are on the PCA9685 over I2C, which that driver does not speak. Use one or the other.
++
++## Running it
++
++On the Pi, the on-body runtime is already listening on port 8000. On the laptop:
++
++```bash
++NUDGE_BELT_URL=http://172.20.10.2:8000 python -m uvicorn nudge.server:app --port 8765
++```
++
++Leave `NUDGE_BAND` unset. Without `NUDGE_BELT_URL` nothing here does anything.
++
++## What happens
++
++| Our call | What the belt is told | Notes |
++|---|---|---|
++| `POST /api/nav/start` | `POST /route` with the route's points, exactly as `/api/route` returns them | if the belt is mid-walk it is stopped first; it refuses a new route while guiding |
++| `POST /api/nav/calibrate` | `POST /calibrate`, then `POST /start` | the wearer is on the first point, facing the second |
++| `POST /api/belt/begin {session}` | the same, without a phone compass | for starting from the debug view |
++| (every half second while walking) | `GET /state` | the wearer's position is fed to the navigator like a `/api/nav/update`, so speech, the hub and the caretaker follow the belt |
++| `POST /api/belt/stop` | `POST /stop` | taps both sides |
++| `POST /api/belt/wearer {height_cm}` | `POST /wearer` | scales the belt's step length to the wearer |
++| `GET /api/belt` | `GET /state` | `enabled`, `session`, `walking`, the belt's reply to the route, the last `error`, and what the belt reports |
++
++The belt's position comes back in our own model frame, because that is the frame the route was sent in.
++Its heading is compass style in that frame (degrees clockwise from +y); `belt.model_heading` turns it into
++ours (radians counter-clockwise from +x).
++
++Like the collar, all of this is best effort. A belt that is off, out of range or refusing never turns a
++nav request into a 500: the route still plans and speaks, and `GET /api/belt` says what went wrong.
++
++## What the belt cannot do yet
++
++- **Change floor.** It follows the route up to the first change of floor and reports how many points it
++  dropped (`route.dropped_other_floors`). Send it the next floor's route once the wearer is there.
++- **Take a new route mid-walk.** A reroute has to stop the belt and calibrate again at the start of the
++  new route, because it lines itself up by having the wearer face the first leg.
++- **Play our cue grammar.** It taps left or right to steer, and has a stop and an arrival pattern. There is
++  no hazard, off-route or floor cue on it.
++- **Two position sources.** While the belt is walking, do not also post `/api/nav/step` from the phone
++  app for the same session; the two would disagree about where the wearer is.
++
++## Tested
++
++`tests/test_belt.py` runs the real server against a stand-in belt: the route is sent in our format,
++calibrate lines it up and starts it, its position moves our navigator, arrival ends the feed, a new walk
++takes the belt over, and a belt that is off never breaks a walk.
++
++It has also been run against the real on-body runtime in simulator mode on a laptop: the synthetic
++building's route was handed over (five points on the first floor, two on the second dropped), the walk
++was started, and after four steps both sides had the wearer at (4.0, 1.5) facing along the first leg.
++It has not yet been walked on the belt itself with a route from here.
+diff --git a/nudge/belt.py b/nudge/belt.py
+new file mode 100644
+index 0000000..2d118fb
+--- /dev/null
++++ b/nudge/belt.py
+@@ -0,0 +1,203 @@
++"""the belt: a raspberry pi that runs its own on-body runtime and taps the wearer.
++
++everything upstream of the steps is ours: the building, the route, the words. the belt does the walking part
++itself. the phone's steps and heading go straight to the pi, the pi keeps the position and fires the taps. we
++hand it the route and read back where the wearer is.
++
++    NUDGE_BELT_URL=http://172.20.10.2:8000 python -m uvicorn nudge.server:app --port 8765
++
++- nav start      -> POST /route                the route's points, exactly as /api/route returns them
++- nav calibrate  -> POST /calibrate, /start    the wearer stands on the first point, facing the second
++- while walking  -> GET  /state                their position, in our model frame, fed to the navigator
++- /api/belt/stop -> POST /stop                 taps both sides
++
++everything here is best effort, like the collar: a belt that is off, out of range or refusing must never
++turn a nav request into a 500. the route still plans and speaks; you just can't feel it. the last error is
++kept for GET /api/belt.
++
++what the belt cannot do yet: change floor (it follows the route up to the first floor change) and take a
++new route mid-walk (it has to be stopped and re-calibrated at the start of the new one).
++"""
++import json
++import math
++import os
++import threading
++import time
++import urllib.error
++import urllib.request
++
++TIMEOUT_S = 3.0
++POLL_S = 0.5
++
++# the pi is on the phone's hotspot or a cable: never send it through a proxy
++_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
++_lock = threading.Lock()
++_state = {"session": None, "floor": None, "error": None, "link_error": None, "route": None, "walking": False,
++          "thread": None}
++
++
++class BeltError(Exception):
++    pass
++
++
++def url():
++    u = (os.environ.get("NUDGE_BELT_URL") or "").strip().rstrip("/")
++    if u and "://" not in u:
++        u = "http://" + u
++    return u or None
++
++
++def enabled():
++    return url() is not None
++
++
++def _call(method, path, body=None):
++    base = url()
++    if not base:
++        raise BeltError("NUDGE_BELT_URL is not set")
++    data = None if body is None else json.dumps(body).encode()
++    headers = {"Accept": "application/json"}
++    if data is not None:
++        headers["Content-Type"] = "application/json"
++    req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
++    try:
++        with _opener.open(req, timeout=TIMEOUT_S) as r:
++            return json.loads(r.read().decode())
++    except urllib.error.HTTPError as ex:  # the belt answered and said no; it says why
++        try:
++            why = json.loads(ex.read().decode()).get("error")
++        except Exception:
++            why = None
++        raise BeltError(f"{method} {path}: {why or 'HTTP ' + str(ex.code)}") from None
++    except (urllib.error.URLError, OSError, ValueError) as ex:
++        raise BeltError(f"{method} {path}: {getattr(ex, 'reason', ex)}") from None
++
++
++def _try(fn, *args):
++    """run one belt command; never raise. returns its result, or None with the reason kept in `error`
++    until the next command succeeds."""
++    try:
++        out = fn(*args)
++        _state["error"] = None
++        return out
++    except BeltError as ex:
++        _state["error"] = str(ex)
++        return None
++
++
++def _poll():
++    """the belt's /state, or None. a failed poll is a link problem, kept apart from a refused command."""
++    try:
++        st = _call("GET", "/state")
++        _state["link_error"] = None
++        return st
++    except BeltError as ex:
++        _state["link_error"] = str(ex)
++        return None
++
++
++def model_heading(belt_heading_deg):
++    """the belt's heading is compass style in the route frame: degrees clockwise from +y.
++    ours is radians counter-clockwise from +x (geom.heading)."""
++    h = math.radians(90.0 - belt_heading_deg)
++    return (h + math.pi) % (2 * math.pi) - math.pi
++
++
++def send_route(session, nav):
++    """give the belt this session's route. the belt has one wearer, so this takes it over."""
++    if not enabled() or not getattr(nav, "route", None):
++        return None
++    points = nav.route.to_dict(nav.g)["points"]
++
++    def go():
++        if (_call("GET", "/state").get("state")) == "NAVIGATING":
++            _call("POST", "/stop")  # it refuses a new route while it is guiding
++        return _call("POST", "/route", {"route": {"points": points}})
++
++    out = _try(go)
++    with _lock:
++        _state.update(session=session, floor=points[0][2], route=out, walking=False)
++    return out
++
++
++def begin(session):
++    """the wearer is on the first point facing the second: line the belt up and let it guide."""
++    if not enabled() or _state["session"] != session:
++        return None
++
++    def go():
++        cal = _call("POST", "/calibrate")
++        _call("POST", "/start")
++        return cal
++
++    out = _try(go)
++    _state["walking"] = out is not None
++    return out
++
++
++def stop():
++    out = _try(_call, "POST", "/stop") if enabled() else None
++    _state["walking"] = False
++    return out
++
++
++def wearer(height_cm):
++    """someone else is wearing it: the belt scales its step length to their height."""
++    return _try(_call, "POST", "/wearer", {"height_cm": height_cm}) if enabled() else None
++
++
++def position():
++    """(x, y, floor, heading, belt_state) where the belt thinks the wearer is, or None."""
++    st = _poll() if enabled() else None
++    if not st or not st.get("pose"):
++        return None
++    p = st["pose"]
++    return p["x"], p["y"], _state["floor"], model_heading(p["heading_deg"]), st.get("state")
++
++
++def follow(session, apply):
++    """keep calling apply(x, y, floor, heading) with the belt's position while this session walks.
++
++    one daemon thread, started once per session. it stops when the session is replaced, when detach()
++    is called, or after the belt reports ARRIVED (one last position first, so the navigator arrives too).
++    """
++    if not enabled():
++        return None
++
++    def loop():
++        while _state["session"] == session and _state["thread"] is me:
++            pos = position()
++            if pos and pos[4] in ("NAVIGATING", "ARRIVED"):
++                try:
++                    apply(*pos[:4])
++                except Exception as ex:  # a navigator hiccup must not kill the feed
++                    _state["error"] = f"apply: {ex}"
++                if pos[4] == "ARRIVED":
++                    _state["walking"] = False
++                    return
++            time.sleep(POLL_S)
++
++    me = threading.Thread(target=loop, name="nudge-belt", daemon=True)
++    with _lock:
++        _state["thread"] = me
++    me.start()
++    return me
++
++
++def detach():
++    """forget the session; the follow thread ends on its next turn. does not stop the belt."""
++    with _lock:
++        _state.update(session=None, floor=None, route=None, walking=False, thread=None, error=None,
++                      link_error=None)
++
++
++def status():
++    out = {"enabled": enabled(), "url": url(), "session": _state["session"], "walking": _state["walking"],
++           "route": _state["route"], "error": _state["error"], "belt": None}
++    if enabled():
++        st = _poll()
++        out["error"] = _state["error"] or _state["link_error"]
++        if st:
++            out["belt"] = {k: st.get(k) for k in ("state", "calibrated", "sensor_ok", "paused", "pose", "target",
++                                                   "distance_m")}
++    return out
+diff --git a/nudge/server.py b/nudge/server.py
+index 52db11b..0022064 100644
+--- a/nudge/server.py
++++ b/nudge/server.py
+@@ -250,6 +250,41 @@ def _hub_to_traces():
+ _hub_to_traces()
+ 
+ 
++def _belt_apply(session, x, y, floor, heading):
++    """a position from the belt, treated like one from POST /api/nav/update: the navigator moves, the hub
++    hears about it, the caretaker sees progress. the belt does its own taps, so the collar is left alone."""
++    nav = _sessions.get(session)
++    if nav is None:
++        return
++    ev = nav.update(x, y, floor, heading)
++    _publish(session, nav, ev)
++    _trace_nav(session, nav, ev, source="belt")
++    tid = _session_traveller.get(session)
++    if tid:
++        from . import hub
++        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
++
++
++def _belt_start(session, nav):
++    """hand this walk's route to the belt and start following its position. best effort, always:
++    NUDGE_BELT_URL unset, the pi off or the belt refusing must never turn a nav request into a 500."""
++    try:
++        from . import belt
++        if belt.enabled():
++            belt.send_route(session, nav)
++            belt.follow(session, lambda x, y, floor, heading: _belt_apply(session, x, y, floor, heading))
++    except Exception:
++        pass
++
++
++def _belt_begin(session):
++    try:
++        from . import belt
++        belt.begin(session)
++    except Exception:
++        pass
++
++
+ def _nav(session):
+     s = _sessions.get(session)
+     if not s:
+@@ -330,6 +365,7 @@ def nav_start(req: StartReq):
+            route_m=round(nav.route.length, 1) if nav.route else None)
+     _trace_nav(sid, nav, ev)
+     _band_sync(sid, nav, req.heading, start=True)
++    _belt_start(sid, nav)
+     from .pdr import Tracker
+     if site is None and not req.building:
+         from .pdr import site_for
+@@ -383,6 +419,7 @@ def nav_calibrate(req: CalibrateReq):
+     nav, tr = _tracker(req.session)
+     out = tr.calibrate(req.heading_deg)
+     _band_sync(req.session, nav, tr.to_model(req.heading_deg))
++    _belt_begin(req.session)
+     return out
+ 
+ 
+@@ -440,6 +477,37 @@ def band_status():
+     return bandserve.status()
+ 
+ 
++class BeltWearerReq(BaseModel):
++    height_cm: float
++
++
++@app.get("/api/belt")
++def belt_status():
++    """is NUDGE_BELT_URL set, which session has the belt, its last error, and what the belt itself reports."""
++    from . import belt
++    return belt.status()
++
++
++@app.post("/api/belt/begin")
++def belt_begin(body: dict):
++    """calibrate and start the belt without a phone compass: the wearer is on the first point, facing the second."""
++    from . import belt
++    return {"ok": belt.begin(body.get("session")) is not None, **belt.status()}
++
++
++@app.post("/api/belt/stop")
++def belt_stop():
++    from . import belt
++    return {"ok": belt.stop() is not None, **belt.status()}
++
++
++@app.post("/api/belt/wearer")
++def belt_wearer(req: BeltWearerReq):
++    """someone else is wearing it: the belt scales its step length to their height."""
++    from . import belt
++    return {"ok": belt.wearer(req.height_cm) is not None, **belt.status()}
++
++
+ @app.post("/api/nav/block")
+ def nav_block(req: BlockReq):
+     nav = _nav(req.session)
+diff --git a/tests/test_belt.py b/tests/test_belt.py
+new file mode 100644
+index 0000000..9d2d537
+--- /dev/null
++++ b/tests/test_belt.py
+@@ -0,0 +1,190 @@
++"""the belt hand-off: our route goes to the pi's on-body runtime, its position comes back.
++
++the belt here is a stand-in that answers the five calls the real runtime does, with the same refusals.
++"""
++import json
++import math
++import threading
++import time
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++
++import pytest
++from fastapi.testclient import TestClient
++
++from nudge import belt, server
++
++c = TestClient(server.app)
++START = {"sid": "synthetic", "to": "Conference Room", "profile": "blind", "x": 2, "y": 1.5, "floor": "f1"}
++
++
++class FakeBelt:
++    def __init__(self):
++        self.calls, self.state, self.pose, self.waypoints, self.calibrated = [], "IDLE", None, [], False
++        me = self
++
++        class H(BaseHTTPRequestHandler):
++            def do_GET(self):
++                self._answer(None)
++
++            def do_POST(self):
++                n = int(self.headers.get("Content-Length") or 0)
++                self._answer(json.loads(self.rfile.read(n)) if n else None)
++
++            def _answer(self, body):
++                code, out = me.handle(self.command, self.path, body)
++                data = json.dumps(out).encode()
++                self.send_response(code)
++                self.send_header("Content-Type", "application/json")
++                self.send_header("Content-Length", str(len(data)))
++                self.end_headers()
++                self.wfile.write(data)
++
++            def log_message(self, *a):
++                pass
++
++        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
++        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
++        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
++
++    def handle(self, method, path, body):
++        self.calls.append((method, path, body))
++        if path == "/state":
++            return 200, {"state": self.state, "calibrated": self.calibrated, "sensor_ok": True, "paused": False,
++                         "pose": self.pose, "target": 1, "distance_m": None}
++        if path == "/route":
++            if self.state == "NAVIGATING":
++                return 409, {"ok": False, "error": "guidance is running: stop first, then load the route"}
++            pts = body["route"]["points"]
++            self.waypoints = [p[:2] for p in pts if p[2] == pts[0][2]]
++            self.state, self.calibrated = "IDLE", False
++            return 200, {"ok": True, "waypoints": len(self.waypoints), "given": len(pts),
++                         "dropped_other_floors": len(pts) - len(self.waypoints)}
++        if path == "/calibrate":
++            self.calibrated = True
++            return 200, {"ok": True}
++        if path == "/start":
++            if not self.calibrated:
++                return 409, {"ok": False, "error": "not calibrated"}
++            self.state = "NAVIGATING"
++            return 200, {"ok": True}
++        if path == "/stop":
++            self.state = "STOPPED" if self.state == "NAVIGATING" else self.state
++            return 200, {"ok": True}
++        if path == "/wearer":
++            return 200, {"ok": True, "height_cm": body["height_cm"], "step_length_m": 0.5 * body["height_cm"] / 175}
++        return 404, {"ok": False, "error": "not found"}
++
++    def posts(self):
++        return [(p, b) for m, p, b in self.calls if m == "POST"]
++
++    def close(self):
++        self.httpd.shutdown()
++        self.httpd.server_close()
++
++
++@pytest.fixture
++def fake(monkeypatch):
++    f = FakeBelt()
++    monkeypatch.setenv("NUDGE_BELT_URL", f.url)
++    monkeypatch.setattr(belt, "POLL_S", 0.02)
++    belt.detach()
++    yield f
++    belt.detach()
++    f.close()
++
++
++def wait(cond, timeout=3.0):
++    end = time.time() + timeout
++    while not cond():
++        assert time.time() < end, "timed out"
++        time.sleep(0.01)
++
++
++def test_nothing_is_sent_without_a_belt_url(monkeypatch):
++    monkeypatch.delenv("NUDGE_BELT_URL", raising=False)
++    belt.detach()
++    s = c.post("/api/nav/start", json=START)
++    assert s.status_code == 200
++    st = c.get("/api/belt").json()
++    assert st["enabled"] is False and st["session"] is None and st["belt"] is None
++
++
++def test_a_walk_start_sends_the_route_as_api_route_returns_it(fake):
++    s = c.post("/api/nav/start", json=START).json()
++    path, body = fake.posts()[0]
++    assert path == "/route"
++    assert body == {"route": {"points": s["state"]["route"]["points"]}}
++    assert all(len(p) == 3 for p in body["route"]["points"])          # x, y, floor: the belt reads all three
++    st = c.get("/api/belt").json()
++    assert st["enabled"] and st["session"] == s["session"] and st["error"] is None
++    assert st["route"]["dropped_other_floors"] == len(body["route"]["points"]) - len(fake.waypoints)
++    assert fake.state == "IDLE" and not st["walking"]                 # nothing moves until the wearer is lined up
++
++
++def test_calibrate_lines_the_belt_up_and_starts_it(fake):
++    s = c.post("/api/nav/start", json=START).json()
++    r = c.post("/api/nav/calibrate", json={"session": s["session"], "heading_deg": 90.0})
++    assert r.status_code == 200
++    assert [p for p, _ in fake.posts()] == ["/route", "/calibrate", "/start"]
++    assert fake.state == "NAVIGATING" and c.get("/api/belt").json()["walking"]
++
++
++def test_the_belts_position_moves_our_navigator(fake):
++    s = c.post("/api/nav/start", json=START).json()
++    nav = server.get_navigator(s["session"])
++    c.post("/api/belt/begin", json={"session": s["session"]})
++    # the belt reports where the wearer is in our own frame, heading as a compass in that frame:
++    # 90 degrees clockwise from +y is along +x, which is 0 radians for us.
++    fake.pose = {"x": 4.0, "y": 1.5, "heading_deg": 90.0}
++    wait(lambda: nav.pos is not None and abs(nav.pos[0] - 4.0) < 1e-6)
++    assert nav.pos[:3] == (4.0, 1.5, "f1")
++    assert abs(nav.heading) < 1e-6
++    assert nav.progress > 1.5                                           # two metres along the first leg
++
++
++def test_arrival_at_the_belt_ends_the_feed(fake):
++    s = c.post("/api/nav/start", json=START).json()
++    c.post("/api/belt/begin", json={"session": s["session"]})
++    fake.pose, fake.state = {"x": 13.0, "y": 7.0, "heading_deg": 0.0}, "ARRIVED"
++    wait(lambda: not c.get("/api/belt").json()["walking"])
++    polls = len(fake.calls)
++    time.sleep(0.15)
++    assert len([x for x in fake.calls[polls:] if x[1] == "/state"]) <= 1   # only the status call above
++
++
++def test_a_new_walk_takes_the_belt_over_and_stops_the_old_one(fake):
++    first = c.post("/api/nav/start", json=START).json()
++    c.post("/api/belt/begin", json={"session": first["session"]})
++    assert fake.state == "NAVIGATING"
++    second = c.post("/api/nav/start", json=dict(START, to="Kitchen")).json()
++    assert [p for p, _ in fake.posts()][-2:] == ["/stop", "/route"]    # it refuses a route while guiding
++    assert c.get("/api/belt").json()["session"] == second["session"]
++
++
++def test_a_belt_that_is_off_never_breaks_a_walk(monkeypatch):
++    monkeypatch.setenv("NUDGE_BELT_URL", "http://127.0.0.1:9")
++    monkeypatch.setattr(belt, "TIMEOUT_S", 0.5)
++    belt.detach()
++    s = c.post("/api/nav/start", json=START)
++    assert s.status_code == 200 and s.json()["state"]["route"]["length"] > 0
++    assert c.post("/api/nav/calibrate", json={"session": s.json()["session"], "heading_deg": 0.0}).status_code == 200
++    st = c.get("/api/belt").json()
++    assert st["enabled"] and st["error"] and st["belt"] is None
++    belt.detach()
++
++
++def test_a_refusal_is_kept_for_the_status_page(fake):
++    s = c.post("/api/nav/start", json=START).json()
++    fake.calibrated = False
++    assert belt._try(belt._call, "POST", "/start") is None
++    assert "not calibrated" in c.get("/api/belt").json()["error"]
++    assert c.post("/api/belt/stop").json()["ok"]
++    assert c.post("/api/belt/wearer", json={"height_cm": 160}).json()["ok"]
++    assert fake.posts()[-1] == ("/wearer", {"height_cm": 160.0})
++    assert s["session"]
++
++
++@pytest.mark.parametrize("belt_deg, ours", [(0, math.pi / 2), (90, 0.0), (180, -math.pi / 2), (270, math.pi), (450, 0.0)])
++def test_heading_conversion(belt_deg, ours):
++    got = belt.model_heading(belt_deg)
++    assert abs(math.atan2(math.sin(got - ours), math.cos(got - ours))) < 1e-9
+-- 
+2.51.0.windows.1
+
