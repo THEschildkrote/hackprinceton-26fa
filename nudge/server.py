@@ -374,10 +374,57 @@ def _belt_apply(session, x, y, floor, heading):
     ev = nav.update(x, y, floor, heading)
     _publish(session, nav, ev)
     _trace_nav(session, nav, ev, source="belt")
+    lines = [e["text"] for e in ev if e.get("text")]
+    if lines:  # kept for the app's next step report, so the phone still speaks the turns
+        _belt_said[session] = (_belt_said.get(session, []) + lines)[-20:]
     tid = _session_traveller.get(session)
     if tid:
         from . import hub
         hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+
+
+_belt_said = {}   # session -> what the navigator said while the belt moved it, until the app asks
+
+
+def _belt_here():
+    """where the belt has the wearer, when it knows: the start of the next walk."""
+    try:
+        from . import belt
+        return None if os.environ.get("NUDGE_BAND") else belt.where()
+    except Exception:
+        return None
+
+
+def _belt_fed(session):
+    """is the belt on this walk, so that the app's steps and compass should go to it?"""
+    try:
+        from . import belt
+        return belt.holds(session) and not os.environ.get("NUDGE_BAND")
+    except Exception:
+        return False
+
+
+def _belt_step(req, nav):
+    """the app's step report, on a walk the belt is on: steps and compass go to the belt, which keeps the
+    position and taps. our own tracker stays out of it (one source of position per walk). the reply carries
+    what the navigator has said since the app last asked, so the phone still speaks."""
+    from . import belt
+    belt.sensor(req.session, req.steps, req.heading_deg)
+    _trace("step", session=req.session, steps=req.steps, heading_deg=req.heading_deg, step_m=req.step_m, source="app")
+    tid = _session_traveller.get(req.session)
+    _touch("phone", tid, heading=req.heading_deg)
+    say = _belt_said.pop(req.session, [])
+    for line in say:
+        _trace("voice", session=req.session, who="nudge", text=line)
+    if tid:
+        from . import hub
+        hub.heartbeat(tid, getattr(nav, "progress", 0.0))
+    lv = nav.live(getattr(nav, "heading", None)) if nav.pos else {}
+    x, y, fl = tuple(nav.pos[:3]) if nav.pos else (None, None, None)
+    return {"say": say, "events": [], "state": _state(nav), "device": _device(nav),
+            "position": {"x": x, "y": y, "floor": fl}, "distance_to_next_m": lv.get("distance_to_next_m"),
+            "bearing_to_next_deg": lv.get("bearing_to_next_deg"), "done": bool(nav.done),
+            "waiting_for": None, "ask": None}
 
 
 def _belt_start(session, nav):
@@ -462,6 +509,15 @@ def nav_start(req: StartReq):
             raise HTTPException(502, f"could not join the scans of {req.sid}: {ex}")
     else:
         g = graph_for(req.sid)
+    # the app always asks to start "at the entrance". with the belt, a walk after the first starts where the
+    # belt has the wearer, so one trip follows another; and NUDGE_START names the place or pano the first one
+    # starts at, for a demo that does not begin at the door.
+    if (req.x is None or req.y is None or req.floor is None) and (req.start or "entrance").strip().lower() == "entrance":
+        here = _belt_here()
+        if here:
+            req.x, req.y, req.floor, req.start = here[0], here[1], here[2], None
+        elif os.environ.get("NUDGE_START"):
+            req.start = os.environ["NUDGE_START"].strip()
     site = None
     if req.x is None or req.y is None or req.floor is None or req.start:
         from .pdr import resolve_start, site_for
@@ -556,6 +612,9 @@ def nav_calibrate(req: CalibrateReq):
     _touch("phone", _session_traveller.get(req.session), heading=req.heading_deg)
     _trace("calibrate", session=req.session, heading_deg=round(req.heading_deg, 1))
     _band_sync(req.session, nav, tr.to_model(req.heading_deg))
+    if _belt_fed(req.session):
+        from . import belt
+        belt.sensor(req.session, 0, req.heading_deg)   # the belt lines up on a reading, so it gets this one first
     _belt_begin(req.session)
     return out
 
@@ -607,6 +666,8 @@ def _stall_answer(tid, stall, outcome, text):
 @app.post("/api/nav/step")
 def nav_step(req: StepReq):
     nav, tr = _tracker(req.session)
+    if _belt_fed(req.session):
+        return _belt_step(req, nav)
     _stalls_apply(nav.g, _session_sid.get(req.session))
     out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
     _stall_check(req.session, tr, req.steps, out)

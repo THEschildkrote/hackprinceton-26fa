@@ -71,6 +71,9 @@ class FakeBelt:
             self.floors, self.floor_index = list(dict.fromkeys(p[2] for p in pts)), 0
             return 200, {"ok": True, "waypoints": len(self.waypoints), "given": len(pts),
                          "dropped_other_floors": len(pts) - len(self.waypoints), "floors": len(self.floors)}
+        if path == "/sensor":
+            self.steps, self.heading = body["step_count"], body["heading_deg"]
+            return 200, {"ok": True}
         if path == "/floor":
             if self.floor_index + 1 >= len(self.floors):
                 return 409, {"ok": False, "error": "this route has no further floor"}
@@ -143,7 +146,10 @@ def test_calibrate_lines_the_belt_up_and_starts_it(fake):
     s = c.post("/api/nav/start", json=START).json()
     r = c.post("/api/nav/calibrate", json={"session": s["session"], "heading_deg": 90.0})
     assert r.status_code == 200
-    assert [p for p, _ in fake.posts()] == ["/route", "/calibrate", "/start"]
+    # the phone's compass reading goes to the belt first (it lines up on a reading), then it is lined up and started
+    order = [p for p, _ in fake.posts()]
+    assert order.index("/sensor") < order.index("/calibrate")
+    assert [p for p in order if p != "/sensor"] == ["/route", "/calibrate", "/start"]
     assert fake.state == "NAVIGATING" and c.get("/api/belt").json()["walking"]
 
 
@@ -398,3 +404,97 @@ def test_a_belt_that_was_stopped_is_lined_up_afresh_even_if_it_thinks_it_is_near
     c.post("/api/nav/start", json=dict(START, to="p_L1", x=end[0], y=end[1], floor=end[2]))
     assert [p for p, _ in fake.posts()[before:]] == ["/route"] and "reroute" not in fake.posts()[-1][1]
     assert not c.get("/api/belt").json()["continued"]
+
+
+# -- the traveller's app as the belt's sensor --------------------------------------------------------------
+
+
+def sensor_posts(fake):
+    return [b for p, b in fake.posts() if p == "/sensor"]
+
+
+def test_the_apps_compass_and_steps_go_to_the_belt_and_our_tracker_stays_out(fake):
+    s = c.post("/api/nav/start", json=dict(START, to="p_K2")).json()
+    sid = s["session"]
+    nav = server.get_navigator(sid)
+    assert c.post("/api/nav/calibrate", json={"session": sid, "heading_deg": 212.0}).status_code == 200
+    order = [p for p, _ in fake.posts()]
+    assert order.index("/sensor") < order.index("/calibrate") < order.index("/start")    # a reading first, then line up on it
+    assert sensor_posts(fake)[0] == {"heading_deg": 212.0, "step_count": 0, "sid": "isaac-app"}
+    r = c.post("/api/nav/step", json={"session": sid, "steps": 2, "heading_deg": 214.0, "step_m": 0.7}).json()
+    assert {"heading_deg": 214.0, "step_count": 2, "sid": "isaac-app"} in sensor_posts(fake)
+    c.post("/api/nav/step", json={"session": sid, "steps": 1, "heading_deg": 215.0})
+    assert fake.steps == 3 and fake.heading == 215.0                              # a running count, the latest compass
+    assert nav.progress == 0 and r["done"] is False and r["say"] == []            # 1.4 m of steps moved nothing here
+    fake.pose = {"x": 3.5, "y": 3.0, "heading_deg": 45.0}                         # the belt is what moves the navigator
+    wait(lambda: nav.pos is not None and abs(nav.pos[0] - 3.5) < 1e-6)
+    r = c.post("/api/nav/step", json={"session": sid, "steps": 1, "heading_deg": 215.0}).json()
+    assert r["position"] == {"x": 3.5, "y": 3.0, "floor": "f1"} and r["state"]["route"]
+    assert sum(e["steps"] for e in traces_of(sid, "step")) == 4                   # the app's steps, counted once
+
+
+def test_what_the_navigator_says_on_a_belt_walk_reaches_the_app(fake):
+    s = c.post("/api/nav/start", json=dict(START, to="p_K2")).json()
+    sid = s["session"]
+    nav = server.get_navigator(sid)
+    c.post("/api/nav/calibrate", json={"session": sid, "heading_deg": 0.0})
+    pts = nav.route.to_dict(nav.g)["points"]
+    for p in pts[1:]:                                                              # the belt walks the route
+        fake.pose = {"x": p[0], "y": p[1], "heading_deg": 0.0}
+        wait(lambda p=p: nav.pos is not None and abs(nav.pos[0] - p[0]) < 1e-6 and abs(nav.pos[1] - p[1]) < 1e-6)
+    time.sleep(0.2)                                                                # a room is announced a moment after entering it
+    r = c.post("/api/nav/step", json={"session": sid, "steps": 1, "heading_deg": 0.0}).json()
+    assert r["say"] and r["done"] is True                                          # the turns, and the arrival
+    time.sleep(0.2)
+    again = c.post("/api/nav/step", json={"session": sid, "steps": 0, "heading_deg": 0.0}).json()
+    assert again["say"] == []                                                      # each line is passed on once
+
+
+def test_the_last_reading_is_repeated_between_reports_and_then_let_go(fake, monkeypatch):
+    s = c.post("/api/nav/start", json=dict(START, to="p_K2")).json()
+    sid = s["session"]
+    c.post("/api/nav/calibrate", json={"session": sid, "heading_deg": 10.0})
+    c.post("/api/nav/step", json={"session": sid, "steps": 1, "heading_deg": 12.0})
+    n = len(sensor_posts(fake))
+    wait(lambda: len(sensor_posts(fake)) >= n + 3)                                 # kept alive by the follow thread
+    assert all(b == {"heading_deg": 12.0, "step_count": 1, "sid": "isaac-app"} for b in sensor_posts(fake)[n:])
+    monkeypatch.setattr(belt, "SENSOR_HOLD_S", 0.0)                                # the app has gone quiet for too long
+    time.sleep(0.1)
+    n = len(sensor_posts(fake))
+    time.sleep(0.15)
+    assert len(sensor_posts(fake)) == n                                            # so the belt will stop the wearer
+
+
+def test_a_walk_the_belt_is_not_on_still_uses_our_own_tracker(fake):
+    first = c.post("/api/nav/start", json=dict(START, to="p_K2")).json()
+    second = c.post("/api/nav/start", json=dict(START, to="p_O3")).json()          # the belt goes to this one
+    c.post("/api/nav/calibrate", json={"session": first["session"], "heading_deg": 0.0})
+    before = len(sensor_posts(fake))
+    r = c.post("/api/nav/step", json={"session": first["session"], "steps": 3, "heading_deg": 0.0}).json()
+    assert len(sensor_posts(fake)) == before and "waiting_for" in r
+    assert server.get_navigator(first["session"]).progress > 0                    # moved by our tracker, as before
+
+
+APP_START = {"sid": "synthetic", "profile": "blind", "start": "entrance"}     # what the app sends: no coordinates
+
+
+def test_the_apps_next_trip_starts_where_the_belt_has_the_wearer(fake):
+    first, end = start_and_arrive(fake, "p_K2")
+    before = len(fake.posts())
+    second = c.post("/api/nav/start", json=dict(APP_START, to="p_L1")).json()
+    assert (second["start"]["x"], second["start"]["y"]) == (end[0], end[1])      # not the entrance: where they stand
+    pts = second["state"]["route"]["points"]
+    assert math.hypot(pts[0][0] - end[0], pts[0][1] - end[1]) < 3.0
+    assert c.get("/api/belt").json()["continued"]                                # and the belt carries on
+    c.post("/api/nav/calibrate", json={"session": second["session"], "heading_deg": 30.0})
+    assert [p for p, _ in fake.posts()[before:] if p != "/sensor"] == ["/route", "/start"]     # no lining up again
+
+
+def test_nudge_start_says_where_the_apps_first_trip_begins(fake, monkeypatch):
+    usual = c.post("/api/nav/start", json=dict(APP_START, to="p_K2")).json()["start"]
+    belt.detach()
+    monkeypatch.setenv("NUDGE_START", "p_O3")
+    s = c.post("/api/nav/start", json=dict(APP_START, to="p_K2")).json()
+    assert (s["start"]["x"], s["start"]["y"]) == (14.5, 1.5) != (usual["x"], usual["y"])
+    named = c.post("/api/nav/start", json=dict(APP_START, to="p_K2", start="p_L3")).json()     # a start that is named wins
+    assert (named["start"]["x"], named["start"]["y"]) == (2, 4.5)

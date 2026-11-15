@@ -34,13 +34,14 @@ POLL_S = 0.5
 WATCH_S = 2.0   # how often an idle belt is asked whether it is there, once a dashboard has asked
 ONLINE_S = 6.0  # no answer for this long: the belt is off or out of range
 CONTINUE_M = 3.0  # the wearer counts as standing where a walk begins within this of its first point
+SENSOR_HOLD_S = 2.5  # the app's last reading is repeated to the belt for this long after it came
 
 # the pi is on the phone's hotspot or a cable: never send it through a proxy
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 _lock = threading.Lock()
 _state = {"session": None, "floor": None, "error": None, "link_error": None, "route": None, "walking": False,
           "thread": None, "points": None, "steps": None, "tap_seq": None, "seen_at": None, "last": None,
-          "watch": None, "continued": False}
+          "watch": None, "continued": False, "fed": None}
 
 
 class BeltError(Exception):
@@ -154,7 +155,7 @@ def send_route(session, nav):
     out = _try(go)
     with _lock:
         _state.update(session=session, floor=points[0][2], route=out, walking=False, points=points,
-                      steps=None, tap_seq=None, continued=bool(out and out.get("continued")))
+                      steps=None, tap_seq=None, continued=bool(out and out.get("continued")), fed=None)
     return out
 
 
@@ -174,6 +175,44 @@ def reroute(session, nav):
     if out is not None:
         _state["route"] = out
     return out
+
+
+def where():
+    """(x, y, floor) where the belt has the wearer, if it has been lined up and is on a walk or has just
+    arrived; None otherwise. the next walk starts there."""
+    st = _poll() if enabled() else None
+    if not st or not st.get("pose") or not st.get("calibrated"):
+        return None
+    if st.get("state") not in ("ARRIVED", "NAVIGATING", "FLOOR"):
+        return None
+    floor = _floor(st)
+    return None if floor is None else (st["pose"]["x"], st["pose"]["y"], floor)
+
+
+def holds(session):
+    """is the belt on this session's walk?"""
+    return enabled() and session is not None and _state["session"] == session
+
+
+def _push_sensor(fed):
+    try:
+        return _call("POST", "/sensor", {"heading_deg": fed["heading"], "step_count": fed["steps"], "sid": "isaac-app"})
+    except BeltError as ex:
+        _state["link_error"] = str(ex)
+        return None
+
+
+def sensor(session, steps, heading_deg):
+    """the traveller's own app is the belt's sensor: each step report (new steps, compass) goes on to the
+    belt, which wants a running count. the belt stops the wearer when its sensor goes quiet for a second,
+    and the app reports once a second at best, so the follow thread repeats the last reading in between,
+    for SENSOR_HOLD_S after it came. an app that really has gone quiet still stops the belt."""
+    if not holds(session) or heading_deg is None:
+        return None
+    before = _state["fed"] or {"steps": 0}
+    fed = {"steps": before["steps"] + max(0, int(steps or 0)), "heading": float(heading_deg), "t": time.time()}
+    _state["fed"] = fed
+    return _push_sensor(fed)
 
 
 def begin(session):
@@ -245,12 +284,13 @@ def _telemetry(st, tell):
     not played back."""
     sensor, pose = st.get("sensor") or {}, st.get("pose") or {}
     heading = pose.get("heading_deg", sensor.get("heading_deg"))
-    if st.get("sensor_ok"):
+    ours = _state["fed"] is not None  # the app is the sensor: its own reports are already on the dashboard
+    if st.get("sensor_ok") and not ours:
         tell("presence", heading_deg=heading)
     count = sensor.get("step_count")
     if isinstance(count, int):
         last = _state["steps"]
-        if last is not None and count > last:
+        if last is not None and count > last and not ours:
             tell("step", steps=count - last, heading_deg=None if heading is None else round(heading, 1),
                  step_m=(st.get("localizer") or {}).get("step_length_m"))
         _state["steps"] = count
@@ -278,6 +318,9 @@ def follow(session, apply, tell=None, nav_of=None):
 
     def loop():
         while _state["session"] == session and _state["thread"] is me:
+            fed = _state["fed"]
+            if fed is not None and time.time() - fed["t"] <= SENSOR_HOLD_S:
+                _push_sensor(fed)  # keep the belt's sensor alive between the app's reports
             st = _poll()
             if st:
                 state, pose = st.get("state"), st.get("pose")
@@ -308,7 +351,7 @@ def detach():
     """forget the session; the follow thread ends on its next turn. does not stop the belt."""
     with _lock:
         _state.update(session=None, floor=None, route=None, walking=False, thread=None, error=None,
-                      link_error=None, points=None, steps=None, tap_seq=None, continued=False)
+                      link_error=None, points=None, steps=None, tap_seq=None, continued=False, fed=None)
 
 
 def watch():

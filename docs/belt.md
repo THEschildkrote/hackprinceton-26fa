@@ -70,6 +70,18 @@ nav request into a 500: the route still plans and speaks, and `GET /api/belt` sa
   `POST /api/belt/floor`, or Next floor in the belt's own viewer. The belt then puts the wearer on the
   first point of the next floor's stretch and guides again, and the floor it reports, which is the floor
   our navigator is told, is the new one.
+- **The traveller's app is the belt's sensor.** On a walk the belt is on, the app's step reports
+  (`POST /api/nav/step`: new steps and compass) are passed on to the belt as its sensor readings, and the
+  compass the app sends with `POST /api/nav/calibrate` is what the belt lines up on. The belt keeps the
+  position and taps; our own tracker does not move the navigator on that walk, so there is one source of
+  position. The reply to each step report carries what the navigator has said since the last one, so the
+  phone still speaks the turns. Between the app's reports the last reading is repeated to the belt, for up
+  to 2.5 s, because the belt stops the wearer when its sensor is silent for a second. The belt's own phone
+  page is then not needed, and must not be open on another phone at the same time.
+- **Where a walk starts.** The app always asks to start "at the entrance". With the belt, a walk after the
+  first starts where the belt has the wearer (it has just arrived there), so trips chain without anyone
+  walking back to the door. `NUDGE_START=<place name or pano id>` says where the first one starts, for a
+  demo that begins somewhere else, such as a hallway on another floor.
 - **One walk after another.** When a walk starts and the belt has just arrived somewhere (or is still
   walking), and that is within 3 m of the new walk's first point, the route is handed over as a
   continuation: the belt keeps its position and calibration, and `begin` (or the phone's calibrate)
