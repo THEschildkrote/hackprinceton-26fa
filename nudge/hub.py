@@ -11,13 +11,21 @@ state lives in one process (the api server); it is persisted to cache/hub.json s
 """
 import json
 import math
+import os
 import random
 import threading
 import time
+from pathlib import Path
 
 from .mp import ROOT
 
 PATH = ROOT / "cache" / "hub.json"
+if os.environ.get("NUDGE_HUB_PATH"):
+    # a host's persistent disk (the app's own files reset on every deploy); seeded once from the bundled hub
+    _seed, PATH = PATH, Path(os.environ["NUDGE_HUB_PATH"])
+    if not PATH.exists() and _seed.exists():
+        PATH.parent.mkdir(parents=True, exist_ok=True)
+        PATH.write_bytes(_seed.read_bytes())
 WALK_MPS = 0.9           # cautious cane-walking pace, for eta
 STUCK_S = 180            # no progress for this long while walking -> "stuck"
 STUCK_MIN_M = 0.5        # progress smaller than this doesn't count
@@ -121,6 +129,12 @@ def link_walker(handle, code):
         _load()["walkers"][handle] = tid
         _save()
     return tid, name
+
+
+def has_app(traveller_id):
+    """an isaac app registered this traveller (it got a pairing code); a phone call's own trip doesn't count."""
+    with _lock:
+        return bool((_load()["travellers"].get(traveller_id) or {}).get("code"))
 
 
 def set_walker(handle, traveller_id):

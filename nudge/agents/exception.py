@@ -4,6 +4,7 @@ soft constraints the graph doesn't encode, then act through the same determinist
 every option it offers comes from router output; it never invents geometry. the only tool that changes
 anything is commit_reroute, and that one pauses for the user's approval (deepagents hitl).
 """
+import re
 import json
 from uuid import uuid4
 
@@ -381,21 +382,40 @@ def _trace_reply(who, out):
         _trace("say", who, text=" ".join(out["say"]))
 
 
+# the model thinking out loud, never meant for the traveller's ears
+_THINK = re.compile(r"<think>.*?(?:</think>|$)", re.S | re.I)
+_META = re.compile(r"^(?:the user\b|user'?s\b|the traveller'?s (?:message|request)\b|the caller\b|"
+                   r"i (?:will|should|need to|am going to|'ll) (?:call|use|check|look up|run)\b|"
+                   r"let me (?:call|check|use|look)\b|(?:calling|using) (?:the )?\w+(?:_\w+)+\b|tool\b)", re.I)
+
+
+def _speakable(text):
+    """the lines of one message a traveller should hear: no reasoning blocks, no talk about 'the user'."""
+    lines = [ln.strip() for ln in _THINK.sub("", text or "").splitlines() if ln.strip()]
+    return [ln for ln in lines if not _META.match(ln)]
+
+
 def _reply(result, since):
-    """lines to speak from ai messages after index `since`, plus the pending approval if any."""
-    say = []
-    for m in result["messages"][since:]:
-        if isinstance(m, AIMessage) and m.text:
-            say += [ln.strip() for ln in m.text.splitlines() if ln.strip()]
+    """what to speak from this turn, plus the pending approval if any. only the traveller-facing message counts:
+    the question that goes with a reroute waiting for approval, or else the final answer. the text a model writes
+    beside its other tool calls is its working, not something to say."""
+    msgs = [m for m in result["messages"][since:] if isinstance(m, AIMessage)]
     pending = None
+    say = []
     intr = result.get("__interrupt__")
     if intr:
         reqs = intr[0].value.get("action_requests", [])
         if reqs:
             a = reqs[0]
             pending = {"name": a["name"], "args": a["args"], "description": a.get("description", "")}
-            if a["args"].get("reason") and not say:
-                say.append(a["args"]["reason"])
+            asking = next((m for m in reversed(msgs) if any(tc.get("name") == a["name"] for tc in m.tool_calls or [])),
+                          None)
+            say = _speakable(asking.text) if asking is not None else []
+            if not say and a["args"].get("reason"):
+                say = [a["args"]["reason"]]
+    else:
+        final = next((m for m in reversed(msgs) if not m.tool_calls and m.text), None)
+        say = _speakable(final.text) if final is not None else []
     return {"say": say, "pending": pending}
 
 

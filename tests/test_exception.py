@@ -147,3 +147,14 @@ def test_report_arrives_with_lookups_so_one_turn_can_propose(g):
     assert first.startswith("The door ahead is locked.")
     for part in ("nav_status:", "list_nearby:", "compare_options with the link just ahead blocked"):
         assert part in first
+
+
+def test_only_what_the_traveller_should_hear_is_spoken():
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from nudge.agents.exception import _reply
+    msgs = [HumanMessage(content="the door is locked"),
+            AIMessage(content="The user's message indicates a locked door. I will call compare_options.",
+                      tool_calls=[{"id": "a", "name": "compare_options", "args": {}}]),
+            ToolMessage(content="{}", tool_call_id="a"),
+            AIMessage(content="<think>stairs are closer</think>The user is blocked.\nTake the stairs on your left instead.")]
+    assert _reply({"messages": msgs}, 1)["say"] == ["Take the stairs on your left instead."]

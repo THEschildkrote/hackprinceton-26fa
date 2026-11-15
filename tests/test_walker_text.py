@@ -69,3 +69,16 @@ def test_a_caller_without_an_isaac_phone_still_gets_the_voice_guide(code):
 
 def test_thanks_bye_on_a_call_is_not_a_problem_to_reroute(code):
     assert "Bye" in c.post("/api/voice/call", json={"caller": "+15550003333", "text": "Ok, got it. Thanks, bye."}).json()["say"]
+
+
+def test_how_callers_really_talk():
+    from nudge.voice import TRIP, _norm, answer
+    assert TRIP.match(_norm("Hey, uh, I wanna go to the seminar room."))["place"] == "the seminar room"
+    assert answer(_norm("Uh, yeah sure, yes.")) is True and answer(_norm("nah, keep my route")) is False
+    assert answer(_norm("sure, the elevator is out")) is None      # a sentence with "sure" in it isn't a yes
+
+
+def test_two_calls_with_no_caller_number_dont_share_a_trip(code):
+    a = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_aaaaaaaaaaaa1", "text": "take me to the kitchen"}).json()
+    b = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_bbbbbbbbbbbb2", "text": "how far"}).json()
+    assert a.get("session") and b["say"] == "You're not on a trip yet."

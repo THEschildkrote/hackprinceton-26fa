@@ -1611,6 +1611,7 @@ app.include_router(_voice)
 
 class CallTurn(BaseModel):
     caller: str | None = None   # the caller's number, from the elevenlabs agent ({{system__caller_id}})
+    conversation: str | None = None   # {{system__conversation_id}}: one call, so a caller with no number starts fresh
     text: str
 
 
@@ -1638,7 +1639,8 @@ def voice_call(req: CallTurn):
     if THANKS.match(_norm(req.text)) and re.search(r"\b(bye|goodbye|see you)\b", req.text, re.I):
         return {"say": "Okay. Your phone and belt keep guiding you. Bye."}
     if tid is None:
-        return _voice.turn(Turn(traveller=caller or "caller", text=req.text,
+        anon = f"call-{req.conversation[-12:]}" if req.conversation else "caller"
+        return _voice.turn(Turn(traveller=caller or anon, text=req.text,
                                 sid=os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt"))
     st = hub.status(tid) or {}
     walking = st.get("state") in _WALKING and st.get("session")

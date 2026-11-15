@@ -449,12 +449,23 @@ def real_facts(record):
     names = [(decode("ConstructionEventType", e.get("eventType")), int(e["year"])) for e in events]
     built = [y for n, y in names if n in BUILT] or [y for n, y in names if n in ("GroundBreaking", "Unknown", 0)]
     reno = [y for n, y in names if n in RENOVATED]
-    reno += [int(y) for r in record.get("renovations") or [] if isinstance(r, dict)
-             for y in [r.get("year") or r.get("yearRenovated")] if y]
+    parts = []
+    for r in record.get("renovations") or []:
+        if not isinstance(r, dict):
+            continue
+        y = _year(r.get("endDate") or r.get("startDate") or r.get("year") or r.get("yearRenovated"))
+        if y:
+            reno.append(y)
+        for t in r.get("renovationImprovementTypes") or []:
+            name = decode("RenovationImprovementType", t)
+            if isinstance(name, str) and name not in parts and name != "Unknown":
+                parts.append(name)
     if built:
         facts["year_built"] = min(built)
     if reno:
         facts["year_renovated"] = max(reno)
+    if parts:
+        facts["renovated_parts"] = parts
     if events:
         facts["construction_events"] = [{"type": n, "year": y} for n, y in names]
     if record.get("numStoriesAboveGrade") is not None:
@@ -506,12 +517,76 @@ def real_facts(record):
     if a:
         facts["address"] = " ".join(str(a[k]) for k in ("streetNumber", "streetDirection", "streetName", "streetType")
                                     if a.get(k)) + (f", {a['city']}, {a.get('state', '')}" if a.get("city") else "")
+    if a.get("crossStreetDescription"):
+        facts["cross_street"] = a["crossStreetDescription"]
+    if record.get("buildingHeightInFeet"):
+        facts["height_m"] = round(record["buildingHeightInFeet"] * 0.3048, 1)
+    notes = [n.get("text") or n.get("note") or n.get("description") for n in record.get("notes") or []
+             if isinstance(n, dict)]
+    access = []
+    for n in notes:
+        for sent in re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", n or "")):
+            if ACCESS_NOTE.search(sent) and 20 <= len(sent) <= 220 and sent not in access:
+                access.append(sent.strip())
+    if access:
+        facts["access_notes"] = access[:3]
+    for c in record.get("contacts") or []:
+        num = re.sub(r"\D", "", str((c or {}).get("contactPhoneNumber") or ""))
+        if len(num) == 10 and num[3:6] != "555" and not num.startswith("555"):  # 555 numbers are fictional
+            facts["phone"] = f"{num[:3]}-{num[3:6]}-{num[6:]}"
+            break
     rel = record.get("_related") or {}
     if rel.get("tenants") is not None:
         facts["tenants"] = rel["tenants"]
     if rel.get("listing"):
         facts["listing"] = rel["listing"]
     return facts
+
+
+ACCESS_NOTE = re.compile(r"\b(entrance|entry|lobby|elevator|lift|ramp|ada\b|accessib|wheelchair|handicap|stair|"
+                         r"step-free|level entry|parking)", re.I)
+
+def spoken(facts, name="This building"):
+    """the building record as a few short sentences a blind traveller can use. says what the record doesn't know
+    instead of guessing."""
+    out = []
+    yb, yr = facts.get("year_built"), facts.get("year_renovated")
+    kind = " ".join(x for x in (f"class {facts['building_class']}" if facts.get("building_class") else "",
+                                str(facts.get("property_type") or "").lower()) if x) or "building"
+    if yb:
+        if facts.get("pre_ada"):
+            out.append(f"CoStar's record says {name} is a {kind} building from {yb}, before the ADA, with no "
+                       f"renovation since, so expect steps and narrow doorways.")
+        elif yr and yr >= ADA_YEAR:
+            parts = [x.lower() for x in facts.get("renovated_parts") or [] if x.lower() in ("elevators", "lobby",
+                                                                                              "restrooms", "entrance")]
+            extra = f", including the {' and '.join(parts)}" if parts else ""
+            out.append(f"CoStar's record says {name} is a {kind} building from {yb}, renovated in {yr}{extra}.")
+        else:
+            out.append(f"CoStar's record says {name} is a {kind} building from {yb}.")
+    floors = facts.get("floors")
+    lifts = facts.get("passenger_elevators")
+    if lifts:
+        out.append(f"It has {lifts} passenger elevator{'s' * (lifts != 1)}.")
+    elif floors and floors > 1 and "elevators" not in facts:
+        out.append(f"It has {floors} floors, and the record doesn't say whether there's an elevator.")
+    pk = facts.get("parking") or {}
+    if pk.get("total"):
+        acc = "" if facts.get("accessible_parking") else "; the record doesn't list accessible spaces"
+        out.append(f"There are {pk['total']} parking spaces{acc}.")
+    ten = [t for t in facts.get("tenants") or [] if t.get("name")]
+    if ten:
+        # no floors here: costar counts from the street door, the scan from its lowest level, and the route says
+        # where each one really is
+        named = [t["name"] for t in ten[:3]]
+        out.append("Inside: " + (", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 else named[0]) + ".")
+    if facts.get("access_notes"):
+        out.append("The listing notes: " + facts["access_notes"][0])
+    if facts.get("cross_street"):
+        out.append(f"It's near {facts['cross_street']}.")
+    if facts.get("phone"):
+        out.append(f"To call ahead, the building's number is {facts['phone']}.")
+    return out
 
 
 FACTS = {

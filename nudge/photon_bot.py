@@ -330,7 +330,9 @@ def _only_phone_online():
     if srv is None:
         return None
     now = time.time()
-    live = {tid for (role, tid), v in list(srv._seen.items()) if role == "phone" and now - v["ts"] <= srv.ONLINE_S}
+    # registered travellers only: an isaac app registers; a phone call's own voice turns don't make it an isaac phone
+    live = {tid for (role, tid), v in list(srv._seen.items()) if role == "phone" and now - v["ts"] <= srv.ONLINE_S
+            and hub.has_app(tid)}
     return live.pop() if len(live) == 1 else None
 
 
@@ -729,4 +731,4 @@ def default_brain():
 
 
 if __name__ == "__main__":
-    serve(api_port=None if "--no-api" in sys.argv else 8765)
+    serve(api_port=None if "--no-api" in sys.argv else int(os.environ.get("PORT") or 8765))   # PORT: a host's

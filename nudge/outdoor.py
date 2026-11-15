@@ -44,6 +44,7 @@ SIDEWALK_GAP_M = 1.5    # curb to the middle of the sidewalk
 DENSIFY_M = 10.0        # sidewalk nodes at least this often, so gps snaps nearby
 SIGNAL_NEAR_M = 20.0    # a signal node this close to a junction makes its crossings signalised
 CONNECT_M = 8.0         # dangling footway ends join the nearest inferred sidewalk within this
+MIN_CONFIDENCE = {"obstacle": 0.5, "crosswalk": 0.4, "curb_ramp": 0.4}   # vexcel detections below this are noise
 
 # tests swap this: overpass_transport(query) -> dict (overpass json)
 OVERPASS_TRANSPORT = None
@@ -55,7 +56,7 @@ OUTDOOR = {
     # blind: crossings and curbs are the risk; slopes barely matter
     "blind": {"avoid": set(), "penalty": {"roadway": 60, "crossing": 25, "unsignalised": 40, "curb": 30,
                                           "steep": 0.5, "too_steep": 2, "sidewalk_inferred": 1,
-                                          "driveway_crossing": 5}},
+                                          "driveway_crossing": 5, "unmarked_crossing": 15}},
     # wheelchair: a curb or a ramp steeper than 1:12 is a hard stop
     "wheelchair": {"avoid": {"too_steep", "curb"}, "penalty": {"roadway": 40, "crossing": 5, "unsignalised": 10,
                                                                "steep": 20, "sidewalk_inferred": 1,
@@ -432,12 +433,18 @@ def _slopes(g, elevation):
 def _apply_detections(g, dets):
     """obstacles become hazards on nearby edges; crosswalk polygons mark crossings as marked."""
     hazards = []
+    saw_crosswalks = False
     for d in dets:
+        label = (d.get("label") or "").lower()
+        kind = "crosswalk" if label == CROSSWALK_LABEL else "curb_ramp" if label == CURB_RAMP_LABEL else "obstacle"
+        conf = d.get("confidence")
+        if isinstance(conf, (int, float)) and conf < MIN_CONFIDENCE[kind]:
+            continue
         pts = [g.enu.to_enu(*p) for p in vexcel.geometry_points(d)]
         if not pts:
             continue
         cx, cy = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
-        label = (d.get("label") or "").lower()
+        saw_crosswalks |= kind == "crosswalk"
         if label == CROSSWALK_LABEL:
             for e in g.edges():
                 if "crossing" in e.tags and project((cx, cy), g.nodes[e.a].xy, g.nodes[e.b].xy)[2] < 3.0:
@@ -451,6 +458,11 @@ def _apply_detections(g, dets):
             hazards.append({"x": cx, "y": cy, "floor": FLOOR, "radius": 0.8, "kind": "other",
                             "note": f"{label} near the path", "confidence": d.get("confidence"),
                             "evidence": {"source": "vexcel /elements/detect"}})
+    if saw_crosswalks:
+        # vexcel looked here and saw crosswalks, so a crossing it didn't see painted is unmarked
+        for e in g.edges():
+            if "crossing" in e.tags and "marked_crossing" not in e.tags:
+                e.tags.add("unmarked_crossing")
     if hazards:
         apply_annotations(g, {"hazards": hazards})
 
@@ -476,7 +488,10 @@ def describe(g, route, ms):
             e = g.edge(a, b)
             if "crossing" in e.tags:
                 road = (e.info or {}).get("cross_road") or "the street"
-                n = f"cross {road} at the signal" if "signals" in e.tags else f"cross {road}, no signal; listen for traffic"
+                marked = " on a marked crosswalk" if "marked_crossing" in e.tags else \
+                    " (no marked crosswalk)" if "unmarked_crossing" in e.tags else ""
+                n = f"cross {road}{marked} at the signal" if "signals" in e.tags else \
+                    f"cross {road}{marked}, no signal; listen for traffic"
                 if n not in notes:
                     notes.append(n)
             if "driveway_crossing" in e.tags and "cross a driveway; listen for cars" not in notes:

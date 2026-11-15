@@ -23,8 +23,10 @@ HELP_TEXT = ("Tell me where you want to go, like: take me to the kitchen. "
 
 BUILDING = re.compile(r"^(?:i'?m|i am|we'?re|we are)\s+(?:at|in)\s+(?P<b>.+)$|"
                       r"^(?:the building is|building is|set (?:the )?building(?: to)?)\s+(?P<b2>.+)$")
-TRIP = re.compile(r"^(?:please\s+)?(?:take me to|bring me to|guide me to|get me to|navigate to|go to|directions to|"
+TRIP = re.compile(r"^(?:(?:hey|hi|ok|okay|uh|um|er|so|well|isaac|please)\s+)*"
+                  r"(?:take me to|bring me to|guide me to|get me to|walk me to|navigate to|go to|directions to|"
                   r"how (?:do|can) i (?:get|go) to|i (?:want|need|would like|'d like) to go to|i want to get to|"
+                  r"i (?:wanna|gotta|gonna) (?:go|get|head) to|i (?:want|need) to (?:get|head) to|"
                   r"where is|where's|find)\s+(?P<place>.+?)(?:\s+(?:at|in)\s+(?P<bldg>.+))?$")
 YES = {"yes", "yeah", "yep", "ok", "okay", "sure", "do it", "go ahead", "approve", "yes please", "sounds good"}
 NO = {"no", "nope", "don't", "dont", "cancel that", "reject", "no thanks", "keep my route", "keep the route"}
@@ -55,6 +57,27 @@ CLEAR = NO | {"keep going", "nothing", "nothing there", "it's fine", "its fine",
 STALL_ANSWER_S = 60.0
 ORDINALS = {"first": 0, "one": 0, "1": 0, "second": 1, "two": 1, "2": 1, "third": 2, "three": 2, "3": 2,
             "fourth": 3, "four": 3, "4": 3, "last": -1}
+
+
+_YES_W = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "alright", "approve", "approved"}
+_NO_W = {"no", "nope", "nah", "don't", "dont", "cancel", "reject"}
+_FILL_W = {"uh", "um", "er", "hmm", "oh", "so", "well", "please", "thanks", "thank", "you", "isaac", "do", "it", "go",
+           "ahead", "that", "sounds", "good", "take", "the", "route", "let's", "lets", "keep", "my", "current", "one",
+           "i", "said", "already", "fine", "great", "then"}
+
+
+def answer(t):
+    """True for a yes, False for a no, None when it's something else. short replies only, so a sentence that
+    happens to contain "sure" never approves a reroute."""
+    if t in YES:
+        return True
+    if t in NO:
+        return False
+    w = t.split()
+    if not w or len(w) > 7 or any(x not in _YES_W | _NO_W | _FILL_W for x in w):
+        return None
+    yes, no = any(x in _YES_W for x in w), any(x in _NO_W for x in w)
+    return None if yes == no else yes
 
 
 def _norm(text):
@@ -541,8 +564,8 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
                 return reply(c, [f"No caretaker is paired yet; your code is {' '.join(code)}.",
                                  "Stay where you are.", where])
             return reply(c, ["I've let your caretaker know you need help.", "Stay where you are.", where])
-        if c.pending and (t in YES or t in NO):
-            return reply(c, decide(c, t in YES))
+        if c.pending and answer(t) is not None:
+            return reply(c, decide(c, answer(t)))
         if c.choice:
             picked = pick_choice(c, t)
             if picked is not None:
@@ -564,7 +587,7 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         asks = t in WHERE or t in FAR or t in BRIEF or LOST.search(t) or re.match(r"^(how far|how much further|how long)\b", t)
         if stall and not asks:
             # the answer to "is something in the way?"
-            if t in YES:
+            if answer(t) is True:
                 return reply(c, ["What's in the way? Tell me, and I'll find a way around it."])
             c.stall = None
             outcome = "clear" if t in CLEAR else "obstacle"
@@ -756,6 +779,7 @@ def elevenlabs_tool_defs(root):
                 "type": "object",
                 "properties": {
                     "caller": {"type": "string", "dynamic_variable": "system__caller_id"},
+                    "conversation": {"type": "string", "dynamic_variable": "system__conversation_id"},
                     "text": {"type": "string", "description": "What the caller just said, word for word."},
                 },
                 "required": ["text"],

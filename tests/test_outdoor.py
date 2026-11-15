@@ -124,7 +124,7 @@ def test_outdoor_text_mentions_crossing_and_slope(og):
     r = plan(og, oid("f0"), oid("e0"), outdoor.profile("wheelchair"))
     ms = outdoor.describe(og, r, maneuvers(og, r))
     text = " ".join(m["text"] for m in ms)
-    assert "cross the street at the signal" in text.lower()
+    assert "cross the street on a marked crosswalk at the signal" in text.lower()   # vexcel saw the paint
     assert "gentle ramp up" in text.lower()
     assert "meter" in text and "feet" not in text
 
@@ -207,3 +207,14 @@ def test_confirm_entrance_tool_only_accepts_candidates(site):
         assert [b["type"] for b in blocks] == ["text", "image"]
     finally:
         (d / "entrances.json").unlink(missing_ok=True)
+
+
+def test_an_unpainted_crossing_is_unmarked_once_vexcel_has_seen_crosswalks(og):
+    assert "unmarked_crossing" in tags(og, "c1", "k1") and "unmarked_crossing" not in tags(og, "c2", "k2")
+    assert outdoor.profile("blind").penalty["unmarked_crossing"] > 0
+
+
+def test_low_confidence_detections_are_ignored(blk):
+    weak = [dict(d, confidence=0.2) for d in blk.detections()]
+    g = outdoor.build(LAT, LON, footprint_lonlat=vexcel.footprint(LAT, LON), detections=weak)
+    assert not any(e.tags & {"marked_crossing", "unmarked_crossing", "hazard"} for e in g.edges())

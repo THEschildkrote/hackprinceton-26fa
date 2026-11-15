@@ -94,6 +94,29 @@ def _route_stats(sid, goal, start, profile="blind"):
     return {"plan": p, "crossings": crossings, "door_widths": doors, "floor_changes": floors}
 
 
+def _record_lines(sid, already=()):
+    """the costar record's spoken facts that the briefing doesn't already say; nothing when there's no record."""
+    try:
+        from . import costar
+        from .buildings import label
+        r = costar.lookup(sid)
+        if r.get("error") or not r.get("record"):
+            return []
+        lines = costar.spoken(costar.accessibility_facts(r["record"])["facts"], label(sid))
+    except Exception:
+        return []
+    said = " ".join(already).lower()
+    keep = []
+    for ln in lines:
+        key = re.sub(r"[^a-z0-9 ]", "", ln.lower()).split()
+        # skip a fact the dossier briefing already gave (its distinctive words are all there)
+        words = [w for w in key if len(w) > 4 and w not in ("record", "costars", "building", "there", "spaces")]
+        if words and sum(w in said for w in words) >= max(2, int(0.7 * len(words))):
+            continue
+        keep.append(ln)
+    return keep
+
+
 def briefing(sid, goal=None, start=None, profile="blind"):
     """about six short spoken sentences to hear before setting off. the dossier's briefing wins if it exists."""
     from .agents.tools import dossier_dir
@@ -101,7 +124,9 @@ def briefing(sid, goal=None, start=None, profile="blind"):
     if f.exists():
         text = re.sub(r"[#*_>`-]+", " ", f.read_text(encoding="utf-8"))
         sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text)) if len(s.strip()) > 2]
-        return {"sentences": sents, "text": " ".join(sents), "source": "dossier"}
+        rec = _record_lines(sid, sents)
+        return {"sentences": sents + rec, "text": " ".join(sents + rec), "source": "dossier",
+                "record": rec}
     facts = _facts(sid)
     goal = goal or (DEMO.get(sid) or {}).get("goal")
     from .buildings import label
@@ -112,8 +137,10 @@ def briefing(sid, goal=None, start=None, profile="blind"):
     yr = facts.get("year_built")
     lead = f"{name} is a" + (f" {floors}-floor" if floors else "") + f" {kind} building" + (f" from {yr}" if yr else "") + "."
     out.append(lead)
-    if facts.get("pre_ada"):
-        out.append("It has had no accessibility renovation on record, so expect steps and narrow doorways.")
+    rec = _record_lines(sid)
+    if rec and rec[0].startswith("CoStar's record says"):
+        out[-1] = rec.pop(0)   # the record's own lead says the same, plus what it means for access
+    out += rec
     site = None
     try:
         site = _site(sid)
