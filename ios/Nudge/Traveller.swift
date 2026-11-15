@@ -217,8 +217,10 @@ final class Traveller {
             pendingApproval = reply.pending != nil
             // "take me to the kitchen" starts a trip on the pi and names its session in the reply.
             // take it up here, or no steps are ever sent for it and nothing guides.
-            if let s = reply.session ?? r.session, s != session {
-                await adopt(s)
+            // a finished trip is not taken up: after a restart the app has no session, and "where am i"
+            // would otherwise name the pi's last, already-arrived one and start a countdown for it
+            if let s = reply.session ?? r.session, s != session, (reply.state ?? r.state)?.done != true {
+                await adopt(s, trip: reply.trip ?? r.trip)
             }
         } catch {
             handle(error)
@@ -226,12 +228,18 @@ final class Traveller {
     }
 
     // a trip started by voice: the pi has already planned it and said where it goes
-    private func adopt(_ newSession: String) async {
+    private func adopt(_ newSession: String, trip voiceTrip: VoiceTrip? = nil) async {
         guard phase != .starting, phase != .calibrating else { return }
         let wasWalking = phase == .walking
         session = newSession
         queue = StepQueue()
         pendingApproval = false
+        if let sid = voiceTrip?.sid, let goal = voiceTrip?.goal {
+            // so the screen, "start my trip" and the next voice turn all know where this one goes
+            let t = Trip(sid: sid, to: goal, profile: "blind", ts: nil)
+            trip = t
+            settings.lastTrip = t
+        }
         if wasWalking {
             // asked mid-walk: the direction is already known, so keep walking and report to the new trip
             status = "Walking to your new destination."

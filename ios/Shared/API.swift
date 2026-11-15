@@ -95,6 +95,13 @@ struct VoiceReply: Decodable {
     let session: String?
     let pending: PendingAction?
     let state: NavState?
+    var trip: VoiceTrip? = nil   // set when the words started a trip ("take me to the kitchen")
+}
+
+// the trip a voice turn started: the building and where to
+struct VoiceTrip: Decodable {
+    let goal: String?
+    let sid: String?
 }
 
 struct PendingAction: Decodable {

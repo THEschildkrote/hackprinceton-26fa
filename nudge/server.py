@@ -371,12 +371,15 @@ def _belt_apply(session, x, y, floor, heading):
     nav = _sessions.get(session)
     if nav is None:
         return
-    ev = nav.update(x, y, floor, heading)
+    with _belt_said_lock:
+        # under the lock: a step report must never see the navigator arrive without the arrival line,
+        # or the app stops reporting (it is done) and "You have arrived" is never spoken
+        ev = nav.update(x, y, floor, heading)
+        lines = [e["text"] for e in ev if e.get("text")]
+        if lines:  # kept for the app's next step report, so the phone still speaks the turns
+            _belt_said[session] = (_belt_said.get(session, []) + lines)[-20:]
     _publish(session, nav, ev)
     _trace_nav(session, nav, ev, source="belt")
-    lines = [e["text"] for e in ev if e.get("text")]
-    if lines:  # kept for the app's next step report, so the phone still speaks the turns
-        _belt_said[session] = (_belt_said.get(session, []) + lines)[-20:]
     tid = _session_traveller.get(session)
     if tid:
         from . import hub
@@ -384,6 +387,7 @@ def _belt_apply(session, x, y, floor, heading):
 
 
 _belt_said = {}   # session -> what the navigator said while the belt moved it, until the app asks
+_belt_said_lock = threading.Lock()
 
 
 def _belt_here():
@@ -404,7 +408,7 @@ def _belt_fed(session):
         return False
 
 
-def _belt_step(req, nav):
+def _belt_step(req, nav, tr=None):
     """the app's step report, on a walk the belt is on: steps and compass go to the belt, which keeps the
     position and taps. our own tracker stays out of it (one source of position per walk). the reply carries
     what the navigator has said since the app last asked, so the phone still speaks."""
@@ -413,17 +417,27 @@ def _belt_step(req, nav):
     _trace("step", session=req.session, steps=req.steps, heading_deg=req.heading_deg, step_m=req.step_m, source="app")
     tid = _session_traveller.get(req.session)
     _touch("phone", tid, heading=req.heading_deg)
-    say = _belt_said.pop(req.session, [])
+    with _belt_said_lock:   # the lines and `done` from the same moment (see _belt_apply)
+        say = _belt_said.pop(req.session, [])
+        done = bool(nav.done)
+    lv = nav.live(getattr(nav, "heading", None)) if nav.pos else {}
+    if not say and tr is not None and not done:
+        # the "10 meters to the next turn" line our own tracker gives between turns, from the belt's position
+        try:
+            line = tr._distance_line(lv, [], time.monotonic())
+        except Exception:
+            line = None
+        if line:
+            say = [line]
     for line in say:
         _trace("voice", session=req.session, who="nudge", text=line)
     if tid:
         from . import hub
         hub.heartbeat(tid, getattr(nav, "progress", 0.0))
-    lv = nav.live(getattr(nav, "heading", None)) if nav.pos else {}
     x, y, fl = tuple(nav.pos[:3]) if nav.pos else (None, None, None)
     return {"say": say, "events": [], "state": _state(nav), "device": _device(nav),
             "position": {"x": x, "y": y, "floor": fl}, "distance_to_next_m": lv.get("distance_to_next_m"),
-            "bearing_to_next_deg": lv.get("bearing_to_next_deg"), "done": bool(nav.done),
+            "bearing_to_next_deg": lv.get("bearing_to_next_deg"), "done": done,
             "waiting_for": None, "ask": None}
 
 
@@ -667,7 +681,7 @@ def _stall_answer(tid, stall, outcome, text):
 def nav_step(req: StepReq):
     nav, tr = _tracker(req.session)
     if _belt_fed(req.session):
-        return _belt_step(req, nav)
+        return _belt_step(req, nav, tr)
     _stalls_apply(nav.g, _session_sid.get(req.session))
     out = tr.step(req.steps, req.heading_deg, req.step_m, req.floor_confirm)
     _stall_check(req.session, tr, req.steps, out)
