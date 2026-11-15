@@ -217,7 +217,12 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             return None
 
     def reply(c, lines, **extra):
-        say = " ".join(x.strip() for x in lines if x and x.strip()) or "Okay."
+        seen, said = set(), []
+        for x in (x.strip() for x in lines if x and x.strip()):
+            if x.lower() not in seen:          # the agent's last line and the next step are often the same
+                seen.add(x.lower())
+                said.append(x)
+        say = " ".join(said) or "Okay."
         say = re.sub(r"\s+", " ", re.sub(r"[*_`#>]+|\[(.*?)\]\(.*?\)", lambda m: m.group(1) or "", say)).strip()
         c.last_say = say
         nav = live_nav(c)

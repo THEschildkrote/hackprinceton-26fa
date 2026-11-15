@@ -668,14 +668,21 @@ def where_am_i(g, x, y, floor, catalog=None):
     if place is None:
         return {"place": None, "text": "I'm not sure which room you're in."}
     name = place["name"]
-    if place.get("unnamed"):
-        text = "You're in an unnamed space" + ("," + name.split(",", 1)[1] if "," in name else "") + "."
+    feats = [p for p in cat["places"] if p["kind"] == "feature" and set(p.get("rooms") or []) & set(place.get("rooms") or [])]
+    # the scan's catch-all labels ("Other 1", "Void") mean nothing to a traveller: say what's around them instead
+    generic = place.get("unnamed") or re.match(r"^(other|void|unknown|room)\b(?: \d+)?", name.split(",")[0].strip(), re.I)
+    if generic:
+        fl = name.split(",", 1)[1].strip() if "," in name else None
+        # "Water fountain, east corridor" -> "the water fountain in the east corridor"
+        near = " and ".join("the " + (f["name"][0].lower() + f["name"][1:]).replace(", ", " in the ", 1)
+                            for f in feats[:2])
+        text = ("You're" + (f" on {fl}" if fl else "") + (f", by {near}" if near else "")
+                + ".") if (fl or near) else "You're in an unnamed space."
     else:
         text = f"You're in {the(place)}."
-    if place.get("description"):
+    if place.get("description") and not generic:
         text += " " + place["description"]
-    feats = [p for p in cat["places"] if p["kind"] == "feature" and set(p.get("rooms") or []) & set(place.get("rooms") or [])]
-    if feats:
+    if feats and not generic:
         text += " Here: " + ", ".join(f["name"] for f in feats[:3]) + "."
     return {"place": _summary(place), "text": text}
 

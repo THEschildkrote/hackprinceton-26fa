@@ -82,3 +82,9 @@ def test_two_calls_with_no_caller_number_dont_share_a_trip(code):
     a = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_aaaaaaaaaaaa1", "text": "take me to the kitchen"}).json()
     b = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_bbbbbbbbbbbb2", "text": "how far"}).json()
     assert a.get("session") and b["say"] == "You're not on a trip yet."
+
+
+def test_a_call_with_no_caller_number_never_drives_someones_phone(code):
+    c.get("/api/traveller/W/trip")                  # an isaac phone is on
+    r = c.post("/api/voice/call", json={"caller": None, "conversation": "conv_web_test01", "text": "take me to the kitchen"}).json()
+    assert hub.get_trip("W") is None and r.get("session")    # the voice guide on its own; the phone is left alone

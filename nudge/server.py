@@ -1630,9 +1630,11 @@ def voice_call(req: CallTurn):
     if caller.lower() in ("", "null", "none", "unknown", "anonymous"):
         caller = ""
     tid = hub.walker(caller) if caller else None
-    if tid is None:
-        tid = _only_phone_online()          # one isaac phone on: that's the caller's
-        if tid and caller:
+    if tid is None and caller:
+        # a real caller number and one isaac phone on: that's the caller's. a call with no number (a web or test
+        # call through the agent's public link) is never matched to anyone's phone
+        tid = _only_phone_online()
+        if tid:
             hub.set_walker(caller, tid)
     _trace("voice", session=None, who="caller", text=req.text, traveller=tid or caller or "caller", via="phone")
     from .voice import THANKS
@@ -1654,7 +1656,8 @@ def voice_call(req: CallTurn):
             if m:
                 place = m["place"] + (f" at {m['bldg']}" if m["bldg"] else "")
     if place is None:
-        return _voice.turn(Turn(traveller=tid, text=req.text, sid=st.get("sid"),
+        return _voice.turn(Turn(traveller=tid, text=req.text,
+                                sid=st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt",
                                 session=st.get("session") if walking else None))
     profile = st.get("profile") or "blind"
     sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt", profile)
