@@ -181,6 +181,7 @@ The step-by-step guide (hotspot, addresses, calibration, troubleshooting) is [do
 | `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `PHOTON_ALLOWED_SENDERS` | The iMessage bot. Allowed senders is optional. |
 | `NUDGE_MODEL`, `NUDGE_VISION_MODEL` | Optional model overrides. |
 | `NUDGE_BAND` | `1` attaches the collar to the first walk; `dry` wires it up without GPIO. |
+| `NUDGE_DEMO_LINE_M`, `NUDGE_DEMO_CORNER_M`, `NUDGE_DEMO_TURN` | Sizes of the two walk-anywhere demo routes (search `demo` in Send Trip). See [docs/live-demo.md](docs/live-demo.md). |
 
 ## Track mapping
 
