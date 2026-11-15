@@ -1,8 +1,9 @@
 # The belt
 
 The belt is the wearable that is actually built: two servos on a PCA9685 board, a Raspberry Pi, and the
-traveller's iPhone as the step and heading sensor. The Pi runs its own on-body runtime (a separate
-codebase, not this repository). That runtime owns everything from the steps down: it reads the phone,
+traveller's iPhone as the step and heading sensor. The Pi runs its own on-body runtime, which is in
+[`belt/`](../belt/README.md) in this repository as a self-contained project (its Python package is also called
+`nudge`, so run it and its tests from inside `belt/`). That runtime owns everything from the steps down: it reads the phone,
 keeps the wearer's position, and fires the taps.
 
 This repository owns everything before the steps: the building, the route, the words. The two meet at a

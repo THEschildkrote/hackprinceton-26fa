@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Walk logs and the self-signed TLS key are generated on the device.
+logs/
+certs/
+
+# Bridge: identities and keys, message logs, the processed-message cursor.
+.env
+bridge/state/

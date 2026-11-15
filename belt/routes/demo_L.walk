@@ -1,0 +1,14 @@
+# A scripted walk of routes/demo_L.json for `nudge --sim --script routes/demo_L.walk`.
+# The wearer starts on waypoint 0 facing waypoint 1, with the compass reading 40 deg.
+heading 40
+wait 1
+cmd calibrate
+cmd start
+wait 1
+step 7          # 4.9 m along the first leg; taps for the turn start near the corner
+wait 0.5
+turn 90 1.5     # turn right at the corner
+wait 0.5
+step 7          # 4.9 m along the second leg
+wait 3          # arrived: left-right three times
+quit

@@ -1,0 +1,2 @@
+# The repo is edited on Windows and run on the Pi: keep LF everywhere.
+* text=auto eol=lf

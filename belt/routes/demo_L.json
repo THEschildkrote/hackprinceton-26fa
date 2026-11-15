@@ -1,0 +1,5 @@
+{
+  "name": "demo_L",
+  "comment": "5 m straight, 90 degrees right, 5 m straight. x right, y up, metres.",
+  "waypoints": [[0.0, 0.0], [0.0, 5.0], [5.0, 5.0]]
+}

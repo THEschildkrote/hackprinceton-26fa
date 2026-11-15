@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nudge"
+version = "0.1.0"
+description = "On-body runtime for Nudge: shoulder taps that steer a blind visitor along an indoor route"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.9"]
+
+[project.optional-dependencies]
+# Only needed on the Raspberry Pi, to drive the PCA9685.
+pi = ["adafruit-circuitpython-servokit>=1.3"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+nudge = "nudge.main:main"
+
+[tool.setuptools.packages.find]
+include = ["nudge*"]
+
+[tool.setuptools.package-data]
+nudge = ["web/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

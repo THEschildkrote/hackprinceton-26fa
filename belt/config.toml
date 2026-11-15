@@ -1,0 +1,110 @@
+# Nudge runtime configuration. Values marked SET ON THE BELT were chosen on
+# the hardware on 14 Nov; every other value shown is the default. Delete a
+# line to fall back to its default. Unknown keys are rejected at startup.
+
+[actuators]
+driver = "servo"          # "servo" = PCA9685 (ServoKit if installed, else built in),
+                          # "pca9685" = always the built-in driver, "mock" = log only
+i2c_bus = 1               # /dev/i2c-1: pins 3 and 5
+i2c_address = 0x40
+pwm_freq_hz = 50
+min_pulse_us = 500        # SG92R pulse range for 0-180 degrees
+max_pulse_us = 2400
+angle_min_deg = 0         # every commanded angle is clamped to this range
+angle_max_deg = 180
+hold_s = 0.12             # arm stays on the shoulder this long
+settle_s = 0.15           # time for the arm to lift off before the next move
+double_gap_s = 0.08       # extra pause between the two taps of a double tap
+stagger_s = 0.06          # offset between pods in stop(); never below 0.05
+min_interval_s = 0.4      # steering taps closer together than this are dropped
+
+# SET ON THE BELT: a 45 degree swing (35 was too faint). Try others without
+# editing this file:  nudge taps --swing 40     or   nudge taps --jog left 60
+[actuators.left]
+channel = 0
+rest_deg = 90
+contact_deg = 45
+
+[actuators.right]
+channel = 1
+rest_deg = 90
+contact_deg = 135
+
+[sensors]
+source = "phone"          # "phone", "sim" or "imu" (stub)
+
+# SET ON THE BELT: phone in the back pocket. A straight pocket walk on 14 Nov
+# held the smoothed heading within 12 degrees. A guided walk is still to do.
+# To go back to a phone fixed upright on the belt:
+#   heading_source = "compass"   and   heading_smooth_s = 0
+heading_source = "gyro"   # "gyro" = yaw from the gyro, immune to the Pi and battery beside
+                          # the pocket; "compass" = webkitCompassHeading
+heading_smooth_s = 1.0    # average the heading over about one stride; 0 = off
+
+stale_after_s = 2.5       # no sensor data for this long -> stop() once and pause. Was 1.0: on the venue walks the
+                          # phone page paused for 1.2-1.7 s several times a walk, and each pause fired a stop
+calibrate_window_s = 0.5  # /calibrate averages the heading over this window
+
+[deadreckon]
+step_length_m = 0.5       # SET ON THE BELT: 4 m in 8 steps, phone in the back pocket (default 0.7).
+                          # It is the distance per COUNTED step: re-measure for another wearer or mounting.
+height_ref_cm = 175       # the wearer that step was measured on (5 ft 9). The viewer's height slider
+                          # scales the step length from here for anyone else.
+drift_correction = true   # false = plain dead reckoning, none of the rules below
+snap_dist_m = 1.5         # route snapping; 0 = off
+turn_window_m = 3.0       # turn snapping; 0 = off
+turn_window_frac = 0.2    # SET FOR CORRIDORS (default 0): on a long leg the window is a fifth of its length
+                          # (5 m on a 25 m corridor), because the step count is further out by then
+turn_tol_deg = 25
+turn_time_s = 3.0
+turn_hold_s = 0.15        # the turn must still be there this much later (rejects one bad reading); 0 = off
+min_turn_deg = 45         # bends gentler than this are not treated as turns
+calibrate_step_length = true   # SET FOR CORRIDORS (default false): after the first turn snap,
+                               # step length = first leg length / steps counted on it
+calibrate_min_leg_m = 12       # but only on a first leg at least this long: on a 5 m leg one step
+                               # either way is about 14 percent, on 12 m about 4
+step_length_min_m = 0.35       # lowered from 0.5 so a short wearer's measured step is not clamped up
+step_length_max_m = 0.9
+bias_tau_s = 5.0          # compass bias low-pass; 0 = off
+bias_max_deg = 20         # headings further off the leg than this are never learned as bias;
+                          # keep it <= follower.enter_deg so bias never absorbs what taps are correcting
+freeze_after_s = 1.5      # no step for this long -> pose frozen; 0 = off
+freeze_heading = false    # true = hold heading too while frozen (see README)
+step_blank_after_tap_s = 0.0  # ignore steps this long after a tap; 0 = off
+
+[follower]
+enter_deg = 20            # start tapping above this heading error
+exit_deg = 10             # go quiet again below this
+urgent_deg = 60           # double taps above this
+tap_period_s = 1.0
+arrive_radius_m = 1.0
+turning_deg_s = 25        # no new tap while the wearer is already turning the right way faster than this; 0 = off
+overturn_window_s = 4.0   # an error on the other side this soon after a tap is an overturn; 0 = off
+overturn_gap_s = 0.5      # an overturn gets one single tap back, this soon after the last tap
+
+[server]
+host = "0.0.0.0"
+port = 8000               # plain HTTP (viewer, or behind an HTTPS tunnel)
+tls_port = 8443           # HTTPS with the self-signed cert, when run with --tls
+cert_dir = "certs"
+
+[route]
+default = "routes/demo_L.json"
+dir = "routes"
+flip_y = false            # true if the route frame has y pointing down/south
+simplify_m = 0.4          # SET FOR PLANNER ROUTES (default 0): drop points within 0.4 m of the line
+                          # through their neighbours, so scan-position wiggles are not followed
+floors = true             # a route that changes floor waits there and carries on when told; false = ends there
+rejoin_m = 2.0            # a new route mid-walk is picked up where the wearer is, if within this of it
+
+[obstacle]                # something in the way that is not on the map; fed by POST /obstacle (see README)
+enabled = false           # OFF until switched on: "Obstacle stop" in the viewer, or POST /obstacle/mode.
+                          # Off, readings are shown in the viewer but never change a tap.
+stop_m = 1.5              # this close dead ahead: stop (both pods)
+clear_m = 2.0             # once stopped, clear again beyond this
+side_room_m = 1.2         # tap towards a side only if nothing there is nearer than this
+stale_s = 1.0             # readings older than this are ignored
+tap_period_s = 1.0
+
+[logging]
+dir = "logs"

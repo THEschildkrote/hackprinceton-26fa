@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Isaac sensor</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0f14; --panel: #151b23; --text: #e8edf2; --dim: #8b98a7;
+          --ok: #3ddc97; --warn: #ffb020; --bad: #ff5d5d; --accent: #4da3ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 16px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  body { padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+                  max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+         display: flex; flex-direction: column; gap: 12px; -webkit-user-select: none; user-select: none; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); letter-spacing: .04em; text-transform: uppercase; }
+  #go { flex: 1; min-height: 40vh; border: 0; border-radius: 20px; background: var(--accent); color: #04121f;
+        font-family: inherit; font-size: 34px; font-weight: 700; line-height: 1.2; }
+  #go:active { filter: brightness(.85); }
+  #live { display: none; flex: 1; flex-direction: column; gap: 12px; }
+  .big { display: flex; gap: 12px; }
+  .tile { flex: 1; background: var(--panel); border-radius: 16px; padding: 12px 16px; }
+  .tile .label { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .tile .value { font: 700 56px/1.1 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .tile .unit { font-size: 20px; color: var(--dim); margin-left: 4px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 16px; overflow: hidden; }
+  td { padding: 6px 16px; font-size: 14px; border-top: 1px solid #202833; }
+  tr:first-child td { border-top: 0; }
+  td:first-child { color: var(--dim); width: 42%; }
+  td:last-child { font-family: ui-monospace, Menlo, monospace; text-align: right; }
+  #meter { position: relative; height: 14px; background: var(--panel); border-radius: 7px; overflow: hidden; }
+  #bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent); }
+  #mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--warn); }
+  .row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--dim); }
+  .row input { flex: 1; }
+  #msg { min-height: 1.4em; color: var(--warn); font-size: 15px; }
+  #walk { background: var(--panel); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+  #walk select { flex: 1; min-width: 0; font: inherit; padding: 8px; border-radius: 10px; border: 1px solid #2a3442;
+                 background: #0e141b; color: var(--text); }
+  #walk button { flex: 1; border: 0; border-radius: 14px; padding: 16px 10px; font-family: inherit; font-size: 20px; font-weight: 700; line-height: 1.1; }
+  #walk .go { background: var(--ok); color: #04210f; flex: 2; }
+  #walk .halt { background: var(--bad); color: #2a0505; }
+  #walk button:disabled { opacity: .45; }
+  #walkMsg { font-size: 15px; min-height: 2.8em; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>Isaac sensor</h1>
+<div id="msg" role="status" aria-live="polite"></div>
+<button id="go" type="button">Start sensors</button>
+
+<div id="live">
+  <div class="big">
+    <div class="tile"><div class="label">Heading</div><div><span class="value" id="heading">--</span><span class="unit">&deg;</span></div></div>
+    <div class="tile"><div class="label">Steps</div><div><span class="value" id="steps">0</span></div></div>
+  </div>
+  <div id="walk">
+    <div class="row"><span>Route</span><select id="routes" aria-label="Route"></select>
+      <span>Height</span><select id="height" aria-label="Wearer height"></select></div>
+    <div class="row">
+      <button id="begin" type="button" class="go">Start walk</button>
+      <button id="halt" type="button" class="halt">Stop</button>
+    </div>
+    <div id="walkMsg" role="status" aria-live="polite">Pick a route, press Start walk, pocket the phone, face the first leg and stand still.</div>
+  </div>
+  <table>
+    <tr><td>Link to Pi</td><td id="link">connecting</td></tr>
+    <tr><td>Sent</td><td id="rate">0 Hz</td></tr>
+    <tr><td>Compass</td><td id="compass">--</td></tr>
+    <tr><td>Compass accuracy</td><td id="acc">--</td></tr>
+    <tr><td>Heading jitter (2 s)</td><td id="jitter">--</td></tr>
+    <tr><td>Gyro yaw</td><td id="yaw">--</td></tr>
+    <tr><td>Tilt (beta / gamma)</td><td id="tilt">--</td></tr>
+    <tr><td>Screen wake lock</td><td id="wake">--</td></tr>
+  </table>
+  <div>
+    <div class="row"><span>Step signal</span><span id="thrText"></span></div>
+    <div id="meter"><div id="bar"></div><div id="mark"></div></div>
+    <div class="row"><span>Threshold</span><input id="thr" type="range" min="0.4" max="4" step="0.1"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const query = new URLSearchParams(location.search);
+  const RATE_HZ = Math.min(20, Math.max(10, Number(query.get('hz')) || 15));
+  const MIN_STEP_GAP_MS = Number(query.get('gap')) || 300;
+  const METER_MAX = 5;  // m/s^2 shown full-scale on the step meter
+  const FRESH_MS = 500;        // a reading older than this is not sent: the Pi must see silence, not a repeat
+  const POST_TIMEOUT_MS = 2000;
+  const WS_STALL_MS = 2000;    // a socket that cannot drain for this long is dropped and reopened
+  const TRUST_COMPASS = query.get('trust') === '1';   // send the compass even when iOS calls it unreliable
+  const SID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // this page load
+
+  function stored(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function store(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+  let threshold = Number(query.get('thr')) || Number(stored('nudge.thr')) || 1.2;
+
+  const S = { started: false, compass: null, acc: null, yaw: null, beta: null, gamma: null,
+              compassAt: 0, yawAt: 0, hadCompass: false, held: null, warn: null, busy: false,
+              steps: 0, seq: 0, signal: 0, peak: 0, sent: 0, history: [] };
+
+  function say(text, cls) { const el = $('msg'); el.textContent = text; el.className = cls || ''; }
+
+  // -- orientation ---------------------------------------------------------
+
+  function onOrientation(e) {
+    if (typeof e.webkitCompassHeading === 'number' && isFinite(e.webkitCompassHeading)) {
+      S.compass = e.webkitCompassHeading;          // iOS: degrees clockwise from north
+      S.acc = e.webkitCompassAccuracy;
+      S.compassAt = performance.now();
+      S.hadCompass = true;
+    }
+    if (e.alpha == null || e.beta == null || e.gamma == null) return;
+    S.beta = e.beta; S.gamma = e.gamma;
+    // Direction the back of the phone faces, projected onto the ground, from
+    // the W3C rotation matrix. Unlike alpha alone this stays well defined
+    // when the phone is upright, in portrait or landscape. On iOS alpha is
+    // gyro-based and relative to an arbitrary start, so this "yaw" ignores
+    // magnets but drifts slowly; the constant offset is removed by /calibrate.
+    const d = Math.PI / 180, a = e.alpha * d, b = e.beta * d, g = e.gamma * d;
+    const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+    const east = -(cA * sG + sA * sB * cG);
+    const north = -(sA * sG - cA * sB * cG);
+    if (Math.hypot(east, north) > 0.2) {
+      S.yaw = (Math.atan2(east, north) / d + 360) % 360;
+      S.yawAt = performance.now();
+    }
+  }
+
+  function onAbsolute(e) {   // Android: absolute alpha, counter-clockwise
+    if (typeof e.webkitCompassHeading !== 'number' && e.absolute && e.alpha != null) {
+      S.compass = (360 - e.alpha) % 360;
+      S.compassAt = performance.now();
+      S.hadCompass = true;
+    }
+  }
+
+  // -- steps: peak detection on acceleration magnitude ------------------------
+
+  let gravity = 9.81, smooth = 0, prev = 0, prev2 = 0, armed = true, lastStep = 0, lastMotion = 0;
+
+  function onMotion(e) {
+    const acc = e.accelerationIncludingGravity;
+    if (!acc || acc.x == null) return;
+    const now = performance.now();
+    const dt = lastMotion ? Math.min(0.1, (now - lastMotion) / 1000) : 1 / 60;
+    lastMotion = now;
+    const mag = Math.hypot(acc.x, acc.y, acc.z);
+    gravity += (mag - gravity) * Math.min(1, dt / 1.0);    // slow baseline (about 1 s)
+    smooth += (mag - gravity - smooth) * Math.min(1, dt / 0.05);  // light smoothing
+    // A step is a local maximum above the threshold, at most one per MIN_STEP_GAP_MS,
+    // and the signal must fall back before the next one can count.
+    if (armed && prev > threshold && prev >= prev2 && prev > smooth && now - lastStep > MIN_STEP_GAP_MS) {
+      S.steps += 1;
+      lastStep = now;
+      armed = false;
+    }
+    if (!armed && smooth < threshold * 0.4) armed = true;
+    prev2 = prev; prev = smooth;
+    S.signal = smooth;
+    S.peak = Math.max(S.peak * 0.97, smooth);
+  }
+
+  // -- link to the Pi: WebSocket, falling back to plain POSTs ------------------
+
+  const Link = {
+    ws: null, fails: 0, posting: false, mode: 'connecting', stalledAt: 0,
+    connect() {
+      let ws;
+      try {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+      } catch (err) { this.retry(); return; }
+      this.ws = ws;
+      const opening = setTimeout(() => { if (ws.readyState === 0) ws.close(); }, 4000);
+      ws.onopen = () => { clearTimeout(opening); this.fails = 0; this.stalledAt = 0; this.mode = 'websocket'; };
+      ws.onclose = () => { clearTimeout(opening); if (this.ws === ws) { this.ws = null; this.retry(); } };
+      ws.onerror = () => {};
+      ws.onmessage = (e) => {          // the Pi says when it is ignoring this phone in favour of another
+        try { const m = JSON.parse(e.data); if (typeof m.busy === 'boolean') S.busy = m.busy; } catch (err) {}
+      };
+    },
+    retry() {
+      this.fails += 1;
+      setTimeout(() => this.connect(), Math.min(5000, 500 * this.fails));
+    },
+    drop(ws) {                         // give up on a socket that has stopped draining
+      if (this.ws === ws) { this.ws = null; this.retry(); }
+      try { ws.close(); } catch (err) {}
+    },
+    send(message) {
+      const body = JSON.stringify(message);
+      const ws = this.ws;
+      if (ws && ws.readyState === 1) {
+        if (ws.bufferedAmount < 4096) { this.stalledAt = 0; ws.send(body); S.sent += 1; return; }
+        const now = performance.now();
+        if (!this.stalledAt) this.stalledAt = now;
+        if (now - this.stalledAt < WS_STALL_MS) return;
+        this.stalledAt = 0;
+        this.drop(ws);                 // and try this reading as a POST instead
+      }
+      if (this.posting) return;        // one request in flight; the next reading is fresher anyway
+      this.posting = true;
+      // Without a timeout a request that never answers would block every later reading.
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), POST_TIMEOUT_MS);
+      fetch('/sensor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+                         cache: 'no-store', signal: abort.signal })
+        .then((r) => {
+          S.busy = r.status === 409;
+          this.mode = r.ok ? 'http post' : (r.status === 409 ? 'ignored' : 'offline');
+          if (r.ok) S.sent += 1;
+        })
+        .catch(() => { this.mode = 'offline'; })
+        .finally(() => { clearTimeout(timer); this.posting = false; });
+    },
+  };
+
+  const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
+
+  // Only readings that are actually arriving are sent. If the phone stops
+  // delivering sensor events this page goes quiet, and the Pi's own
+  // "no data for 1 s" check stops the wearer. Repeating the last reading
+  // would hide exactly that failure.
+  function tick() {
+    const now = performance.now();
+    const fresh = (at) => at > 0 && now - at < FRESH_MS;
+    const compassLive = S.compass != null && fresh(S.compassAt);
+    const compassOk = compassLive && (TRUST_COMPASS || !(S.acc < 0));   // iOS: negative accuracy = invalid heading
+    const yawOk = S.yaw != null && fresh(S.yawAt);
+    if (!fresh(lastMotion)) S.held = 'No motion data is arriving from this phone. Nothing is being sent.';
+    else if (!compassLive && !yawOk) S.held = 'No orientation data is arriving from this phone. Nothing is being sent.';
+    else if (!compassOk && !yawOk) S.held = 'iOS reports the compass as unreliable. Nothing is being sent.';
+    else S.held = null;
+    S.warn = (!S.held && compassLive && !compassOk)
+      ? 'iOS reports the compass as unreliable, so the compass heading is not being sent. ' +
+        'Move away from magnets and metal, or wave the phone in a figure of eight.'
+      : null;
+    if (S.held) return;
+    // A phone that has a compass never falls back to gyro yaw on its own:
+    // the two have different zero points, so the pose would swing.
+    const heading = S.hadCompass ? (compassOk ? S.compass : null) : S.yaw;
+    if (heading != null) S.history.push([now, heading]);
+    const age = now - Math.min(lastMotion, Math.max(compassOk ? S.compassAt : 0, yawOk ? S.yawAt : 0));
+    Link.send({ type: 'sensor', sid: SID, seq: ++S.seq, t: Date.now() / 1000, age_ms: Math.round(age),
+                heading_deg: r2(heading), step_count: S.steps,
+                compass_deg: compassOk ? r2(S.compass) : null, compass_acc: r2(S.acc),
+                yaw_deg: yawOk ? r2(S.yaw) : null, beta: r2(S.beta), gamma: r2(S.gamma) });
+  }
+
+  // -- screen wake lock -------------------------------------------------------
+
+  let wakeLock = null;
+  async function keepAwake() {
+    if (!('wakeLock' in navigator)) { $('wake').textContent = 'not supported'; $('wake').className = 'warn'; return; }
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      $('wake').textContent = 'held'; $('wake').className = 'ok';
+      wakeLock.addEventListener('release', () => { $('wake').textContent = 'released'; $('wake').className = 'warn'; });
+    } catch (err) { $('wake').textContent = 'refused'; $('wake').className = 'bad'; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (S.started && document.visibilityState === 'visible') keepAwake();
+  });
+
+  // -- display ----------------------------------------------------------------
+
+  function jitter() {       // circular standard deviation of the last 2 s of heading
+    const cutoff = performance.now() - 2000;
+    while (S.history.length && S.history[0][0] < cutoff) S.history.shift();
+    if (S.history.length < 5) return null;
+    let s = 0, c = 0;
+    for (const [, h] of S.history) { s += Math.sin(h * Math.PI / 180); c += Math.cos(h * Math.PI / 180); }
+    const r = Math.min(1, Math.hypot(s, c) / S.history.length);
+    return r > 1e-9 ? Math.sqrt(Math.max(0, -2 * Math.log(r))) * 180 / Math.PI : 180;
+  }
+
+  let lastSent = 0, lastDraw = performance.now(), shown = null;
+  function draw() {
+    const now = performance.now();
+    const heading = S.compass != null ? S.compass : S.yaw;
+    const notice = S.held || (S.busy ? 'Another phone is already feeding the Pi. This one is being ignored.' : S.warn);
+    if (notice !== shown) { say(notice || '', notice ? (notice === S.warn ? 'warn' : 'bad') : ''); shown = notice; }
+    $('heading').textContent = heading == null ? '--' : Math.round(heading) % 360;
+    $('steps').textContent = S.steps;
+    $('compass').textContent = S.compass == null ? 'no compass' : S.compass.toFixed(1) + '°';
+    $('acc').textContent = S.acc == null ? '--' : (S.acc < 0 ? 'uncalibrated' : '±' + S.acc.toFixed(0) + '°');
+    $('acc').className = S.acc == null ? '' : (S.acc < 0 || S.acc > 25 ? 'warn' : 'ok');
+    $('yaw').textContent = S.yaw == null ? '--' : S.yaw.toFixed(1) + '°';
+    $('tilt').textContent = S.beta == null ? '--' : S.beta.toFixed(0) + '° / ' + S.gamma.toFixed(0) + '°';
+    const j = jitter();
+    $('jitter').textContent = j == null ? '--' : '±' + j.toFixed(1) + '°';
+    $('jitter').className = j == null ? '' : (j > 8 ? 'warn' : 'ok');
+    const link = S.held ? 'holding' : (S.busy ? 'ignored' : Link.mode);
+    $('link').textContent = link;
+    $('link').className = link === 'websocket' ? 'ok' : (link === 'http post' ? 'warn' : 'bad');
+    $('rate').textContent = ((S.sent - lastSent) * 1000 / (now - lastDraw)).toFixed(0) + ' Hz';
+    lastSent = S.sent; lastDraw = now;
+    $('bar').style.width = Math.min(100, Math.max(0, S.peak) / METER_MAX * 100) + '%';
+    $('mark').style.left = Math.min(100, threshold / METER_MAX * 100) + '%';
+    $('thrText').textContent = threshold.toFixed(1) + ' m/s²';
+  }
+
+  // -- start: the one tap iOS requires ------------------------------------------
+
+  async function start() {
+    say('');
+    if (!window.isSecureContext) {
+      say('This page is not on HTTPS, so iOS will not hand over motion data. Open the https:// address.', 'bad');
+    }
+    try {
+      const asks = [];
+      if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+        asks.push(DeviceMotionEvent.requestPermission());
+      }
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        asks.push(DeviceOrientationEvent.requestPermission());
+      }
+      const answers = await Promise.all(asks);
+      if (answers.some((a) => a !== 'granted')) {
+        say('Motion access was refused. Close this tab, reopen the page and allow it.', 'bad');
+        return;
+      }
+    } catch (err) {
+      say('Could not get motion permission: ' + (err && err.message ? err.message : err), 'bad');
+      return;
+    }
+    window.addEventListener('deviceorientation', onOrientation);
+    window.addEventListener('deviceorientationabsolute', onAbsolute);
+    window.addEventListener('devicemotion', onMotion);
+    S.started = true;
+    $('go').style.display = 'none';
+    $('live').style.display = 'flex';
+    keepAwake();
+    Link.connect();
+    setInterval(tick, 1000 / RATE_HZ);
+    setInterval(draw, 250);
+    setTimeout(() => {
+      if (!S.held && !S.busy && !S.warn && !S.hadCompass) say('No compass on this device: using gyro yaw.', 'warn');
+    }, 3000);
+  }
+
+  // -- starting a walk from this page -------------------------------------------
+  // The sensor page has to stay in front, so the walk is started from here, not from the viewer.
+  // Start walk loads the route, gives the wearer time to pocket the phone and face the first leg,
+  // waits until the Pi sees a steady stream and no steps, then calibrates and starts. It says each
+  // stage aloud, because by then the phone is in a pocket.
+
+  const COUNTDOWN_S = 8, STILL_S = 3, STILL_SPREAD_DEG = 3, GIVE_UP_S = 40;
+  let walkRun = 0, watching = null;
+
+  function speak(text) {
+    try {
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(text); u.rate = 1.05;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    } catch (err) {}
+  }
+  function walkSay(text, cls, aloud) { const el = $('walkMsg'); el.textContent = text; el.className = cls || ''; if (aloud) speak(aloud === true ? text : aloud); }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function api(path, body) {
+    const abort = new AbortController(); const timer = setTimeout(() => abort.abort(), 4000);
+    try {
+      const r = await fetch(path, body === undefined ? { cache: 'no-store', signal: abort.signal }
+        : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', signal: abort.signal });
+      let data = null; try { data = await r.json(); } catch (err) {}
+      if (!r.ok) throw new Error((data && data.error) || ('the Pi answered ' + r.status));
+      return data || {};
+    } finally { clearTimeout(timer); }
+  }
+
+  async function loadRoutes() {
+    try {
+      const data = await api('/routes');
+      const keep = stored('nudge.route');
+      $('routes').innerHTML = '';
+      for (const name of data.routes || []) {
+        const opt = document.createElement('option'); opt.value = opt.textContent = name; $('routes').append(opt);
+      }
+      if (keep && [...$('routes').options].some((o) => o.value === keep)) $('routes').value = keep;
+    } catch (err) { walkSay('Could not read the route list from the Pi: ' + err.message, 'bad'); }
+  }
+
+  async function beginWalk() {
+    const run = ++walkRun;
+    const live = () => run === walkRun;
+    const name = $('routes').value;
+    if (!name) { walkSay('No route to start: the Pi sent no route list.', 'bad'); return; }
+    $('begin').disabled = true;
+    speak('Starting in ' + COUNTDOWN_S + ' seconds. Pocket the phone and face the first leg.');   // inside the tap, so iOS allows speech later
+    try {
+      store('nudge.route', name); store('nudge.height', $('height').value);
+      await api('/stop', {});
+      await api('/wearer', { height_cm: Number($('height').value) });
+      await api('/route', { name });
+      for (let s = COUNTDOWN_S; s > 0 && live(); s--) { walkSay('Route ' + name + ' loaded. Pocket the phone, face the first leg, stand still: ' + s + ' s'); await sleep(1000); }
+      if (!live()) return;
+      walkSay('Waiting until you are standing still…', '', 'Stand still.');
+      const t0 = performance.now(); let stillSince = 0, lastSteps = null;
+      while (live()) {
+        const st = await api('/state'); const sen = st.sensor || {};
+        const steady = st.sensor_ok && sen.rate_hz >= 6 && sen.spread_deg != null && sen.spread_deg <= STILL_SPREAD_DEG
+          && (lastSteps === null || sen.step_count === lastSteps);
+        lastSteps = sen.step_count;
+        if (steady) { if (!stillSince) stillSince = performance.now(); } else stillSince = 0;
+        if (stillSince && performance.now() - stillSince >= STILL_S * 1000) break;
+        if (performance.now() - t0 > GIVE_UP_S * 1000) throw new Error(!st.sensor_ok ? 'the Pi is not receiving this phone’s sensor' : 'you did not stand still for ' + STILL_S + ' s');
+        await sleep(400);
+      }
+      if (!live()) return;
+      await api('/calibrate', {});
+      await api('/start', {});
+      walkSay('Guiding on ' + name + '. Walk.', 'ok', 'Started. Walk forward.');
+      watch(run);
+    } catch (err) {
+      if (live()) walkSay('Not started: ' + err.message, 'bad', 'Not started.');
+    } finally { if (live()) $('begin').disabled = false; }
+  }
+
+  function watch(run) {            // say how the walk ends
+    clearInterval(watching);
+    watching = setInterval(async () => {
+      if (run !== walkRun) { clearInterval(watching); return; }
+      try {
+        const st = await api('/state');
+        if (st.state === 'NAVIGATING') { walkSay('Guiding: ' + (st.distance_m == null ? '' : st.distance_m.toFixed(1) + ' m to the next point.'), 'ok'); return; }
+        if (st.state === 'FLOOR') { walkSay('Change floor, then press Next floor in the viewer.', 'warn'); return; }
+        clearInterval(watching);
+        if (st.state === 'ARRIVED') walkSay('Arrived.', 'ok', 'Arrived.');
+        else walkSay('Stopped (' + String(st.state).toLowerCase() + ').', 'warn', 'Stopped.');
+      } catch (err) {}
+    }, 1000);
+  }
+
+  async function haltWalk() {
+    walkRun += 1; clearInterval(watching); $('begin').disabled = false;
+    try { await api('/stop', {}); walkSay('Stopped.', 'warn', 'Stopped.'); }
+    catch (err) { walkSay('Stop did not reach the Pi: ' + err.message, 'bad'); }
+  }
+
+  for (let cm = 140; cm <= 205; cm += 5) {
+    const opt = document.createElement('option'); opt.value = cm; opt.textContent = cm + ' cm'; $('height').append(opt);
+  }
+  $('height').value = stored('nudge.height') || '175';
+  $('begin').addEventListener('click', beginWalk);
+  $('halt').addEventListener('click', haltWalk);
+  $('go').addEventListener('click', loadRoutes);
+
+  $('thr').value = threshold;
+  $('thr').addEventListener('input', (e) => { threshold = Number(e.target.value); store('nudge.thr', String(threshold)); });
+  $('go').addEventListener('click', start);
+})();
+</script>
+</body>
+</html>
