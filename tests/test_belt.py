@@ -71,6 +71,10 @@ class FakeBelt:
             self.floors, self.floor_index = list(dict.fromkeys(p[2] for p in pts)), 0
             return 200, {"ok": True, "waypoints": len(self.waypoints), "given": len(pts),
                          "dropped_other_floors": len(pts) - len(self.waypoints), "floors": len(self.floors)}
+        if path == "/mark":
+            if not self.calibrated:
+                return 409, {"ok": False, "error": "not calibrated: a mark corrects a position, and there is none yet"}
+            return 200, {"ok": True, "waypoint": (body or {}).get("waypoint", 1), "moved_m": 1.5}
         if path == "/sensor":
             self.steps, self.heading = body["step_count"], body["heading_deg"]
             return 200, {"ok": True}
@@ -498,3 +502,13 @@ def test_nudge_start_says_where_the_apps_first_trip_begins(fake, monkeypatch):
     assert (s["start"]["x"], s["start"]["y"]) == (14.5, 1.5) != (usual["x"], usual["y"])
     named = c.post("/api/nav/start", json=dict(APP_START, to="p_K2", start="p_L3")).json()     # a start that is named wins
     assert (named["start"]["x"], named["start"]["y"]) == (2, 4.5)
+
+
+def test_the_caretaker_can_say_the_wearer_is_at_the_corner(fake):
+    s = c.post("/api/nav/start", json=dict(START, to="p_K2")).json()
+    early = c.post("/api/belt/mark").json()
+    assert not early["ok"] and "not calibrated" in early["error"]          # nothing to correct before the walk
+    c.post("/api/belt/begin", json={"session": s["session"]})
+    r = c.post("/api/belt/mark").json()
+    assert r["ok"] and r["moved_m"] == 1.5 and fake.posts()[-1] == ("/mark", {})
+    assert c.post("/api/belt/mark", json={"waypoint": 2}).json()["ok"] and fake.posts()[-1] == ("/mark", {"waypoint": 2})

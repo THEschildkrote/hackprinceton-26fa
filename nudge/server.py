@@ -749,6 +749,15 @@ def belt_stop():
     return {"ok": belt.stop() is not None, **belt.status()}
 
 
+@app.post("/api/belt/mark")
+def belt_mark(body: dict | None = None):
+    """the wearer is standing on the next corner of the route (or on waypoint `waypoint`): the belt puts
+    its position there. for the caretaker, when the dot has drifted from the person."""
+    from . import belt
+    out = belt.mark((body or {}).get("waypoint"))
+    return {"ok": out is not None, "moved_m": (out or {}).get("moved_m"), **belt.status()}
+
+
 @app.post("/api/belt/wearer")
 def belt_wearer(req: BeltWearerReq):
     """someone else is wearing it: the belt scales its step length to their height."""

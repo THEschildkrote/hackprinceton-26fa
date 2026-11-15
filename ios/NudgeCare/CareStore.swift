@@ -110,6 +110,11 @@ final class CareStore {
 
     func dismissAlert() { alert = nil }
 
+    // the traveller is standing on the next corner of their route: tell the belt, so a drifted position is put right
+    func atCorner() async -> Bool {
+        (try? await api.beltMark()) ?? false
+    }
+
     private func notify(_ text: String) {
         let c = UNMutableNotificationContent()
         c.title = "\(displayName) needs attention"
