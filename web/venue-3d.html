@@ -55830,11 +55830,21 @@ function main(THREE, OrbitControls, SCANS) {
   const hp = new URLSearchParams(location.hash.replace(/^#/, ''));
   const flag = (name) => ['1', 'true', 'on', 'yes', 'all'].includes(String(hp.get(name)).toLowerCase());
   const EMBED = flag('embed');
+  // scrub=1: the embedding page posts its scroll position ({type: 'isaac-scrub', p: 0..1}) and the camera follows;
+  // lift=1 lifts the floors apart past the middle; bg=rrggbb matches the page's background so the edges blend
+  const SCRUB = EMBED && flag('scrub'), LIFT = flag('lift');
+  let scrubP = 0.5, scrubGoal = 0.5, orbit0 = null;
   if (EMBED) {
     document.body.classList.add('embed');
     controls.enabled = false;   // no drag, wheel or touch here: the page around it keeps scrolling
-    controls.autoRotate = true;
+    controls.autoRotate = !SCRUB;
     controls.autoRotateSpeed = Number(hp.get('spin')) || 0.7;
+    const bg = (hp.get('bg') || '').replace(/[^0-9a-f]/gi, '');
+    if (bg.length === 6) { renderer.setClearColor(new THREE.Color('#' + bg), 1); document.body.style.background = '#' + bg; }
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || !e.data || e.data.type !== 'isaac-scrub') return;
+      scrubGoal = Math.max(0, Math.min(1, Number(e.data.p) || 0));
+    });
   }
   if (!hasScan) {
     $('#btn-scan').disabled = true;
@@ -55860,6 +55870,7 @@ function main(THREE, OrbitControls, SCANS) {
   camera.position.copy(start.pos);
   controls.target.copy(start.t);
   controls.update();
+  { const o = camera.position.clone().sub(controls.target); orbit0 = { r: o.length(), az: Math.atan2(o.x, o.z), y: o.y }; }
 
   if (EMBED && hp.get('tour') !== '0') {
     // a slow tour for an embedding page: shortest routes between named places, across floors where they can be
@@ -55927,6 +55938,14 @@ function main(THREE, OrbitControls, SCANS) {
       controls.target.lerpVectors(tween.t0, tween.t1, s);
       if (k >= 1) tween = null;
     }
+    if (SCRUB && orbit0) {
+      scrubP += (scrubGoal - scrubP) * Math.min(1, dt * 5);
+      const az = orbit0.az + (scrubP - 0.5) * 1.8, zoom = 1.18 - 0.32 * scrubP;
+      const flat = Math.sqrt(Math.max(0, orbit0.r * orbit0.r - orbit0.y * orbit0.y));
+      camera.position.set(controls.target.x + Math.sin(az) * flat * zoom, controls.target.y + orbit0.y * zoom,
+                          controls.target.z + Math.cos(az) * flat * zoom);
+      if (LIFT) explodeGoal = scrubP > 0.42 ? 1 : 0;
+    }
     controls.update();
     scaleLabels();
     declutter();
@@ -55939,6 +55958,7 @@ function main(THREE, OrbitControls, SCANS) {
   renderer.render(scene, camera);
   $('#loading').hidden = true;
   document.body.dataset.state = 'ready';
+  if (EMBED && window.parent !== window) window.parent.postMessage({ type: 'isaac-ready' }, location.origin);
   requestAnimationFrame(frame);
 }
 </script>
