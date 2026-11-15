@@ -3,19 +3,11 @@ import csv
 import re
 from functools import lru_cache
 
-from .demomaps import CORNER, LINE, NAMES
 from .mp import ROOT
 
 DEMO_SID = "MgGNVWsyXtH"  # 1255 s atlantic blvd, los angeles: every data layer, dossier, real doorways
 VENUE_SID = "R1FX6EmdcDt"  # rabinowitz hall, princeton: the hackathon venue (indoor only; no vexcel there)
 HIDDEN = {"synthetic", "synthetic-lobby"}  # test buildings: only reachable by typing the id exactly
-# the walk-anywhere demo maps (demomaps.py): found by typing "demo", or the id. never in the featured list
-DEMOS = {LINE: (NAMES[LINE], "the straight line demo"), CORNER: (NAMES[CORNER], "the corner demo")}
-
-
-def _demo_card(sid):
-    return {"sid": sid, "address": DEMOS[sid][0], "city": "", "name": DEMOS[sid][0], "rooms": 3, "panos": 0,
-            "floors": 1, "has_costar": False, "has_dossier": False}
 
 
 @lru_cache(maxsize=1)
@@ -82,11 +74,6 @@ def search(q, limit=12):
     if q in HIDDEN:
         return [{"sid": q, "address": "Test building", "city": "", "name": q, "rooms": 0, "panos": 0, "floors": 2,
                  "has_costar": False, "has_dossier": False}]
-    if q in DEMOS:
-        return [_demo_card(q)]
-    if q.lower().startswith("demo"):
-        rest = re.findall(r"[a-z0-9]+", q.lower())[1:]   # "demo corner" narrows it to the one
-        return [_demo_card(s) for s, (name, _) in DEMOS.items() if all(t in name.lower() for t in rest)][:limit]
     toks = [t for t in re.findall(r"[a-z0-9]+", q.lower()) if t not in ("the", "st", "street", "blvd", "ave")] or \
         re.findall(r"[a-z0-9]+", q.lower())
     hits = []
@@ -119,8 +106,6 @@ def label(sid):
     """'1255 S Atlantic Blvd, Los Angeles' for a sid."""
     if sid in HIDDEN:
         return "the test building"
-    if sid in DEMOS:
-        return DEMOS[sid][1]
     r = next((r for r in _rows() if r["sid"] == sid), None)
     if not r:
         return sid

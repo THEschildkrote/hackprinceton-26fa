@@ -109,10 +109,10 @@ final class StepQueueTests: XCTestCase {
 // the reply below is the server's own, captured from "take me to the finish in demo corner".
 final class VoiceReplyTests: XCTestCase {
     func testAVoiceTurnThatStartsATripNamesItsBuildingAndGoal() throws {
-        let json = #"{"say":"Okay, going to the Finish. Route ready: 12 meters, 1 turn. Walk 6 meters, then turn right. Say brief me any time to hear what to expect in this building.","session":"b6c6fcc5f7","pending":null,"choice":null,"state":{"remaining":12.0,"next":{"type":"turn","text":"Walk 6 meters, then turn right.","along":6.0,"cue":"right"},"room":"Finish","unmapped":false,"done":false,"reroutes":0,"distance_to_next_m":6.0,"bearing_to_next_deg":null,"path":[[1.0,1.0,"f1"],[1.0,3.5,"f1"],[1.0,7.0,"f1"],[3.5,7.0,"f1"],[7.0,7.0,"f1"]]},"device":{"packet":{"m_next":6.0,"deg_next":null,"act_next":"turn","dir_next":"R","off":false,"done":false,"unmapped":false,"hazard":false},"line":"N,6.0,,TR,0"},"trip":{"goal":"Finish","sid":"demo-corner","start":[1.0,1.0,"f1"]}}"#
+        let json = #"{"say":"Okay, going to the Finish. Route ready: 12 meters, 1 turn. Walk 6 meters, then turn right. Say brief me any time to hear what to expect in this building.","session":"b6c6fcc5f7","pending":null,"choice":null,"state":{"remaining":12.0,"next":{"type":"turn","text":"Walk 6 meters, then turn right.","along":6.0,"cue":"right"},"room":"Finish","unmapped":false,"done":false,"reroutes":0,"distance_to_next_m":6.0,"bearing_to_next_deg":null,"path":[[1.0,1.0,"f1"],[1.0,3.5,"f1"],[1.0,7.0,"f1"],[3.5,7.0,"f1"],[7.0,7.0,"f1"]]},"device":{"packet":{"m_next":6.0,"deg_next":null,"act_next":"turn","dir_next":"R","off":false,"done":false,"unmapped":false,"hazard":false},"line":"N,6.0,,TR,0"},"trip":{"goal":"Finish","sid":"R1FX6EmdcDt","start":[1.0,1.0,"f1"]}}"#
         let r = try JSONDecoder().decode(VoiceReply.self, from: Data(json.utf8))
         XCTAssertEqual(r.session, "b6c6fcc5f7")
-        XCTAssertEqual(r.trip?.sid, "demo-corner")
+        XCTAssertEqual(r.trip?.sid, "R1FX6EmdcDt")
         XCTAssertEqual(r.trip?.goal, "Finish")
         XCTAssertNotNil(r.state?.remaining)
     }

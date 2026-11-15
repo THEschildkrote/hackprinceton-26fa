@@ -87,8 +87,8 @@ def _load_model(sid):
     if load:
         return load(sid)
     if sid == "synthetic":
-        from tests.synthetic import building
-        return building()
+        from .fetch import fixture
+        return fixture("synthetic").building()
     raise HTTPException(404, f"no loader for {sid}")
 
 

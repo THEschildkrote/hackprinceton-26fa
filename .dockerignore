@@ -6,7 +6,8 @@ media
 ios
 firmware
 docs
-tests
+tests/*
+!tests/synthetic.py
 web/node_modules
 pi_bundle.tar.gz
 **/__pycache__

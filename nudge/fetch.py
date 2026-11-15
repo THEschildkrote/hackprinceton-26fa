@@ -1,4 +1,5 @@
 """pull everything walkgraph.build needs for one model, with a disk cache."""
+from pathlib import Path
 import json
 import re
 
@@ -55,16 +56,18 @@ def fixture(name):
     import importlib.util
     import sys
     key = f"tests.{name}"
-    if key in sys.modules:
-        return sys.modules[key]
-    try:
-        return importlib.import_module(key)
-    except ImportError:
-        spec = importlib.util.spec_from_file_location(key, ROOT / "tests" / f"{name}.py")
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[key] = mod
-        spec.loader.exec_module(mod)
+    mod = sys.modules.get(key)
+    if mod is not None and hasattr(mod, "__file__") and Path(mod.__file__).resolve() == (ROOT / "tests" / f"{name}.py").resolve():
         return mod
+    path = ROOT / "tests" / f"{name}.py"
+    if not path.exists():
+        return importlib.import_module(key)
+    # by file path first: a container can have some other installed package called "tests" that would shadow ours
+    spec = importlib.util.spec_from_file_location(key, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[key] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 FT = 0.3048
@@ -120,9 +123,6 @@ def load(sid, refresh=False):
         return fixture("synthetic").building()
     if sid == "synthetic-lobby":  # a second scan of the synthetic building (multi-model tests and demo)
         return fixture("synthetic_building").lobby()
-    from . import demomaps
-    if sid in demomaps.NAMES:  # the walk-anywhere demo maps: a straight line and one corner
-        return demomaps.model(sid)
     path = CACHE / f"{sid}.json"
     if path.exists() and not refresh:
         model = json.loads(path.read_text(encoding="utf-8"))

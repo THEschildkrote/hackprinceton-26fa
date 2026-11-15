@@ -17,7 +17,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from fastapi.testclient import TestClient
 
-from nudge import belt, demomaps, server
+from nudge import belt, fetch, server
+from tests import belt_maps
+
+
+@pytest.fixture(autouse=True)
+def _belt_maps(monkeypatch):
+    """the two drawn floor plans (tests/belt_maps.py) load like any building, for these tests only."""
+    from nudge.agents import tools as T
+    real = fetch.load
+    monkeypatch.setattr(fetch, "load",
+                        lambda sid, refresh=False: belt_maps.model(sid) if sid in belt_maps.NAMES else real(sid, refresh))
+    T._graph_cached.cache_clear()
+    yield
+    T._graph_cached.cache_clear()
 
 c = TestClient(server.app)
 STEP_M = 0.7
@@ -238,9 +251,9 @@ def said(app, text):
 
 def test_a_caretaker_trip_on_the_corner_is_walked_by_the_belt_with_the_app_speaking(sim):
     app = App("e2e-corner")
-    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": demomaps.CORNER, "to": "Finish", "profile": "blind"})
+    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": belt_maps.CORNER, "to": "Finish", "profile": "blind"})
     trip = app.poll_trip()
-    assert trip and trip["sid"] == demomaps.CORNER
+    assert trip and trip["sid"] == belt_maps.CORNER
     app.start(trip)
     assert sim.posts("/route"), "the route went to the belt"
     app.calibrate()
@@ -257,7 +270,7 @@ def test_a_caretaker_trip_on_the_corner_is_walked_by_the_belt_with_the_app_speak
 
 def test_a_straight_walk_that_drifts_gets_taps_from_the_belt_and_still_arrives(sim):
     app = App("e2e-line")
-    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": demomaps.LINE, "to": "Finish", "profile": "blind"})
+    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": belt_maps.LINE, "to": "Finish", "profile": "blind"})
     app.start(app.poll_trip())
     app.calibrate()
     n = walk(app, sim, hold=lambda i: (CAL + 35) % 360 if 3 <= i < 6 else None)
@@ -270,7 +283,7 @@ def test_a_straight_walk_that_drifts_gets_taps_from_the_belt_and_still_arrives(s
 
 def test_voice_mid_walk_answers_from_the_belts_position(sim):
     app = App("e2e-voice")
-    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": demomaps.LINE, "to": "Finish", "profile": "blind"})
+    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": belt_maps.LINE, "to": "Finish", "profile": "blind"})
     app.start(app.poll_trip())
     app.calibrate()
     for _ in range(6):
@@ -293,13 +306,14 @@ def test_voice_mid_walk_answers_from_the_belts_position(sim):
 
 def test_a_trip_asked_for_by_voice_reaches_the_belt_and_the_app_can_walk_it(sim):
     app = App("e2e-voicetrip")
-    r = app.voice("take me to the finish in demo corner")
+    app.trip = {"sid": belt_maps.CORNER, "to": "Finish", "profile": "blind"}   # the building it's in
+    r = app.voice("take me to the finish")
     assert r.get("session"), r
     assert "going to" in r["say"].lower(), r["say"]
     settle(lambda: belt.holds(r["session"]))     # the hand-off runs off the voice request's thread
     assert sim.posts("/route"), "the voice trip's route reached the belt"
     # the app adopts the session the voice reply named, counts down and calibrates, as for any trip
-    app.session, app.trip = r["session"], {"sid": demomaps.CORNER, "to": "Finish", "profile": "blind"}
+    app.session = r["session"]
     app.calibrate()
     assert sim.state == "NAVIGATING"
     assert walk(app, sim) is not None, app.said
@@ -308,10 +322,11 @@ def test_a_trip_asked_for_by_voice_reaches_the_belt_and_the_app_can_walk_it(sim)
 
 def test_a_voice_trip_starts_where_an_app_trip_would(sim):
     app = App("e2e-voicestart")
-    v = app.voice("take me to the finish in demo corner")
+    app.trip = {"sid": belt_maps.CORNER, "to": "Finish", "profile": "blind"}
+    v = app.voice("take me to the finish")
     vpts = v["state"]["path"]
     a = App("e2e-appstart")
-    c.post(f"/api/traveller/{a.tid}/trip", json={"sid": demomaps.CORNER, "to": "Finish", "profile": "blind"})
+    c.post(f"/api/traveller/{a.tid}/trip", json={"sid": belt_maps.CORNER, "to": "Finish", "profile": "blind"})
     a.start(a.poll_trip())
     apts = server._sessions[a.session].state()["path"]
     assert vpts[0][:2] == pytest.approx([1.0, 1.0]), vpts[0]       # the start mark, not some other point
@@ -322,7 +337,7 @@ def test_a_trip_asked_for_mid_walk_starts_where_the_wearer_is_and_the_belt_carri
     # the app keeps walking and reports to the new trip (Traveller.adopt): no countdown, no calibrate.
     # so the new route has to begin where the belt has the wearer, or the belt stops and waits
     app = App("e2e-midwalk")
-    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": demomaps.CORNER, "to": "Finish", "profile": "blind"})
+    c.post(f"/api/traveller/{app.tid}/trip", json={"sid": belt_maps.CORNER, "to": "Finish", "profile": "blind"})
     app.start(app.poll_trip())
     app.calibrate()
     for _ in range(4):
