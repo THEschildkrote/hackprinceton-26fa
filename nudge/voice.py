@@ -28,6 +28,11 @@ TRIP = re.compile(r"^(?:(?:hey|hi|ok|okay|uh|um|er|so|well|isaac|please)\s+)*"
                   r"how (?:do|can) i (?:get|go) to|i (?:want|need|would like|'d like) to go to|i want to get to|"
                   r"i (?:wanna|gotta|gonna) (?:go|get|head) to|i (?:want|need) to (?:get|head) to|"
                   r"where is|where's|find)\s+(?P<place>.+?)(?:\s+(?:at|in)\s+(?P<bldg>.+))?$")
+# "from point 12 to point 40": a trip between two named scan points (jrr names its 66 points by number), starting at
+# the first instead of the entrance
+FROM_TO = re.compile(r"^(?:(?:hey|hi|ok|okay|uh|um|so|well|isaac|please)\s+)*"
+                     r"(?:(?:take|walk|bring|guide|get) me |go |navigate |i (?:want|need) to go |how do i get )?"
+                     r"from\s+(?P<a>.+?)\s+to\s+(?P<b>.+?)$")
 YES = {"yes", "yeah", "yep", "ok", "okay", "sure", "do it", "go ahead", "approve", "yes please", "sounds good"}
 NO = {"no", "nope", "don't", "dont", "cancel that", "reject", "no thanks", "keep my route", "keep the route"}
 STOP = {"stop", "cancel", "end", "end trip", "stop navigation", "cancel trip", "quit"}
@@ -110,6 +115,17 @@ def _attach(tid, session, sid, goal, profile):
             h.attach_session(tid, session, sid, goal, profile)
         except Exception:
             pass
+
+
+def _venue_names(sid):
+    """spoken name -> scan point label for this building, from nudge/venue_names.json (lowercase, no "the")."""
+    import json
+    from pathlib import Path
+    try:
+        names = json.loads((Path(__file__).with_name("venue_names.json")).read_text()).get(sid or "", {})
+    except Exception:
+        return {}
+    return {re.sub(r"^the\s+", "", k.strip().lower()): str(v) for k, v in names.items()}
 
 
 def _default_graph(sid):
@@ -236,6 +252,8 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         nav = live_nav(c)
         g = nav.g if nav else (graph_for(c.sid) if c.sid else None)
         pos = c.here or (nav.pos + (None,) if nav and getattr(nav, "pos", None) else None)
+        if g is not None and pos is None:
+            pos = start_position(c, g)   # no walk yet: they're at the entrance, where every trip starts
         if g is None or pos is None:
             return "I don't know where you are yet. Tell me which building you're in."
         from .places import where_am_i
@@ -274,7 +292,15 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         hits = buildings.search(t, 1)
         return hits[0]["sid"] if hits else None
 
-    def start_trip(c, place_query, bldg=None):
+    def point_named(g, text):
+        """the scan points a spoken name means: a name from venue_names.json ("the elevator"), "point 12",
+        "number 12", "12", or a point's own label -> their ids."""
+        q = re.sub(r"^the\s+", "", (text or "").strip().strip(".").lower())
+        q = _venue_names(getattr(g, "sid", None)).get(q, q)
+        q = re.sub(r"^(?:point|number|spot|scan point)\s+", "", q)
+        return {n.id for n in g.nodes.values() if (n.label or "").lower() == q}
+
+    def start_trip(c, place_query, bldg=None, origin=None):
         if bldg:
             sid = resolve_building(bldg)
             if not sid:
@@ -287,14 +313,26 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
             g = graph_for(c.sid)
         except Exception as ex:
             return [f"I couldn't load this building's map. {ex}"]
-        x, y, floor, heading = start_position(c, g)
+        if origin is not None:
+            start = point_named(g, origin)
+            if not start:
+                return [f"I don't know a point called {origin} here. Say a point number, like from point 3 to point 40."]
+            n = g.nodes[next(iter(start))]
+            c.here = (n.x, n.y, n.floor, None)   # they're standing there now, not at the entrance
+            x, y, floor, heading = c.here
+        else:
+            x, y, floor, heading = start_position(c, g)
         from .places import goal_nodes, resolve
-        # a scan point named outright ("the finish" on a demo map) is the spot itself, as it is for a trip
-        # the app starts: not the whole room around it, which the traveller may already be standing in
-        q = re.sub(r"^the\s+", "", place_query.strip().strip(".").lower())
-        named = {n.id for n in g.nodes.values() if (n.label or "").lower() == q}
+        # a scan point named outright ("point 40", or "the finish" on a drawn map) is the spot itself, as it is
+        # for a trip the app starts: not the whole room around it, which the traveller may already be standing in
+        named = point_named(g, place_query)
         if named:
             label = next(g.nodes[i].label for i in named)
+            spoken = re.sub(r"^the\s+", "", place_query.strip().strip(".").lower())
+            if spoken in _venue_names(getattr(g, "sid", None)):
+                label = spoken   # "going to the elevator", in their own words ("the" is added when said)
+            elif label.isdigit():
+                label = f"point {label}"   # jrr's points are numbers: "going to point 40", not "going to 40"
             return begin(c, g, {"name": label}, named, x, y, floor, heading)
         r = resolve(g, place_query, here=(x, y, floor), profile=c.profile)
         if r.get("ambiguous"):
@@ -648,6 +686,9 @@ def make_router(get_navigator=None, register_session=None, graph_for=None, excep
         q = None if PROBLEM.search(t) else PLACEQ.match(t)
         if q and nav is not None and not nav.done and not q["bldg"]:
             return reply(c, offer_place(c, nav, q["place"]))
+        ft = None if PROBLEM.search(t) else FROM_TO.match(t)
+        if ft:
+            return reply(c, start_trip(c, ft["b"], origin=ft["a"]))
         m = None if PROBLEM.search(t) else TRIP.match(t)
         if m is None and q:
             return reply(c, start_trip(c, q["place"], q["bldg"]))

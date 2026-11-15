@@ -1,0 +1,4 @@
+{
+  "_how": "spoken place names for scan points, per building id. key: what the traveller says; value: the scan point's number (its label in the matterport model). fill these in from the belt's own list. 'from the lobby to the elevator' then works, and point numbers keep working too.",
+  "R1FX6EmdcDt": {}
+}
