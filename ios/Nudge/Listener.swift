@@ -45,7 +45,7 @@ final class Listener {
         req.taskHint = .search
         req.contextualStrings = ["take me to", "how do I get to", "where am I", "repeat", "how far",
                                  "I need help", "the door is locked", "elevator is out", "I'm lost", "stop",
-                                 "yes", "no", "demo corner", "straight line demo", "the finish"]
+                                 "yes", "no", "the seminar room", "the lounge", "the elevator", "the stairs", "the atrium"]
         request = req
         lastText = ""
         let input = engine.inputNode
