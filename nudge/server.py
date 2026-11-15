@@ -1614,6 +1614,7 @@ def _voice_building():
 
 _voice = voice_router(get_navigator, register_session=_register_voice_session, has_caretaker=_has_caretaker,
                       on_turn=_voice_told, on_stall_answer=_stall_answer, default_sid=_voice_building())
+VENUE = _voice_building()   # also what a call means when the caller's phone has no building yet
 app.include_router(_voice)
 
 
@@ -1664,8 +1665,8 @@ def voice_call(req: CallTurn):
             if m:
                 place = m["place"] + (f" at {m['bldg']}" if m["bldg"] else "")
     if place is None:
-        return _voice.turn(Turn(traveller=tid, text=req.text,
-                                sid=st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt",
+        # a phone that has never had a trip has no building yet: the venue, as a caller with no phone gets
+        return _voice.turn(Turn(traveller=tid, text=req.text, sid=st.get("sid") or VENUE,
                                 session=st.get("session") if walking else None))
     profile = st.get("profile") or "blind"
     sid, bname, to = resolve_trip(place, st.get("sid") or os.environ.get("NUDGE_SITE") or "R1FX6EmdcDt", profile)

@@ -34,9 +34,10 @@ def test_no_match_is_short_and_rooms_only():
     assert r["message"].startswith("I don't have a bathroom on record in this building.")
 
 
-def test_voice_asks_for_the_building_then_uses_the_address():
+def test_voice_assumes_the_venue_then_uses_the_address():
+    # no building named: isaac assumes the venue (jrr) rather than asking; naming an address still switches
     t = {"traveller": "ux-judge"}
     say = lambda text: c.post("/api/voice/turn", json={**t, "text": text}).json()["say"]
-    assert say("take me to the kitchen") == "Which building are you in? Say the street address."
+    assert "which building" not in say("take me to the kitchen").lower()
     assert say("I'm at 1255 Atlantic").startswith("Okay, 1255 S Atlantic Blvd, Los Angeles.")
     assert "Route ready" in say("take me to the kitchen")
