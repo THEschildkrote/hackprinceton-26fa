@@ -17,14 +17,16 @@ the drawing above, so the elevator is at the top right here):
 
 ![The walk graph drawn on the Matterport floor plan of both floors](venue-graph-on-scan.png)
 
-`venue-paths.html` is an interactive version: download it and open it in a browser (GitHub shows it as
-source). Pick two places and it draws the shortest route on the scan with its turns, and "Snap photo" saves
-a PNG. Its routes are the shortest by edge length; they are not taken from `nudge/router.py`.
+Two interactive pages are in `web/`, so the server serves them: `/venue-paths.html` and `/venue-3d.html`
+(for example `http://localhost:8765/venue-paths.html`). Each is one file with everything inside and also
+opens by double-click, with no network.
 
-`venue-3d.html` is the same graph in 3D: both floors stacked, each floored with the top-down scan capture,
-with a route picker, an exploded view and "Save PNG". Download it and open it in a browser. It loads
-three.js from a CDN, so the first open needs a network connection. The floors are flat captures of the
-scan, not the scan's 3D mesh.
+- `web/venue-paths.html`: pick two places and it draws the shortest route on the scan with its turns;
+  "Snap photo" saves a PNG.
+- `web/venue-3d.html`: both floors stacked, each floored with the top-down scan capture, with a route
+  picker, an exploded view and "Save PNG". The floors are flat captures of the scan, not its 3D mesh.
+
+Their routes are the shortest by edge length; they are not taken from `nudge/router.py`.
 
 ## Landmarks
 
